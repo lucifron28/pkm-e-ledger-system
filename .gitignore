@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only official samples and source records
+data-sources/**/*.xlsx
+data-sources/**/*.xls
+data-sources/**/*.csv
+data-sources/**/*.pdf
+!data-sources/README.md
