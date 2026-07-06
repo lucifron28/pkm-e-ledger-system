@@ -1,26 +1,28 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-pkm-surface text-pkm-ink">
       <header className="border-b border-pkm-border bg-white">
         <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-          <a href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <span className="grid size-11 place-items-center rounded bg-pkm-blue text-sm font-bold text-white">
               PKM
             </span>
             <span className="font-semibold text-pkm-blue">
               PKM e-Ledger System
             </span>
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm font-medium">
             <a className="text-pkm-muted hover:text-pkm-blue" href="#about">
               About the System
             </a>
-            <a
+            <Link
               className="rounded bg-pkm-blue px-4 py-2 text-white hover:bg-pkm-blue-dark"
               href="/login"
             >
               Login
-            </a>
+            </Link>
           </div>
         </nav>
       </header>
@@ -38,12 +40,12 @@ export default function Home() {
             student organization funds efficiently and transparently.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <a
+            <Link
               className="rounded bg-pkm-blue px-5 py-3 text-sm font-semibold text-white hover:bg-pkm-blue-dark"
               href="/login"
             >
               Login
-            </a>
+            </Link>
             <a
               className="rounded border border-pkm-border bg-white px-5 py-3 text-sm font-semibold text-pkm-blue hover:border-pkm-blue"
               href="#about"
