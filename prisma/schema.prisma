@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  TREASURER
+  ADVISER
+  AUDIT
+  OFFICER
+  MEMBER
+  OSA
+}
+
+enum Semester {
+  FIRST_SEMESTER
+  SECOND_SEMESTER
+  MIDYEAR_SUMMER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum CashAccount {
+  CASH_ON_HAND
+  CASH_IN_BANK
+}
+
+enum ReportType {
+  MONTHLY
+  EVENT_BASED
+  ACADEMIC_YEAR
+  SEMESTER
+  ORGANIZATION
+}
+
+enum AuditAction {
+  LOGGED_IN
+  LOGGED_OUT
+  CHANGED_PASSWORD
+  ADDED_INCOME
+  ADDED_EXPENSE
+  EDITED_TRANSACTION
+  DELETED_TRANSACTION
+  CHANGED_OPENING_BALANCE
+  GENERATED_REPORT
+  UPLOADED_ATTACHMENT
+  REGISTERED_USER
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  academicTerms    AcademicTerm[]
+  transactions     Transaction[]
+  reports          Report[]
+  auditLogs        AuditLog[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  fullName       String
+  username       String   @unique
+  passwordHash   String
+  role           Role
+  organizationId String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  sessions              Session[]
+  recordedTransactions  Transaction[] @relation("TransactionRecordedBy")
+  updatedTransactions   Transaction[] @relation("TransactionUpdatedBy")
+  deletedTransactions   Transaction[] @relation("TransactionDeletedBy")
+  uploadedAttachments   Attachment[]  @relation("AttachmentUploadedBy")
+  generatedReports      Report[]
+  auditLogs             AuditLog[]
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  lastUsedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AcademicTerm {
+  id                         String   @id @default(cuid())
+  organizationId             String
+  academicYear               String
+  semester                   Semester
+  openingCashOnHandCents     Int      @default(0)
+  openingCashInBankCents     Int      @default(0)
+  active                     Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  reports      Report[]
+
+  @@unique([organizationId, academicYear, semester])
+  @@index([academicYear, semester])
+}
+
+model TransactionCategory {
+  id           String          @id @default(cuid())
+  name         String
+  type         TransactionType
+  reportBucket String
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  transactions Transaction[]
+
+  @@unique([name, type])
+  @@index([type, reportBucket])
+}
+
+model Transaction {
+  id                   String          @id @default(cuid())
+  organizationId       String
+  termId               String
+  type                 TransactionType
+  documentNumber       String?
+  transactionDate      DateTime
+  amountCents          Int
+  cashAccount          CashAccount
+  categoryId           String
+  counterpartyName     String?
+  description          String
+  referenceDescription String
+  eventActivityName    String?
+  recordedByUserId     String
+  updatedByUserId      String?
+  deletedByUserId      String?
+  deleteReason         String?
+  deletedAt            DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  term         AcademicTerm        @relation(fields: [termId], references: [id], onDelete: Cascade)
+  category     TransactionCategory @relation(fields: [categoryId], references: [id])
+  recordedBy   User                @relation("TransactionRecordedBy", fields: [recordedByUserId], references: [id])
+  updatedBy    User?               @relation("TransactionUpdatedBy", fields: [updatedByUserId], references: [id])
+  deletedBy    User?               @relation("TransactionDeletedBy", fields: [deletedByUserId], references: [id])
+
+  attachments Attachment[]
+
+  @@index([organizationId, termId, type])
+  @@index([transactionDate])
+  @@index([categoryId])
+  @@index([deletedAt])
+}
+
+model Attachment {
+  id            String   @id @default(cuid())
+  transactionId String
+  uploadedById  String
+  originalName  String
+  storedName    String
+  storagePath   String
+  mimeType      String
+  sizeBytes     Int
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  uploadedBy  User        @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([transactionId])
+  @@index([uploadedById])
+}
+
+model Report {
+  id             String     @id @default(cuid())
+  organizationId String
+  termId         String?
+  generatedById  String
+  type           ReportType
+  title          String
+  filtersJson    String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  term         AcademicTerm? @relation(fields: [termId], references: [id])
+  generatedBy  User          @relation(fields: [generatedById], references: [id])
+
+  @@index([organizationId, type])
+  @@index([termId])
+  @@index([generatedById])
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  userId         String?
+  organizationId String?
+  role           Role?
+  action         AuditAction
+  entityType     String?
+  entityId       String?
+  metadataJson   String?
+  createdAt      DateTime    @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([createdAt])
+}
