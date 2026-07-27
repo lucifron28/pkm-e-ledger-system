@@ -1,6 +1,5 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
-import { listDeletedTransactionsForAudit } from "@/lib/data/transactions";
-import { formatPesoFromCents } from "@/lib/data/money";
+import { listAuditLogsForCurrentOrganization } from "@/lib/data/audit-log";
 import Link from "next/link";
 
 export default async function AuditLogPage() {
@@ -16,7 +15,7 @@ export default async function AuditLogPage() {
     );
   }
 
-  const deletedTxs = await listDeletedTransactionsForAudit(50);
+  const logs = await listAuditLogsForCurrentOrganization();
 
   return (
     <div className="space-y-6">
@@ -24,7 +23,7 @@ export default async function AuditLogPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
           <p className="text-sm text-slate-600">
-            Deleted transaction records for {user.organizationName}
+            Organization-scoped audit history for {user.organizationName}
           </p>
         </div>
         <Link href="/dashboard" className="text-sm text-[#004aad] font-semibold hover:underline">
@@ -32,9 +31,9 @@ export default async function AuditLogPage() {
         </Link>
       </div>
 
-      {deletedTxs.length === 0 ? (
+      {logs.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
-          No deleted transactions found. Soft-deleted transactions will appear here with their deletion reason.
+          No audit entries found for this organization.
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -42,37 +41,43 @@ export default async function AuditLogPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
                 <tr>
-                  <th className="px-4 py-3 text-left">Deleted At</th>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Type</th>
-                  <th className="px-4 py-3 text-left">Category</th>
-                  <th className="px-4 py-3 text-left">Description</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                  <th className="px-4 py-3 text-left">Deletion Reason</th>
-                  <th className="px-4 py-3 text-left">Recorded By</th>
+                  <th className="px-4 py-3 text-left">Timestamp</th>
+                  <th className="px-4 py-3 text-left">Action</th>
+                  <th className="px-4 py-3 text-left">User</th>
+                  <th className="px-4 py-3 text-left">Role</th>
+                  <th className="px-4 py-3 text-left">Organization</th>
+                  <th className="px-4 py-3 text-left">Entity</th>
+                  <th className="px-4 py-3 text-left">Metadata</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {deletedTxs.map((tx) => (
-                  <tr key={tx.id} className="bg-red-50/30">
+                {logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50 align-top">
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                      {tx.deletedAt?.toLocaleString("en-PH", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {log.createdAt.toLocaleString("en-PH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-900">
+                      {log.action}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                      {tx.transactionDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                      {log.fullName || log.username || log.userId || "System"}
+                      {log.username && <div className="text-xs text-slate-500">{log.username}</div>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${tx.type === "INCOME" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
-                        {tx.type === "INCOME" ? "Income" : "Expense"}
-                      </span>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.role || "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.organizationName || "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                      {log.entityType || "—"}
+                      {log.entityId && <div className="text-xs text-slate-500 font-mono">{log.entityId}</div>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{tx.categoryName}</td>
-                    <td className="px-4 py-3 max-w-xs truncate text-slate-700">{tx.description}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
-                      {formatPesoFromCents(tx.amountCents)}
+                    <td className="px-4 py-3 max-w-sm text-xs text-slate-600 break-words">
+                      {log.metadataJson || "—"}
                     </td>
-                    <td className="px-4 py-3 max-w-xs text-red-700 text-xs">{tx.deleteReason}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-600 text-xs">{tx.recordedByFullName}</td>
                   </tr>
                 ))}
               </tbody>

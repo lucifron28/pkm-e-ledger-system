@@ -1,13 +1,19 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
 import { getActiveTermForCurrentUser, getSemesterLabel } from "@/lib/data/terms";
-import { listLedgerTransactions, listCategoriesForType, TransactionFilters } from "@/lib/data/transactions";
+import {
+  getDashboardBalances,
+  listCategoriesForType,
+  listLedgerTransactions,
+  listTermsForLedger,
+} from "@/lib/data/transactions";
+import type { TransactionFilters } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
-import { _getBalanceSnapshot } from "@/lib/data/transactions";
-import { TransactionType, CashAccount } from "@prisma/client";
+import { Semester, TransactionType, CashAccount } from "@prisma/client";
 import { CreateTransactionForm } from "./create-transaction-form";
 import { EditTransactionForm } from "./edit-transaction-form";
 import { DeleteTransactionForm } from "./delete-transaction-form";
 import { LedgerFilters } from "./ledger-filters";
+import { AttachmentManager } from "./attachment-manager";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -51,6 +57,10 @@ export default async function LedgerPage({
     filters.type = typeRaw as TransactionType;
   }
   if (params.categoryId) filters.categoryId = params.categoryId as string;
+  if (params.academicYear) filters.academicYear = params.academicYear as string;
+  if (params.semester && Object.values(Semester).includes(params.semester as Semester)) {
+    filters.semester = params.semester as Semester;
+  }
   if (params.cashAccount && Object.values(CashAccount).includes(params.cashAccount as CashAccount)) {
     filters.cashAccount = params.cashAccount as CashAccount;
   }
@@ -60,12 +70,17 @@ export default async function LedgerPage({
   if (params.dateTo) filters.dateTo = params.dateTo as string;
   if (params.search) filters.search = params.search as string;
 
-  const [balances, transactions, incomeCategories, expenseCategories] = await Promise.all([
-    _getBalanceSnapshot(user.organizationId, activeTerm.id),
+  const [balances, transactions, incomeCategories, expenseCategories, ledgerTerms] = await Promise.all([
+    getDashboardBalances(),
     listLedgerTransactions(filters),
     listCategoriesForType(TransactionType.INCOME),
     listCategoriesForType(TransactionType.EXPENSE),
+    listTermsForLedger(),
   ]);
+
+  if (!balances) {
+    return <div className="p-6 text-sm text-slate-600">Active-term balances unavailable.</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -126,7 +141,12 @@ export default async function LedgerPage({
       </div>
 
       {/* Filters */}
-      <LedgerFilters filters={filters} incomeCategories={incomeCategories} expenseCategories={expenseCategories} />
+      <LedgerFilters
+        filters={filters}
+        incomeCategories={incomeCategories}
+        expenseCategories={expenseCategories}
+        terms={ledgerTerms}
+      />
 
       {/* Transactions Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -146,12 +166,19 @@ export default async function LedgerPage({
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
                 <tr>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Date</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Academic Year</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Semester</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Type</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Category</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Payor / Payee</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Description</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Reference</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Attachment</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Event / Activity</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Account</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">Amount</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Recorded By</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Date Recorded</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
@@ -161,6 +188,8 @@ export default async function LedgerPage({
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
                       {tx.transactionDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{tx.academicYear}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{getSemesterLabel(tx.semester)}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${tx.type === "INCOME" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
                         {tx.type === "INCOME" ? "Income" : "Expense"}
@@ -169,11 +198,20 @@ export default async function LedgerPage({
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">{tx.categoryName}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">{tx.counterpartyName || "—"}</td>
                     <td className="px-4 py-3 max-w-xs truncate text-slate-700">{tx.description}</td>
+                    <td className="px-4 py-3 max-w-xs truncate text-slate-700">{tx.referenceDescription}</td>
+                    <td className="px-4 py-3"><AttachmentManager transactionId={tx.id} attachments={tx.attachments} /></td>
+                    <td className="px-4 py-3 max-w-xs truncate text-slate-700">{tx.eventActivityName || "—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
                       {tx.cashAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank"}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap font-mono font-bold text-slate-900">
                       {formatPesoFromCents(tx.amountCents)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                      {tx.recordedByFullName}<div className="text-xs text-slate-500">{tx.recordedByUsername}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                      {tx.createdAt.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">

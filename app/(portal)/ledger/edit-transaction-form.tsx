@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { editTransactionAction } from "@/lib/actions/transactions";
-import { TransactionDto, CategoryDto } from "@/lib/data/transactions";
+import type { TransactionDto, CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 import { formatPesoInputFromCents } from "@/lib/data/money";
 

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createTransactionAction } from "@/lib/actions/transactions";
-import { CategoryDto } from "@/lib/data/transactions";
+import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 
 interface CreateTransactionFormProps {
@@ -19,7 +19,7 @@ export function CreateTransactionForm({
   const categories = txType === TransactionType.INCOME ? incomeCategories : expenseCategories;
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} encType="multipart/form-data" className="space-y-4">
       {state?.error && !state.fieldErrors && (
         <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
       )}
@@ -109,6 +109,20 @@ export function CreateTransactionForm({
           className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
         />
         {state?.fieldErrors?.referenceDescription && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.referenceDescription[0]}</p>}
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+          Receipt Attachment
+        </label>
+        <input
+          name="attachment"
+          type="file"
+          required
+          accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+        />
+        <p className="mt-1 text-xs text-slate-500">Required. JPEG, PNG, or PDF up to 10 MB.</p>
       </div>
 
       <div>

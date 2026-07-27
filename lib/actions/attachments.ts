@@ -1,123 +1,134 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { writeFile, unlink } from "fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { getTransactionForEdit } from "../data/transactions";
+import { validateAttachmentFile } from "../domain/attachments";
 import { AuditAction } from "@prisma/client";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_MIME = ["image/jpeg", "image/png", "application/pdf"];
 
 export type AttachmentState = { error?: string } | null;
 
+async function persistUploadedFile(file: File) {
+  const extension = file.name.split(".").pop()!.toLowerCase();
+  const storedName = `${crypto.randomUUID()}.${extension}`;
+  const storagePath = path.join(UPLOADS_DIR, storedName);
+  await mkdir(UPLOADS_DIR, { recursive: true });
+  await writeFile(storagePath, Buffer.from(await file.arrayBuffer()));
+  return { storedName, storagePath };
+}
+
 export async function uploadAttachmentAction(
-  prevState: AttachmentState,
+  _prevState: AttachmentState,
   formData: FormData
 ): Promise<AttachmentState> {
   const user = await requireManagementUser();
-  if (!user.organizationId) {
-    return { error: "You are not assigned to an organization." };
-  }
+  if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
   const transactionId = formData.get("transactionId")?.toString();
+  const file = formData.get("file");
   if (!transactionId) return { error: "Transaction ID is required." };
+  if (!(file instanceof File)) return { error: "File is required." };
 
-  const tx = await getTransactionForEdit(transactionId);
-  if (!tx) return { error: "Transaction not found." };
+  const fileError = validateAttachmentFile(file);
+  if (fileError) return { error: fileError };
 
-  const file = formData.get("file") as File | null;
-  if (!file || file.size === 0) return { error: "File is required." };
-  if (file.size > MAX_FILE_SIZE) return { error: "File must be under 10 MB." };
-  if (!ALLOWED_MIME.includes(file.type)) {
-    return { error: "Only JPEG, PNG, and PDF files are allowed." };
-  }
-
-  const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
-  const storedName = `${crypto.randomUUID()}.${ext}`;
-  const storagePath = path.join(UPLOADS_DIR, storedName);
-
+  let fileInfo: { storedName: string; storagePath: string } | null = null;
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(storagePath, buffer);
+    fileInfo = await persistUploadedFile(file);
+    await prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction.findFirst({
+        where: { id: transactionId, organizationId: user.organizationId!, deletedAt: null },
+        select: { id: true },
+      });
+      if (!transaction) throw new Error("Transaction not found.");
 
-    await prisma.$transaction(async (txDb) => {
-      const created = await txDb.attachment.create({
+      const attachment = await tx.attachment.create({
         data: {
           transactionId,
           uploadedById: user.id,
           originalName: file.name,
-          storedName,
-          storagePath,
+          storedName: fileInfo!.storedName,
+          storagePath: fileInfo!.storagePath,
           mimeType: file.type,
           sizeBytes: file.size,
         },
       });
-
       await createAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,
         action: AuditAction.UPLOADED_ATTACHMENT,
         entityType: "Attachment",
-        entityId: created.id,
+        entityId: attachment.id,
         metadata: { transactionId, originalName: file.name, sizeBytes: file.size },
-        tx: txDb,
+        tx,
       });
     });
   } catch (error) {
-    try { await unlink(storagePath); } catch {
-      /* best effort */
+    if (fileInfo) {
+      try { await unlink(fileInfo.storagePath); } catch { /* best effort cleanup */ }
     }
-    if (error instanceof Error && error.message.includes("P2002")) {
-      return { error: "Failed to upload attachment. Please try again." };
+    if (error instanceof Error && error.message === "Transaction not found.") {
+      return { error: error.message };
     }
     console.error("Upload attachment error:", error);
     return { error: "Failed to upload attachment. Please try again." };
   }
 
   revalidatePath("/ledger");
-  revalidatePath("/dashboard");
   return null;
 }
 
 export async function deleteAttachmentAction(
-  prevState: AttachmentState,
+  _prevState: AttachmentState,
   formData: FormData
 ): Promise<AttachmentState> {
   const user = await requireManagementUser();
-  if (!user.organizationId) {
-    return { error: "You are not assigned to an organization." };
-  }
+  if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
   const attachmentId = formData.get("attachmentId")?.toString();
   if (!attachmentId) return { error: "Attachment ID is required." };
 
-  const attachment = await prisma.attachment.findUnique({
-    where: { id: attachmentId },
-    include: {
-      transaction: { select: { organizationId: true, id: true } },
+  const attachment = await prisma.attachment.findFirst({
+    where: {
+      id: attachmentId,
+      transaction: { organizationId: user.organizationId, deletedAt: null },
+    },
+    select: {
+      id: true,
+      originalName: true,
+      storagePath: true,
+      transactionId: true,
     },
   });
-  if (!attachment || attachment.transaction.organizationId !== user.organizationId) {
-    return { error: "Attachment not found." };
-  }
+  if (!attachment) return { error: "Attachment not found." };
 
+  let fileBuffer: Buffer;
   try {
+    fileBuffer = await readFile(attachment.storagePath);
     await unlink(attachment.storagePath);
   } catch {
-    /* file already missing — continue */
+    return { error: "Attachment file is unavailable." };
   }
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.attachment.delete({ where: { id: attachmentId } });
+      const scopedAttachment = await tx.attachment.findFirst({
+        where: {
+          id: attachmentId,
+          transaction: { organizationId: user.organizationId!, deletedAt: null },
+        },
+        select: { id: true },
+      });
+      if (!scopedAttachment) throw new Error("Attachment not found.");
 
+      await tx.attachment.delete({ where: { id: scopedAttachment.id } });
       await createAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
@@ -125,11 +136,20 @@ export async function deleteAttachmentAction(
         action: AuditAction.DELETED_ATTACHMENT,
         entityType: "Attachment",
         entityId: attachmentId,
-        metadata: { transactionId: attachment.transaction.id, originalName: attachment.originalName },
+        metadata: { transactionId: attachment.transactionId, originalName: attachment.originalName },
         tx,
       });
     });
   } catch (error) {
+    try {
+      await mkdir(UPLOADS_DIR, { recursive: true });
+      await writeFile(attachment.storagePath, fileBuffer);
+    } catch (restoreError) {
+      console.error("Failed to restore attachment after database failure:", restoreError);
+    }
+    if (error instanceof Error && error.message === "Attachment not found.") {
+      return { error: error.message };
+    }
     console.error("Delete attachment error:", error);
     return { error: "Failed to delete attachment. Please try again." };
   }
