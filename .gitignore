@@ -46,3 +46,12 @@ data-sources/**/*.xls
 data-sources/**/*.csv
 data-sources/**/*.pdf
 !data-sources/README.md
+
+# local SQLite databases
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+
+# local file uploads (receipts, documents)
+/uploads/
