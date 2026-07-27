@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { hashPassword } from "../auth/password";
 import { createAuditLog } from "../data/audit-log";
@@ -10,8 +11,12 @@ import { AuditAction, Role } from "@prisma/client";
 const PUBLIC_ALLOWED_ROLES: Role[] = [Role.OFFICER, Role.MEMBER];
 
 const registerSchema = z.object({
-  fullName: z.string().min(2, "Full Name must be at least 2 characters."),
-  username: z.string().min(3, "Username must be at least 3 characters."),
+  fullName: z.string().trim().min(2, "Full Name must be at least 2 characters."),
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3, "Username must be at least 3 characters."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   confirmPassword: z.string().min(8, "Confirm Password is required."),
   organizationId: z.string().min(1, "Please select an organization."),
@@ -48,14 +53,12 @@ export async function registerAction(
   const { fullName, username, password, confirmPassword, organizationId, requestedRole } =
     validation.data;
 
-  // Server-side role whitelist security check
   if (!PUBLIC_ALLOWED_ROLES.includes(requestedRole)) {
     return {
       error: "Public registration is only allowed for Officer and Member roles.",
     };
   }
 
-  // Password confirmation check
   if (password !== confirmPassword) {
     return {
       error: "Passwords do not match.",
@@ -65,12 +68,9 @@ export async function registerAction(
     };
   }
 
-  const normalizedUsername = username.trim().toLowerCase();
-
   try {
-    // Check username uniqueness
     const existingUser = await prisma.user.findUnique({
-      where: { username: normalizedUsername },
+      where: { username },
     });
 
     if (existingUser) {
@@ -82,7 +82,6 @@ export async function registerAction(
       };
     }
 
-    // Verify target organization exists and is active
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
     });
@@ -93,15 +92,13 @@ export async function registerAction(
       };
     }
 
-    // Hash password with bcrypt cost factor 12
     const passwordHash = await hashPassword(password);
 
-    // Create user record inside database transaction
-    const newUser = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          fullName: fullName.trim(),
-          username: normalizedUsername,
+          fullName,
+          username,
           passwordHash,
           role: requestedRole,
           organizationId: organization.id,
@@ -121,11 +118,16 @@ export async function registerAction(
 
       return user;
     });
-
-    if (!newUser) {
-      return { error: "Failed to register user account." };
-    }
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return {
+        error: "Username is already in use.",
+        fieldErrors: {
+          username: ["Username is already in use."],
+        },
+      };
+    }
+
     console.error("Registration error:", error);
     return { error: "An unexpected error occurred during registration. Please try again." };
   }

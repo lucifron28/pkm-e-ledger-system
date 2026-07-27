@@ -1,8 +1,15 @@
+import { getSessionResult, getPostLoginDestination } from "@/lib/auth/session";
 import { RegisterForm } from "@/components/register-form";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import Link from "next/link";
 
 export default async function RegisterPage() {
+  const sessionResult = await getSessionResult();
+  if (sessionResult) {
+    redirect(getPostLoginDestination(sessionResult.user));
+  }
+
   const organizations = await prisma.organization.findMany({
     where: { active: true },
     select: {

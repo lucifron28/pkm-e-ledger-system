@@ -1,4 +1,6 @@
+import { getSessionResult, getPostLoginDestination } from "@/lib/auth/session";
 import { LoginForm } from "@/components/login-form";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
 interface LoginPageProps {
@@ -6,6 +8,11 @@ interface LoginPageProps {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const sessionResult = await getSessionResult();
+  if (sessionResult) {
+    redirect(getPostLoginDestination(sessionResult.user));
+  }
+
   const params = await searchParams;
   const showRegisteredMessage = params.registered === "1";
 

@@ -1,8 +1,14 @@
 import { requireUser } from "@/lib/auth/require-auth";
+import { Role } from "@prisma/client";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
 export default async function DashboardPage() {
   const user = await requireUser();
+
+  if (user.role === Role.OSA) {
+    redirect("/osa");
+  }
 
   return (
     <div className="space-y-6">

@@ -114,7 +114,7 @@ export async function changePasswordAction(
     });
 
     // Revoke all other active sessions for user except the current one
-    await revokeAllUserSessionsExceptCurrent(user.id, session.tokenHash);
+    await revokeAllUserSessionsExceptCurrent(user.id, session.id);
   } catch (error) {
     console.error("Change password error:", error);
     return { error: "An unexpected error occurred while updating password. Please try again." };

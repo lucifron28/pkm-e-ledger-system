@@ -18,14 +18,13 @@ export interface SessionUser {
 export interface SessionResult {
   session: {
     id: string;
-    tokenHash: string;
     expiresAt: Date;
   };
   user: SessionUser;
 }
 
-const SESSION_COOKIE_NAME = "pkm_session";
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days
+export const SESSION_COOKIE_NAME = "pkm_session";
+export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 Minutes
 
 /**
@@ -131,7 +130,6 @@ export async function getSessionResult(): Promise<SessionResult | null> {
     return {
       session: {
         id: dbSession.id,
-        tokenHash: dbSession.tokenHash,
         expiresAt: dbSession.expiresAt,
       },
       user: {
@@ -168,34 +166,39 @@ export async function deleteSession(): Promise<void> {
 
   if (rawToken) {
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-    try {
-      await prisma.session.updateMany({
-        where: { tokenHash, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    } catch (error) {
-      console.error("Error revoking session:", error);
-    }
+    await prisma.session.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
 /**
- * Revokes all active sessions for a user EXCEPT the specified current token hash.
+ * Revokes all active sessions for a user EXCEPT the specified current session ID.
  */
 export async function revokeAllUserSessionsExceptCurrent(
   userId: string,
-  currentTokenHash: string
+  currentSessionId: string
 ): Promise<void> {
   await prisma.session.updateMany({
     where: {
       userId,
-      tokenHash: { not: currentTokenHash },
+      id: { not: currentSessionId },
       revokedAt: null,
     },
     data: {
       revokedAt: new Date(),
     },
   });
+}
+
+/**
+ * Returns the correct post-login destination for an authenticated user.
+ */
+export function getPostLoginDestination(user: SessionUser): string {
+  if (user.mustChangePassword) return "/change-password";
+  if (user.role === Role.OSA) return "/osa";
+  return "/dashboard";
 }
