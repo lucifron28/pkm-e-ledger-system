@@ -12,6 +12,7 @@ import {
   PesoParseError,
   calculateBalanceForwarded,
 } from "../data/money";
+import { calculateAccountBalances, hasNegativeAccountBalance } from "../domain/financial";
 import {
   validateAcademicYear,
   getActiveTermForCurrentUser,
@@ -256,11 +257,6 @@ export async function updateOpeningBalancesAction(
 
   const { termId, openingCashOnHand, openingCashInBank } = validation.data;
 
-  const existing = await getTermByIdForCurrentUser(termId);
-  if (!existing) {
-    return { error: "Academic term not found." };
-  }
-
   let cashOnHandCents: number;
   let cashInBankCents: number;
   try {
@@ -273,14 +269,26 @@ export async function updateOpeningBalancesAction(
     throw error;
   }
 
-  const prevBalanceForwarded = calculateBalanceForwarded(
-    existing.openingCashOnHandCents,
-    existing.openingCashInBankCents
-  );
-  const newBalanceForwarded = calculateBalanceForwarded(cashOnHandCents, cashInBankCents);
-
   try {
     await prisma.$transaction(async (tx) => {
+      const existing = await tx.academicTerm.findFirst({
+        where: { id: termId, organizationId: user.organizationId! },
+      });
+      if (!existing) throw new ValidationError("Academic term not found.");
+
+      const rows = await tx.transaction.findMany({
+        where: { organizationId: user.organizationId!, termId: existing.id, deletedAt: null },
+        select: { type: true, amountCents: true, cashAccount: true },
+      });
+      const projected = calculateAccountBalances(
+        cashOnHandCents,
+        cashInBankCents,
+        rows
+      );
+      if (hasNegativeAccountBalance(projected)) {
+        throw new ValidationError("Opening balance update would create a negative account balance.");
+      }
+
       await tx.academicTerm.update({
         where: { id: termId },
         data: {
@@ -303,14 +311,21 @@ export async function updateOpeningBalancesAction(
           newCashOnHandCents: cashOnHandCents,
           previousCashInBankCents: existing.openingCashInBankCents,
           newCashInBankCents: cashInBankCents,
-          previousBalanceForwardedCents: prevBalanceForwarded,
-          newBalanceForwardedCents: newBalanceForwarded,
+          previousBalanceForwardedCents: calculateBalanceForwarded(
+            existing.openingCashOnHandCents,
+            existing.openingCashInBankCents
+          ),
+          newBalanceForwardedCents: calculateBalanceForwarded(
+            cashOnHandCents,
+            cashInBankCents
+          ),
           operation: "UPDATE",
         },
         tx,
       });
     });
   } catch (error) {
+    if (error instanceof ValidationError) return { error: error.message };
     console.error("Update balances error:", error);
     return { error: "Failed to update opening balances. Please try again." };
   }

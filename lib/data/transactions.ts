@@ -1,16 +1,27 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireUser, requireManagementUser } from "../auth/require-auth";
+import { requireManagementUser, requireUser } from "../auth/require-auth";
+import { calculateAccountBalances, type AccountBalances } from "../domain/financial";
 import {
-  TransactionType,
   CashAccount,
   Prisma,
+  Semester,
+  TransactionType,
 } from "@prisma/client";
+
+export interface AttachmentDto {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+}
 
 export interface TransactionDto {
   id: string;
-  organizationId: string;
   termId: string;
+  academicYear: string;
+  semester: Semester;
   type: TransactionType;
   documentNumber: string | null;
   transactionDate: Date;
@@ -24,18 +35,13 @@ export interface TransactionDto {
   eventActivityName: string | null;
   recordedByUsername: string;
   recordedByFullName: string;
+  createdAt: Date;
   deletedAt: Date | null;
   deleteReason: string | null;
-  createdAt: Date;
+  attachments: AttachmentDto[];
 }
 
-export interface BalanceSnapshot {
-  cashOnHandCents: number;
-  cashInBankCents: number;
-  totalIncomeCents: number;
-  totalExpenseCents: number;
-  remainingCents: number;
-}
+export type BalanceSnapshot = AccountBalances;
 
 export interface CategoryDto {
   id: string;
@@ -44,145 +50,9 @@ export interface CategoryDto {
   active: boolean;
 }
 
-function toTransactionDto(tx: Record<string, unknown>): TransactionDto {
-  return {
-    id: tx.id as string,
-    organizationId: tx.organizationId as string,
-    termId: tx.termId as string,
-    type: tx.type as TransactionType,
-    documentNumber: tx.documentNumber as string | null,
-    transactionDate: tx.transactionDate as Date,
-    amountCents: tx.amountCents as number,
-    cashAccount: tx.cashAccount as CashAccount,
-    categoryId: tx.categoryId as string,
-    categoryName: (tx as { category: { name: string } }).category?.name ?? "",
-    counterpartyName: tx.counterpartyName as string | null,
-    description: tx.description as string,
-    referenceDescription: tx.referenceDescription as string,
-    eventActivityName: tx.eventActivityName as string | null,
-    recordedByUsername: (tx as { recordedBy: { username: string } }).recordedBy?.username ?? "",
-    recordedByFullName: (tx as { recordedBy: { fullName: string } }).recordedBy?.fullName ?? "",
-    deletedAt: tx.deletedAt as Date | null,
-    deleteReason: tx.deleteReason as string | null,
-    createdAt: tx.createdAt as Date,
-  };
-}
-
-/* ─── Private raw queries ─── */
-
-async function _getAvailableBalance(
-  organizationId: string,
-  termId: string,
-  cashAccount: CashAccount,
-  excludeTransactionId?: string
-): Promise<number> {
-  const term = await prisma.academicTerm.findFirst({
-    where: { id: termId, organizationId },
-  });
-  if (!term) return 0;
-
-  const opening =
-    cashAccount === CashAccount.CASH_ON_HAND
-      ? term.openingCashOnHandCents
-      : term.openingCashInBankCents;
-
-  const txFilter: Prisma.TransactionWhereInput = {
-    organizationId,
-    termId,
-    cashAccount,
-    deletedAt: null,
-    ...(excludeTransactionId ? { id: { not: excludeTransactionId } } : {}),
-  };
-
-  const [incomeAgg, expenseAgg] = await Promise.all([
-    prisma.transaction.aggregate({
-      where: { ...txFilter, type: TransactionType.INCOME },
-      _sum: { amountCents: true },
-    }),
-    prisma.transaction.aggregate({
-      where: { ...txFilter, type: TransactionType.EXPENSE },
-      _sum: { amountCents: true },
-    }),
-  ]);
-
-  return (
-    opening +
-    (incomeAgg._sum.amountCents ?? 0) -
-    (expenseAgg._sum.amountCents ?? 0)
-  );
-}
-
-async function _getBalanceSnapshot(
-  organizationId: string,
-  termId: string
-): Promise<BalanceSnapshot> {
-  const term = await prisma.academicTerm.findFirst({
-    where: { id: termId, organizationId },
-  });
-  if (!term) return { cashOnHandCents: 0, cashInBankCents: 0, totalIncomeCents: 0, totalExpenseCents: 0, remainingCents: 0 };
-
-  const baseFilter: Prisma.TransactionWhereInput = {
-    organizationId,
-    termId,
-    deletedAt: null,
-  };
-
-  const [cohIncome, cohExpense, cibIncome, cibExpense] = await Promise.all([
-    prisma.transaction.aggregate({ where: { ...baseFilter, type: TransactionType.INCOME, cashAccount: CashAccount.CASH_ON_HAND }, _sum: { amountCents: true } }),
-    prisma.transaction.aggregate({ where: { ...baseFilter, type: TransactionType.EXPENSE, cashAccount: CashAccount.CASH_ON_HAND }, _sum: { amountCents: true } }),
-    prisma.transaction.aggregate({ where: { ...baseFilter, type: TransactionType.INCOME, cashAccount: CashAccount.CASH_IN_BANK }, _sum: { amountCents: true } }),
-    prisma.transaction.aggregate({ where: { ...baseFilter, type: TransactionType.EXPENSE, cashAccount: CashAccount.CASH_IN_BANK }, _sum: { amountCents: true } }),
-  ]);
-
-  const totalIncome = (cohIncome._sum.amountCents ?? 0) + (cibIncome._sum.amountCents ?? 0);
-  const totalExpense = (cohExpense._sum.amountCents ?? 0) + (cibExpense._sum.amountCents ?? 0);
-  const remaining =
-    term.openingCashOnHandCents + term.openingCashInBankCents + totalIncome - totalExpense;
-
-  return {
-    cashOnHandCents:
-      term.openingCashOnHandCents +
-      (cohIncome._sum.amountCents ?? 0) -
-      (cohExpense._sum.amountCents ?? 0),
-    cashInBankCents:
-      term.openingCashInBankCents +
-      (cibIncome._sum.amountCents ?? 0) -
-      (cibExpense._sum.amountCents ?? 0),
-    totalIncomeCents: totalIncome,
-    totalExpenseCents: totalExpense,
-    remainingCents: remaining,
-  };
-}
-
-async function _listCategories(type: TransactionType): Promise<CategoryDto[]> {
-  const cats = await prisma.transactionCategory.findMany({
-    where: { type, active: true },
-    orderBy: { name: "asc" },
-  });
-  return cats.map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: c.type,
-    active: c.active,
-  }));
-}
-
-async function _getTransactionById(
-  id: string,
-  organizationId: string
-): Promise<TransactionDto | null> {
-  const tx = await prisma.transaction.findFirst({
-    where: { id, organizationId },
-    include: {
-      category: { select: { name: true } },
-      recordedBy: { select: { username: true, fullName: true } },
-    },
-  });
-  if (!tx) return null;
-  return toTransactionDto(tx as unknown as Record<string, unknown>);
-}
-
 export interface TransactionFilters {
+  academicYear?: string | null;
+  semester?: Semester | null;
   type?: TransactionType | null;
   categoryId?: string | null;
   cashAccount?: CashAccount | null;
@@ -193,108 +63,103 @@ export interface TransactionFilters {
   search?: string | null;
 }
 
-async function _listTransactions(
-  organizationId: string,
-  termId: string,
-  filters: TransactionFilters
-): Promise<TransactionDto[]> {
-  const where: Prisma.TransactionWhereInput = {
-    organizationId,
-    termId,
-    deletedAt: null,
+const transactionInclude = {
+  category: { select: { name: true } },
+  term: { select: { academicYear: true, semester: true } },
+  recordedBy: { select: { username: true, fullName: true } },
+  attachments: {
+    select: {
+      id: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} as const;
+
+type TransactionWithDetails = Prisma.TransactionGetPayload<{
+  include: typeof transactionInclude;
+}>;
+
+function toTransactionDto(tx: TransactionWithDetails): TransactionDto {
+  return {
+    id: tx.id,
+    termId: tx.termId,
+    academicYear: tx.term.academicYear,
+    semester: tx.term.semester,
+    type: tx.type,
+    documentNumber: tx.documentNumber,
+    transactionDate: tx.transactionDate,
+    amountCents: tx.amountCents,
+    cashAccount: tx.cashAccount,
+    categoryId: tx.categoryId,
+    categoryName: tx.category.name,
+    counterpartyName: tx.counterpartyName,
+    description: tx.description,
+    referenceDescription: tx.referenceDescription,
+    eventActivityName: tx.eventActivityName,
+    recordedByUsername: tx.recordedBy.username,
+    recordedByFullName: tx.recordedBy.fullName,
+    createdAt: tx.createdAt,
+    deletedAt: tx.deletedAt,
+    deleteReason: tx.deleteReason,
+    attachments: tx.attachments,
   };
-
-  if (filters.type) where.type = filters.type;
-  if (filters.categoryId) where.categoryId = filters.categoryId;
-  if (filters.cashAccount) where.cashAccount = filters.cashAccount;
-  if (filters.eventActivityName) where.eventActivityName = filters.eventActivityName;
-
-  if (filters.month) {
-    const year = parseInt(filters.month.split("-")[0], 10);
-    const month = parseInt(filters.month.split("-")[1], 10);
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0, 23, 59, 59, 999);
-    where.transactionDate = { gte: start, lte: end };
-  }
-
-  if (filters.dateFrom || filters.dateTo) {
-    where.transactionDate = {};
-    if (filters.dateFrom) {
-      (where.transactionDate as Prisma.DateTimeFilter).gte = new Date(`${filters.dateFrom}T00:00:00.000Z`);
-    }
-    if (filters.dateTo) {
-      (where.transactionDate as Prisma.DateTimeFilter).lte = new Date(`${filters.dateTo}T23:59:59.999Z`);
-    }
-  }
-
-  if (filters.search) {
-    const term = filters.search;
-    where.OR = [
-      { description: { contains: term } },
-      { counterpartyName: { contains: term } },
-      { documentNumber: { contains: term } },
-      { referenceDescription: { contains: term } },
-    ];
-  }
-
-  const txs = await prisma.transaction.findMany({
-    where,
-    include: {
-      category: { select: { name: true } },
-      recordedBy: { select: { username: true, fullName: true } },
-    },
-    orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
-  });
-
-  return txs.map((t) => toTransactionDto(t as unknown as Record<string, unknown>));
 }
 
-async function _listDeletedTransactions(
+async function getRowsForTerm(organizationId: string, termId: string) {
+  return prisma.transaction.findMany({
+    where: { organizationId, termId, deletedAt: null },
+    select: { type: true, amountCents: true, cashAccount: true },
+  });
+}
+
+async function getBalanceSnapshotForTerm(
   organizationId: string,
-  take?: number
-): Promise<TransactionDto[]> {
-  const txs = await prisma.transaction.findMany({
-    where: { organizationId, deletedAt: { not: null } },
-    include: {
-      category: { select: { name: true } },
-      recordedBy: { select: { username: true, fullName: true } },
-      deletedBy: { select: { username: true } },
-    },
-    orderBy: { deletedAt: "desc" },
-    take: take ?? 50,
+  termId: string
+): Promise<BalanceSnapshot | null> {
+  const term = await prisma.academicTerm.findFirst({
+    where: { id: termId, organizationId },
+    select: { openingCashOnHandCents: true, openingCashInBankCents: true },
   });
-  return txs.map((t) => toTransactionDto(t as unknown as Record<string, unknown>));
+  if (!term) return null;
+  const rows = await getRowsForTerm(organizationId, termId);
+  return calculateAccountBalances(term.openingCashOnHandCents, term.openingCashInBankCents, rows);
 }
-
-/* ─── Authorized wrappers ─── */
 
 export async function getDashboardBalances(): Promise<BalanceSnapshot | null> {
   const user = await requireUser();
   if (!user.organizationId) return null;
   const term = await prisma.academicTerm.findFirst({
     where: { organizationId: user.organizationId, active: true },
+    select: { id: true },
   });
   if (!term) return null;
-  return _getBalanceSnapshot(user.organizationId, term.id);
+  return getBalanceSnapshotForTerm(user.organizationId, term.id);
 }
 
-export async function getAvailableBalanceForAccount(
-  cashAccount: CashAccount,
-  excludeTransactionId?: string
-): Promise<number> {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return 0;
-  const term = await prisma.academicTerm.findFirst({
-    where: { organizationId: user.organizationId, active: true },
+export async function listCategoriesForType(type: TransactionType): Promise<CategoryDto[]> {
+  await requireManagementUser();
+  const categories = await prisma.transactionCategory.findMany({
+    where: { type, active: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, type: true, active: true },
   });
-  if (!term) return 0;
-  return _getAvailableBalance(user.organizationId, term.id, cashAccount, excludeTransactionId);
+  return categories;
 }
 
-export async function listCategoriesForType(
-  type: TransactionType
-): Promise<CategoryDto[]> {
-  return _listCategories(type);
+export async function listTermsForLedger(): Promise<
+  { id: string; academicYear: string; semester: Semester; active: boolean }[]
+> {
+  const user = await requireManagementUser();
+  if (!user.organizationId) return [];
+  return prisma.academicTerm.findMany({
+    where: { organizationId: user.organizationId },
+    orderBy: [{ academicYear: "desc" }, { createdAt: "desc" }],
+    select: { id: true, academicYear: true, semester: true, active: true },
+  });
 }
 
 export async function listLedgerTransactions(
@@ -302,28 +167,84 @@ export async function listLedgerTransactions(
 ): Promise<TransactionDto[]> {
   const user = await requireManagementUser();
   if (!user.organizationId) return [];
-  const term = await prisma.academicTerm.findFirst({
+
+  const activeTerm = await prisma.academicTerm.findFirst({
     where: { organizationId: user.organizationId, active: true },
+    select: { academicYear: true, semester: true },
+  });
+  if (!activeTerm) return [];
+
+  const term = await prisma.academicTerm.findFirst({
+    where: {
+      organizationId: user.organizationId,
+      academicYear: filters.academicYear ?? activeTerm.academicYear,
+      semester: filters.semester ?? activeTerm.semester,
+    },
+    select: { id: true },
   });
   if (!term) return [];
-  return _listTransactions(user.organizationId, term.id, filters);
+
+  const where: Prisma.TransactionWhereInput = {
+    organizationId: user.organizationId,
+    termId: term.id,
+    deletedAt: null,
+  };
+  if (filters.type) where.type = filters.type;
+  if (filters.categoryId) where.categoryId = filters.categoryId;
+  if (filters.cashAccount) where.cashAccount = filters.cashAccount;
+  if (filters.eventActivityName) where.eventActivityName = { contains: filters.eventActivityName };
+
+  if (filters.month) {
+    const [year, month] = filters.month.split("-").map(Number);
+    where.transactionDate = {
+      gte: new Date(Date.UTC(year, month - 1, 1)),
+      lte: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+    };
+  }
+  if (filters.dateFrom || filters.dateTo) {
+    where.transactionDate = {
+      ...(filters.dateFrom ? { gte: new Date(`${filters.dateFrom}T00:00:00.000Z`) } : {}),
+      ...(filters.dateTo ? { lte: new Date(`${filters.dateTo}T23:59:59.999Z`) } : {}),
+    };
+  }
+  if (filters.search) {
+    where.OR = [
+      { description: { contains: filters.search } },
+      { counterpartyName: { contains: filters.search } },
+      { documentNumber: { contains: filters.search } },
+      { referenceDescription: { contains: filters.search } },
+    ];
+  }
+
+  const transactions = await prisma.transaction.findMany({
+    where,
+    include: transactionInclude,
+    orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
+  });
+  return transactions.map(toTransactionDto);
 }
 
-export async function getTransactionForEdit(
-  id: string
-): Promise<TransactionDto | null> {
+export async function getTransactionForEdit(id: string): Promise<TransactionDto | null> {
   const user = await requireManagementUser();
   if (!user.organizationId) return null;
-  return _getTransactionById(id, user.organizationId);
+  const transaction = await prisma.transaction.findFirst({
+    where: { id, organizationId: user.organizationId },
+    include: transactionInclude,
+  });
+  return transaction ? toTransactionDto(transaction) : null;
 }
 
-export async function listDeletedTransactionsForAudit(
-  take?: number
-): Promise<TransactionDto[]> {
+export async function listTransactionAttachments(transactionId: string): Promise<AttachmentDto[]> {
   const user = await requireManagementUser();
   if (!user.organizationId) return [];
-  return _listDeletedTransactions(user.organizationId, take);
+  const transaction = await prisma.transaction.findFirst({
+    where: { id: transactionId, organizationId: user.organizationId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!transaction) return [];
+  return prisma.attachment.findMany({
+    where: { transactionId },
+    select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
 }
-
-/* Re-export for actions */
-export { _getAvailableBalance, _getBalanceSnapshot, _listCategories, _getTransactionById };
