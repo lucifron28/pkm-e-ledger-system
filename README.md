@@ -1,67 +1,87 @@
 # PKM e-Ledger System
 
-PKM e-Ledger System is a web-based Student Organization Financial Ledger System
-for Pambayang Kolehiyo ng Mauban.
+**PKM e-Ledger System** is a web-based Student Organization Financial Ledger System for **Pambayang Kolehiyo ng Mauban (PKM)**. It digitizes financial record-keeping, balance tracking, attachments, audit trails, and official report generation across all 14 recognized student organizations under the Office of Student Affairs (OSA).
 
-The project is being implemented in phases with a local-first stack:
+---
 
-- Next.js App Router
-- TypeScript
-- Prisma with SQLite for local development
-- Server Actions for mutations
-- Route Handlers for PDF, Excel, and download endpoints
-- Server-only data access and role-based authorization
+## Technical Stack
 
-## Local Development
+* **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
+* **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
+* **Database & ORM**: SQLite via Prisma ORM 6
+* **Planned Features**: Server Actions for mutations, Route Handlers for file downloads and Excel exports (`exceljs`), and database-backed sessions with `bcryptjs` password hashing.
 
-Install dependencies:
+---
 
-```bash
-npm install
-```
+## Documentation Links
 
-Run the development server:
+* [Project Specification](docs/project-specification.md) — Complete source of truth for functional rules, RBAC, domain rules, and security specifications.
+* [Implementation Roadmap](docs/implementation-roadmap.md) — 7-phase implementation plan, branch names, grouped commits, and status tracking.
+* [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided official workbook reference.
+* [Repository Agent Guidelines](AGENTS.md) — Coding agent rules, financial invariants, architecture constraints, and testing expectations.
+* [Deployment Manual](DEPLOYMENT.md) — Reference guide for local Windows hosting using PM2 and automated Task Scheduler backups.
 
-```bash
-npm run dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) in a browser.
+## Current Project Status
 
-## Current Project Structure
+The repository foundation and database foundation are completed. Feature development will proceed phase-by-phase according to the implementation roadmap:
 
-- `app/` contains App Router pages, layouts, and future route groups.
-- `components/` is reserved for shared UI components.
-- `lib/` is reserved for server-only utilities, validation, auth, RBAC, and data access.
-- `prisma/` is reserved for the Prisma schema, migrations, and seed scripts.
-- `docs/` contains committed project documentation.
-- `data-sources/` may contain ignored local-only reference files.
+* **Phase 0**: Project Foundation (`chore/project-foundation`) — **Completed**
+* **Phase 1**: Database Foundation Completion (`feature/database-foundation-completion`) — **Completed**
+* **Phase Context**: Documentation Alignment (`docs/project-context`) — **In Review**
+* **Phase 2**: Authentication & Access (`feature/auth-and-access`) — **Not Started**
+* **Phase 3**: Accounts & Academic Terms (`feature/accounts-and-terms`) — **Not Started**
+* **Phase 4**: Ledger & Transactions (`feature/ledger-and-transactions`) — **Not Started**
+* **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **Not Started**
+* **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **Not Started**
+* **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities created)*
 
-## Phase 0 Scope
+---
 
-This branch prepares the foundation only:
+## Local Setup & Database Commands
 
-- Replace starter metadata and home content.
-- Add PKM theme tokens.
-- Add base project folders for later phases.
-- Document the local-only official report layout reference.
-- Ignore private official source files while allowing `data-sources/README.md`.
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-## Local-Only Report References
+2. **Database commands**:
+   ```bash
+   # Generate Prisma Client
+   npm run db:generate
 
-Official report samples under `data-sources/` are layout references only. Do not
-import them as app data, seed data, test data, or demo output. Do not copy names,
-student records, signatories, exact sample records, or exact sample amounts into
-the application or documentation.
+   # Run migrations
+   npm run db:migrate
 
-See [docs/report-layout-reference.md](docs/report-layout-reference.md) for the
-anonymized report structure expected in later report-generation phases.
+   # Seed database with fictional demo accounts
+   npm run db:seed
 
-## Useful Scripts
+   # Run database smoke test
+   npm run test:db
+   ```
+
+3. **Run development server**:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+4. **Seeded Demo Accounts**:
+   *Note: Login UI and authentication routes will be implemented in Phase 2.*
+   * **OSA Monitoring Account**: `demo_osa` / `password`
+   * **Organization Treasurer**: `demo_treasurer_supreme-student-council` / `password`
+   * **Organization Adviser**: `demo_adviser_supreme-student-council` / `password`
+   * **Organization Auditor**: `demo_audit_supreme-student-council` / `password`
+
+---
+
+## Quality & Build Verification
 
 ```bash
 npm run lint
+npm run typecheck
+npx prisma validate
+npm run test:db
 npm run build
 ```
-
-Deployment is not configured yet; the project will be demonstrated locally first.
