@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { logoutAction } from "@/lib/actions/logout";
-import { isMonitoringRole } from "@/lib/auth/rbac";
+import { isMonitoringRole, isManagementRole } from "@/lib/auth/rbac";
 import Link from "next/link";
 
 export default async function PortalLayout({
@@ -11,6 +11,7 @@ export default async function PortalLayout({
   const user = await requireUser();
 
   const isMonitoring = isMonitoringRole(user.role);
+  const isManagement = isManagementRole(user.role);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
@@ -34,6 +35,14 @@ export default async function PortalLayout({
               ) : (
                 <Link href="/dashboard" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
                   Financial Dashboard
+                </Link>
+              )}
+              {isManagement && (
+                <Link
+                  href="/settings/term"
+                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
+                >
+                  Term Settings
                 </Link>
               )}
               <Link href="/account" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
