@@ -9,9 +9,9 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | Phase | Branch Name | Primary Goal | Status |
 |-------|-------------|--------------|--------|
 | **Phase 0** | `chore/project-foundation` | Base repository scaffolding, PKM theme tokens, folder structure, and layout reference documentation. | **Completed** |
-| **Phase 1** | `feature/database-foundation-completion` | Prisma SQLite schema, initial migration, database runtime client, seed scripts, and verification. | **Completed** |
+| **Phase 1** | `feature/database-foundation-completion` | Foundational SQLite database schema (because later phases may require additional migrations), initial migration, database runtime client, seed scripts, and verification. | **Completed** |
 | **Phase Context** | `docs/project-context` | Align project specification, implementation roadmap, agent instructions, and README with approved FRD. | **In Review** |
-| **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt hashing, database sessions, password changes, and RBAC matrix. | **Not Started** |
+| **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **Not Started** |
 | **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Not Started** |
 | **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Not Started** |
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Not Started** |
@@ -25,13 +25,13 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 ### Phase 0: Project Foundation
 * **Branch**: `chore/project-foundation`
 * **Dependencies**: Initial repository creation
-* **Goal**: Prepare project structure, PKM color tokens, and reference documentation.
+* **Goal**: Prepare project structure, PKM color tokens (`#004aad` and `#f9d818`), and reference documentation.
 * **Status**: **Completed**
 
 ### Phase 1: Database Foundation Completion
 * **Branch**: `feature/database-foundation-completion`
 * **Dependencies**: Phase 0
-* **Goal**: Establish the complete SQLite database schema with enums, indexes, initial migrations, runtime client initialization, seed data, and smoke tests.
+* **Goal**: Establish the foundational SQLite database schema (because later phases may require additional migrations) with enums, indexes, initial migrations, runtime client initialization, seed data, and smoke tests.
 * **Grouped Commits**:
   1. `feat(db): setup prisma sqlite runtime and database scripts`
   2. `feat(schema): add final schema integrity changes`
@@ -48,6 +48,7 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   2. `docs: add compressed implementation roadmap`
   3. `docs: define repository agent instructions`
   4. `docs: update README project navigation`
+  5. `docs: finalize project specification alignment`
 * **Status**: **In Review**
 
 ### Phase 2: Authentication & Access
