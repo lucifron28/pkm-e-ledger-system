@@ -15,9 +15,7 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters."),
   confirmPassword: z.string().min(8, "Confirm Password is required."),
   organizationId: z.string().min(1, "Please select an organization."),
-  requestedRole: z.nativeEnum(Role, {
-    errorMap: () => ({ message: "Invalid role selected." }),
-  }),
+  requestedRole: z.nativeEnum(Role, { message: "Invalid role selected." }),
 });
 
 export type RegisterState = {

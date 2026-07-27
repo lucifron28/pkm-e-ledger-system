@@ -10,8 +10,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 |-------|-------------|--------------|--------|
 | **Phase 0** | `chore/project-foundation` | Base repository scaffolding, PKM theme tokens, folder structure, and layout reference documentation. | **Completed** |
 | **Phase 1** | `feature/database-foundation-completion` | Foundational SQLite database schema (because later phases may require additional migrations), initial migration, database runtime client, seed scripts, and verification. | **Completed** |
-| **Phase Context** | `docs/project-context` | Align project specification, implementation roadmap, agent instructions, and README with approved FRD. | **In Review** |
-| **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **Not Started** |
+| **Phase Context** | `docs/project-context` | Align project specification, implementation roadmap, agent instructions, and README with approved FRD. | **Completed** |
+| **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **In Review** |
 | **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Not Started** |
 | **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Not Started** |
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Not Started** |

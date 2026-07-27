@@ -29,8 +29,8 @@ The repository foundation and database foundation are completed. Feature develop
 
 * **Phase 0**: Project Foundation (`chore/project-foundation`) — **Completed**
 * **Phase 1**: Database Foundation Completion (`feature/database-foundation-completion`) — **Completed**
-* **Phase Context**: Documentation Alignment (`docs/project-context`) — **In Review**
-* **Phase 2**: Authentication & Access (`feature/auth-and-access`) — **Not Started**
+* **Phase Context**: Documentation Alignment (`docs/project-context`) — **Completed**
+* **Phase 2**: Authentication & Access (`feature/auth-and-access`) — **In Review**
 * **Phase 3**: Accounts & Academic Terms (`feature/accounts-and-terms`) — **Not Started**
 * **Phase 4**: Ledger & Transactions (`feature/ledger-and-transactions`) — **Not Started**
 * **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **Not Started**

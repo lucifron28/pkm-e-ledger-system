@@ -22,9 +22,9 @@ Do not make current-status claims without inspecting the repository.
 
 ## Current Implementation Status
 
-* **Completed**: Project foundation (`chore/project-foundation`) and Database foundation (`feature/database-foundation-completion`).
-* **Current**: Documentation alignment (`docs/project-context`).
-* **Next**: Authentication and role-based access (`feature/auth-and-access`).
+* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), and Documentation alignment (`docs/project-context`).
+* **Current**: Authentication and role-based access (`feature/auth-and-access`).
+* **Next**: Accounts and academic terms (`feature/accounts-and-terms`).
 
 ## Source of Truth
 
