@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -51,7 +51,13 @@ enum AuditAction {
   CHANGED_OPENING_BALANCE
   GENERATED_REPORT
   UPLOADED_ATTACHMENT
+  DELETED_ATTACHMENT
   REGISTERED_USER
+  CREATED_ORGANIZATION
+  TOGGLED_ORGANIZATION_STATUS
+  CREATED_CATEGORY
+  UPDATED_CATEGORY
+  TOGGLED_CATEGORY_STATUS
 }
 
 model Organization {
@@ -77,6 +83,7 @@ model User {
   role           Role
   organizationId String?
   active         Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
