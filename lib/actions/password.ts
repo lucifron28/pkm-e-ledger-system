@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { hashPassword, verifyPassword } from "../auth/password";
-import { getSessionResult, revokeAllUserSessionsExceptCurrent } from "../auth/session";
+import { getSessionResult } from "../auth/session";
 import { createAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
 
@@ -94,7 +94,7 @@ export async function changePasswordAction(
     // Hash new password with bcrypt cost factor 12
     const newPasswordHash = await hashPassword(newPassword);
 
-    // Update user record inside transaction
+    // Update user record, create audit entry, and revoke other sessions atomically
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
@@ -111,10 +111,18 @@ export async function changePasswordAction(
         action: AuditAction.CHANGED_PASSWORD,
         tx,
       });
-    });
 
-    // Revoke all other active sessions for user except the current one
-    await revokeAllUserSessionsExceptCurrent(user.id, session.id);
+      await tx.session.updateMany({
+        where: {
+          userId: user.id,
+          id: { not: session.id },
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
+    });
   } catch (error) {
     console.error("Change password error:", error);
     return { error: "An unexpected error occurred while updating password. Please try again." };

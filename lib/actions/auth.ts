@@ -128,7 +128,7 @@ export async function loginAction(
         expires: expiresAt,
       });
     } else {
-      await verifyPassword("dummy_password_long_enough", DUMMY_HASH);
+      await verifyPassword(password, DUMMY_HASH);
       return { error: "Invalid username or password." };
     }
   } catch (error) {
