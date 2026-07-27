@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { Semester, AuditAction } from "@prisma/client";
+import { Prisma, Semester, AuditAction } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
@@ -12,7 +12,11 @@ import {
   PesoParseError,
   calculateBalanceForwarded,
 } from "../data/money";
-import { validateAcademicYear, getTermById, getActiveTermForOrganization } from "../data/terms";
+import {
+  validateAcademicYear,
+  getActiveTermForCurrentUser,
+  getTermByIdForCurrentUser,
+} from "../data/terms";
 
 function parseBalanceField(value: string, fieldName: string): number {
   const trimmed = value.trim();
@@ -99,26 +103,8 @@ export async function createAcademicTermAction(
     throw error;
   }
 
-  // Check for duplicate term
-  const existingTerm = await prisma.academicTerm.findUnique({
-    where: {
-      organizationId_academicYear_semester: {
-        organizationId: user.organizationId,
-        academicYear: validatedAcademicYear,
-        semester,
-      },
-    },
-  });
-
-  if (existingTerm) {
-    return {
-      error: "This academic term already exists.",
-      fieldErrors: { academicYear: ["This academic term already exists."] },
-    };
-  }
-
   // Determine if new term should be active
-  const existingActive = await getActiveTermForOrganization(user.organizationId);
+  const existingActive = await getActiveTermForCurrentUser();
   let shouldActivate = false;
   if (!existingActive) {
     shouldActivate = true;
@@ -170,6 +156,12 @@ export async function createAcademicTermAction(
       });
     });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return {
+        error: "This academic term already exists.",
+        fieldErrors: { academicYear: ["This academic term already exists."] },
+      };
+    }
     console.error("Create term error:", error);
     return { error: "Failed to create academic term. Please try again." };
   }
@@ -206,7 +198,7 @@ export async function activateAcademicTermAction(
 
   const { termId } = validation.data;
 
-  const term = await getTermById(termId, user.organizationId);
+  const term = await getTermByIdForCurrentUser(termId);
   if (!term) {
     return { error: "Academic term not found." };
   }
@@ -264,7 +256,7 @@ export async function updateOpeningBalancesAction(
 
   const { termId, openingCashOnHand, openingCashInBank } = validation.data;
 
-  const existing = await getTermById(termId, user.organizationId);
+  const existing = await getTermByIdForCurrentUser(termId);
   if (!existing) {
     return { error: "Academic term not found." };
   }

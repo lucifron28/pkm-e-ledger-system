@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { isManagementRole } from "@/lib/auth/rbac";
-import { getActiveTermForOrganization, getSemesterLabel } from "@/lib/data/terms";
+import { getActiveTermForCurrentUser, getSemesterLabel } from "@/lib/data/terms";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -14,9 +14,7 @@ export default async function DashboardPage() {
   }
 
   const isManagement = isManagementRole(user.role);
-  const activeTerm = user.organizationId
-    ? await getActiveTermForOrganization(user.organizationId)
-    : null;
+  const activeTerm = await getActiveTermForCurrentUser();
 
   return (
     <div className="space-y-6">

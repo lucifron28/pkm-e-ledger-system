@@ -1,5 +1,10 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
-import { listTermsForOrganization, getActiveTermForOrganization, getSemesterLabel, type TermDto } from "@/lib/data/terms";
+import {
+  getActiveTermForCurrentUser,
+  listTermsForCurrentUser,
+  getSemesterLabel,
+  type TermDto,
+} from "@/lib/data/terms";
 import { formatPesoFromCents, formatPesoInputFromCents } from "@/lib/data/money";
 import { CreateTermForm } from "./create-term-form";
 import { ActivateTermForm } from "./activate-term-form";
@@ -27,8 +32,8 @@ export default async function TermSettingsPage() {
   }
 
   const [activeTerm, terms] = await Promise.all([
-    getActiveTermForOrganization(user.organizationId),
-    listTermsForOrganization(user.organizationId),
+    getActiveTermForCurrentUser(),
+    listTermsForCurrentUser(),
   ]);
 
   return (
