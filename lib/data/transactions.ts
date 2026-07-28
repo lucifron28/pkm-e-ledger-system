@@ -162,6 +162,26 @@ export async function listTermsForLedger(): Promise<
   });
 }
 
+function parseValidFilterDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
 export async function listLedgerTransactions(
   filters: TransactionFilters
 ): Promise<TransactionDto[]> {
@@ -192,28 +212,42 @@ export async function listLedgerTransactions(
   if (filters.type) where.type = filters.type;
   if (filters.categoryId) where.categoryId = filters.categoryId;
   if (filters.cashAccount) where.cashAccount = filters.cashAccount;
-  if (filters.eventActivityName) where.eventActivityName = { contains: filters.eventActivityName };
+  if (filters.eventActivityName) where.eventActivityName = { contains: filters.eventActivityName.trim() };
 
   if (filters.month) {
-    const [year, month] = filters.month.split("-").map(Number);
+    const trimmedMonth = filters.month.trim();
+    const match = /^(\d{4})-(\d{2})$/.exec(trimmedMonth);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      if (month >= 1 && month <= 12) {
+        where.transactionDate = {
+          gte: new Date(Date.UTC(year, month - 1, 1)),
+          lte: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+        };
+      }
+    }
+  }
+
+  const validFrom = parseValidFilterDate(filters.dateFrom);
+  const validTo = parseValidFilterDate(filters.dateTo);
+  if (validFrom || validTo) {
     where.transactionDate = {
-      gte: new Date(Date.UTC(year, month - 1, 1)),
-      lte: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+      ...(validFrom ? { gte: validFrom } : {}),
+      ...(validTo ? { lte: new Date(validTo.getTime() + 86399999) } : {}),
     };
   }
-  if (filters.dateFrom || filters.dateTo) {
-    where.transactionDate = {
-      ...(filters.dateFrom ? { gte: new Date(`${filters.dateFrom}T00:00:00.000Z`) } : {}),
-      ...(filters.dateTo ? { lte: new Date(`${filters.dateTo}T23:59:59.999Z`) } : {}),
-    };
-  }
+
   if (filters.search) {
-    where.OR = [
-      { description: { contains: filters.search } },
-      { counterpartyName: { contains: filters.search } },
-      { documentNumber: { contains: filters.search } },
-      { referenceDescription: { contains: filters.search } },
-    ];
+    const searchTrimmed = filters.search.trim();
+    if (searchTrimmed) {
+      where.OR = [
+        { description: { contains: searchTrimmed } },
+        { counterpartyName: { contains: searchTrimmed } },
+        { documentNumber: { contains: searchTrimmed } },
+        { referenceDescription: { contains: searchTrimmed } },
+      ];
+    }
   }
 
   const transactions = await prisma.transaction.findMany({

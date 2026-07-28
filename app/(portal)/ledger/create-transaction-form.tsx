@@ -44,6 +44,7 @@ export function CreateTransactionForm({
             name="transactionDate" type="date" required
             className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
           />
+          {state?.fieldErrors?.transactionDate && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.transactionDate[0]}</p>}
         </div>
 
         <div>
@@ -59,11 +60,12 @@ export function CreateTransactionForm({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Cash Account</label>
-          <select name="cashAccount" className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
+          <select name="cashAccount" required className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
             <option value="">Select account</option>
             <option value="CASH_ON_HAND">Cash on Hand</option>
             <option value="CASH_IN_BANK">Cash in Bank</option>
           </select>
+          {state?.fieldErrors?.cashAccount && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.cashAccount[0]}</p>}
         </div>
 
         <div>
@@ -74,6 +76,7 @@ export function CreateTransactionForm({
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {state?.fieldErrors?.categoryId && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.categoryId[0]}</p>}
         </div>
 
         <div>
@@ -88,9 +91,10 @@ export function CreateTransactionForm({
       <div>
         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Payor / Payee</label>
         <input
-          name="counterpartyName" type="text" placeholder="Name of person or entity"
+          name="counterpartyName" type="text" required placeholder="Name of person or entity"
           className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
         />
+        {state?.fieldErrors?.counterpartyName && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.counterpartyName[0]}</p>}
       </div>
 
       <div>
@@ -128,9 +132,10 @@ export function CreateTransactionForm({
       <div>
         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Event / Activity Name</label>
         <input
-          name="eventActivityName" type="text" placeholder="Associated project, event, or activity"
+          name="eventActivityName" type="text" required placeholder="Associated project, event, or activity"
           className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
         />
+        {state?.fieldErrors?.eventActivityName && <p className="mt-1 text-xs text-red-600">{state.fieldErrors.eventActivityName[0]}</p>}
       </div>
 
       <button

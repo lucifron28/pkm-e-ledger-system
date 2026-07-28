@@ -42,11 +42,20 @@ function parseAmount(value: string): number {
 
 function parseTransactionDate(value: string): Date {
   const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) {
     throw new TransactionValidationError("Transaction date is invalid.");
   }
-  const date = new Date(`${trimmed}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) {
     throw new TransactionValidationError("Transaction date is invalid.");
   }
   return date;
@@ -88,10 +97,10 @@ const transactionSchema = z.object({
   cashAccount: z.nativeEnum(CashAccount, { message: "Cash account is required." }),
   categoryId: z.string().trim().min(1, "Category is required."),
   documentNumber: z.string().trim().optional(),
-  counterpartyName: z.string().trim().optional(),
+  counterpartyName: z.string().trim().min(1, "Payor / Payee is required."),
   description: z.string().trim().min(1, "Description is required."),
   referenceDescription: z.string().trim().min(1, "Reference description is required."),
-  eventActivityName: z.string().trim().optional(),
+  eventActivityName: z.string().trim().min(1, "Event / Activity is required."),
 });
 
 function transactionFields(formData: FormData) {
@@ -192,11 +201,11 @@ export async function createTransactionAction(
           amountCents,
           cashAccount: validation.data.cashAccount,
           categoryId: category.id,
-          documentNumber: validation.data.documentNumber || null,
-          counterpartyName: validation.data.counterpartyName || null,
-          description: validation.data.description,
-          referenceDescription: validation.data.referenceDescription,
-          eventActivityName: validation.data.eventActivityName || null,
+          documentNumber: validation.data.documentNumber?.trim() || null,
+          counterpartyName: validation.data.counterpartyName.trim(),
+          description: validation.data.description.trim(),
+          referenceDescription: validation.data.referenceDescription.trim(),
+          eventActivityName: validation.data.eventActivityName.trim(),
           recordedByUserId: user.id,
         },
       });
@@ -304,11 +313,11 @@ export async function editTransactionAction(
           amountCents,
           cashAccount: validation.data.cashAccount,
           categoryId: category.id,
-          documentNumber: validation.data.documentNumber || null,
-          counterpartyName: validation.data.counterpartyName || null,
-          description: validation.data.description,
-          referenceDescription: validation.data.referenceDescription,
-          eventActivityName: validation.data.eventActivityName || null,
+          documentNumber: validation.data.documentNumber?.trim() || null,
+          counterpartyName: validation.data.counterpartyName.trim(),
+          description: validation.data.description.trim(),
+          referenceDescription: validation.data.referenceDescription.trim(),
+          eventActivityName: validation.data.eventActivityName.trim(),
           updatedByUserId: user.id,
         },
       });
@@ -380,7 +389,7 @@ export async function softDeleteTransactionAction(
 
       await tx.transaction.update({
         where: { id: existing.id },
-        data: { deletedAt: new Date(), deletedByUserId: user.id, deleteReason: validation.data.deleteReason },
+        data: { deletedAt: new Date(), deletedByUserId: user.id, deleteReason: validation.data.deleteReason.trim() },
       });
       await createAuditLog({
         userId: user.id,
@@ -389,7 +398,7 @@ export async function softDeleteTransactionAction(
         action: AuditAction.DELETED_TRANSACTION,
         entityType: "Transaction",
         entityId: existing.id,
-        metadata: { deleteReason: validation.data.deleteReason, type: existing.type, amountCents: existing.amountCents, cashAccount: existing.cashAccount },
+        metadata: { deleteReason: validation.data.deleteReason.trim(), type: existing.type, amountCents: existing.amountCents, cashAccount: existing.cashAccount },
         tx,
       });
     });
