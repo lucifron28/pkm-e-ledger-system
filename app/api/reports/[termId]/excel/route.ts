@@ -250,7 +250,10 @@ export async function GET(
   }
 
   try {
-    // Mandatory audit logging BEFORE returning Excel workbook
+    // 1. Generate file buffer first
+    const excelBuffer = await buildReportExcelBuffer(report);
+
+    // 2. Write mandatory audit log
     await createAuditLog({
       userId: sessionUser.id,
       organizationId: sessionUser.organizationId,
@@ -262,7 +265,7 @@ export async function GET(
       throwOnError: true,
     });
 
-    const excelBuffer = await buildReportExcelBuffer(report);
+    // 3. Return file response only after both succeed
     const safeSlug = report.organizationSlug.replace(/[^a-z0-9_-]/gi, "_");
     const safeAY = report.academicYear.replace(/[^a-z0-9_-]/gi, "_");
     const fileName = `Financial_Report_${safeSlug}_${safeAY}_${report.semester}.xlsx`;
@@ -275,7 +278,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("Excel generation or mandatory audit log error:", error);
-    return new NextResponse("Failed to generate Excel report due to mandatory audit log failure.", { status: 500 });
+    console.error("Excel export error:", error);
+    return new NextResponse("Failed to export report.", { status: 500 });
   }
 }

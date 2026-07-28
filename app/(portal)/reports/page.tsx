@@ -27,15 +27,22 @@ export default async function ReportsPage({
   }
 
   const params = await searchParams;
-  const ayRaw = params.academicYear as string | undefined;
 
-  let semRaw: Semester | undefined = undefined;
-  if (params.semester && Object.values(Semester).includes(params.semester as Semester)) {
-    semRaw = params.semester as Semester;
+  let academicYear: string | undefined = undefined;
+  if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
+    academicYear = params.academicYear.trim();
+  }
+
+  let semester: Semester | undefined = undefined;
+  if (
+    typeof params.semester === "string" &&
+    Object.values(Semester).includes(params.semester.trim() as Semester)
+  ) {
+    semester = params.semester.trim() as Semester;
   }
 
   const terms = await listTermsForLedger();
-  const report = await getReportPackageForCurrentUser(ayRaw, semRaw);
+  const report = await getReportPackageForCurrentUser(academicYear, semester);
 
   if (!report || terms.length === 0) {
     return (
