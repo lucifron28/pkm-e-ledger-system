@@ -45,6 +45,22 @@ export default async function PortalLayout({
                   Term Settings
                 </Link>
               )}
+              {isManagement && (
+                <Link
+                  href="/ledger"
+                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
+                >
+                  Digital Ledger
+                </Link>
+              )}
+              {isManagement && (
+                <Link
+                  href="/audit-log"
+                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
+                >
+                  Treasurer Log
+                </Link>
+              )}
               <Link href="/account" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
                 Account Settings
               </Link>

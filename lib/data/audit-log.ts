@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "../db/prisma";
+import { requireManagementUser } from "../auth/require-auth";
 import { AuditAction, Prisma, Role } from "@prisma/client";
 
 export interface LogAuditParams {
@@ -55,4 +56,51 @@ export async function createAuditLog(params: LogAuditParams): Promise<void> {
     }
     console.error("Failed to write audit log:", error);
   }
+}
+
+export interface AuditLogDto {
+  id: string;
+  action: AuditAction;
+  userId: string | null;
+  username: string | null;
+  fullName: string | null;
+  role: Role | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  createdAt: Date;
+  entityType: string | null;
+  entityId: string | null;
+  metadataJson: string | null;
+}
+
+export async function listAuditLogsForCurrentOrganization(
+  limit = 200
+): Promise<AuditLogDto[]> {
+  const user = await requireManagementUser();
+  if (!user.organizationId) return [];
+
+  const logs = await prisma.auditLog.findMany({
+    where: { organizationId: user.organizationId },
+    include: {
+      user: { select: { id: true, username: true, fullName: true } },
+      organization: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 500),
+  });
+
+  return logs.map((log) => ({
+    id: log.id,
+    action: log.action,
+    userId: log.userId,
+    username: log.user?.username ?? null,
+    fullName: log.user?.fullName ?? null,
+    role: log.role,
+    organizationId: log.organizationId,
+    organizationName: log.organization?.name ?? null,
+    createdAt: log.createdAt,
+    entityType: log.entityType,
+    entityId: log.entityId,
+    metadataJson: log.metadataJson,
+  }));
 }

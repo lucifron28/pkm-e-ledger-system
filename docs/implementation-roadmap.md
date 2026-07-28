@@ -12,8 +12,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 1** | `feature/database-foundation-completion` | Foundational SQLite database schema (because later phases may require additional migrations), initial migration, database runtime client, seed scripts, and verification. | **Completed** |
 | **Phase Context** | `docs/project-context` | Align project specification, implementation roadmap, agent instructions, and README with approved FRD. | **Completed** |
 | **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **Completed** |
-| **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **In Review** |
-| **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Not Started** |
+| **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Completed** |
+| **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **In Review** |
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Not Started** |
 | **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Not Started** |
 | **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities already implemented)* |
@@ -68,7 +68,7 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 * **Expected Grouped Commits**:
   1. `feat(terms): implement academic term selection and configuration`
   2. `feat(terms): implement opening balance setup for cash on hand and cash in bank`
-* **Status**: **In Review**
+* **Status**: **Completed**
 * **Next Phase**: `feature/ledger-and-transactions`
 
 ### Phase 4: Ledger & Transactions
@@ -76,10 +76,10 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 * **Dependencies**: Phase 3
 * **Goal**: Implement income/expense transaction entry, integer-cent monetary arithmetic, insufficient balance checks, soft deletion with deletion reasons, receipt attachment upload/download routes, and Treasurer Log auditing.
 * **Expected Grouped Commits**:
-  1. `feat(ledger): implement income and expense transaction forms and server actions`
-  2. `feat(ledger): implement soft-deletion and Treasurer Log auditing`
-  3. `feat(attachments): implement receipt attachment upload and download route handlers`
-* **Status**: **Not Started**
+  1. `feat(ledger): implement scoped transactions balances and ledger`
+  2. `feat(ledger): add soft deletion audit logs and attachments`
+* **Status**: **In Review**
+* **Next Phase**: `feature/reports-and-exports`
 
 ### Phase 5: Reports & Exports
 * **Branch**: `feature/reports-and-exports`

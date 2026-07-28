@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { isManagementRole } from "@/lib/auth/rbac";
 import { getActiveTermForCurrentUser, getSemesterLabel } from "@/lib/data/terms";
+import { getDashboardBalances } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -15,6 +16,7 @@ export default async function DashboardPage() {
 
   const isManagement = isManagementRole(user.role);
   const activeTerm = await getActiveTermForCurrentUser();
+  const balances = await getDashboardBalances();
 
   return (
     <div className="space-y-6">
@@ -117,6 +119,35 @@ export default async function DashboardPage() {
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {activeTerm && balances && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+            <h2 className="font-bold text-slate-900">Financial Summary</h2>
+          </div>
+          <div className="px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Income</div>
+              <div className="text-lg font-extrabold text-emerald-700 font-mono">{formatPesoFromCents(balances.totalIncomeCents)}</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Expense</div>
+              <div className="text-lg font-extrabold text-red-700 font-mono">{formatPesoFromCents(balances.totalExpenseCents)}</div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3 border">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Remaining Balance</div>
+              <div className="text-lg font-extrabold text-slate-900 font-mono">{formatPesoFromCents(balances.remainingCents)}</div>
+            </div>
+            {isManagement && (
+              <div className="flex items-center justify-center">
+                <Link href="/ledger" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition">
+                  Open Digital Ledger
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

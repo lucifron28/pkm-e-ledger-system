@@ -54,4 +54,5 @@ prisma/*.db-wal
 prisma/*.db-shm
 
 # local file uploads (receipts, documents)
-/uploads/
+/uploads/*
+!/uploads/.gitkeep
