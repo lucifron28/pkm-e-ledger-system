@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireManagementUser, requireUser } from "../auth/require-auth";
+import { requireManagementUser, requireOrgPortalUser } from "../auth/require-auth";
 import { calculateAccountBalances, type AccountBalances } from "../domain/financial";
 import {
   CashAccount,
@@ -130,7 +130,7 @@ async function getBalanceSnapshotForTerm(
 }
 
 export async function getDashboardBalances(): Promise<BalanceSnapshot | null> {
-  const user = await requireUser();
+  const user = await requireManagementUser();
   if (!user.organizationId) return null;
   const term = await prisma.academicTerm.findFirst({
     where: { organizationId: user.organizationId, active: true },
@@ -138,6 +138,57 @@ export async function getDashboardBalances(): Promise<BalanceSnapshot | null> {
   });
   if (!term) return null;
   return getBalanceSnapshotForTerm(user.organizationId, term.id);
+}
+
+export async function getDashboardBalancesForUser(
+  academicYear?: string,
+  semester?: Semester
+): Promise<{
+  term: {
+    id: string;
+    academicYear: string;
+    semester: Semester;
+    openingCashOnHandCents: number;
+    openingCashInBankCents: number;
+    balanceForwardedCents: number;
+    active: boolean;
+  };
+  balances: BalanceSnapshot;
+} | null> {
+  const user = await requireOrgPortalUser();
+
+  let term;
+  if (academicYear && semester) {
+    term = await prisma.academicTerm.findFirst({
+      where: { organizationId: user.organizationId, academicYear, semester },
+    });
+  } else {
+    term = await prisma.academicTerm.findFirst({
+      where: { organizationId: user.organizationId, active: true },
+    });
+  }
+
+  if (!term) return null;
+
+  const rows = await getRowsForTerm(user.organizationId, term.id);
+  const balances = calculateAccountBalances(
+    term.openingCashOnHandCents,
+    term.openingCashInBankCents,
+    rows
+  );
+
+  return {
+    term: {
+      id: term.id,
+      academicYear: term.academicYear,
+      semester: term.semester,
+      openingCashOnHandCents: term.openingCashOnHandCents,
+      openingCashInBankCents: term.openingCashInBankCents,
+      balanceForwardedCents: term.openingCashOnHandCents + term.openingCashInBankCents,
+      active: term.active,
+    },
+    balances,
+  };
 }
 
 export async function listCategoriesForType(type: TransactionType): Promise<CategoryDto[]> {
@@ -153,8 +204,7 @@ export async function listCategoriesForType(type: TransactionType): Promise<Cate
 export async function listTermsForLedger(): Promise<
   { id: string; academicYear: string; semester: Semester; active: boolean }[]
 > {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return [];
+  const user = await requireOrgPortalUser();
   return prisma.academicTerm.findMany({
     where: { organizationId: user.organizationId },
     orderBy: [{ academicYear: "desc" }, { createdAt: "desc" }],
