@@ -109,6 +109,14 @@ export async function deleteAttachmentAction(
   });
   if (!attachment) return { error: "Attachment not found." };
 
+  // Pre-check attachment count to prevent unlinking final attachment
+  const totalCount = await prisma.attachment.count({
+    where: { transactionId: attachment.transactionId },
+  });
+  if (totalCount <= 1) {
+    return { error: "Cannot delete the final attachment of an active transaction. At least one receipt attachment must remain." };
+  }
+
   let fileBuffer: Buffer;
   try {
     fileBuffer = await readFile(attachment.storagePath);
@@ -124,9 +132,16 @@ export async function deleteAttachmentAction(
           id: attachmentId,
           transaction: { organizationId: user.organizationId!, deletedAt: null },
         },
-        select: { id: true },
+        select: { id: true, transactionId: true },
       });
       if (!scopedAttachment) throw new Error("Attachment not found.");
+
+      const remainingCount = await tx.attachment.count({
+        where: { transactionId: scopedAttachment.transactionId },
+      });
+      if (remainingCount <= 1) {
+        throw new Error("Cannot delete the final attachment of an active transaction. At least one receipt attachment must remain.");
+      }
 
       await tx.attachment.delete({ where: { id: scopedAttachment.id } });
       await createAuditLog({
@@ -147,7 +162,10 @@ export async function deleteAttachmentAction(
     } catch (restoreError) {
       console.error("Failed to restore attachment after database failure:", restoreError);
     }
-    if (error instanceof Error && error.message === "Attachment not found.") {
+    if (error instanceof Error && (
+      error.message === "Attachment not found." ||
+      error.message.includes("final attachment")
+    )) {
       return { error: error.message };
     }
     console.error("Delete attachment error:", error);

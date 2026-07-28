@@ -211,7 +211,13 @@ export default async function LedgerPage({
                       {tx.recordedByFullName}<div className="text-xs text-slate-500">{tx.recordedByUsername}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                      {tx.createdAt.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                      {tx.createdAt.toLocaleString("en-PH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
