@@ -1,7 +1,15 @@
-import { requireManagementUser } from "@/lib/auth/require-auth";
-import { getReportPackageForCurrentUser } from "@/lib/data/reports";
+import { requireUser } from "@/lib/auth/require-auth";
+import { isManagementRole } from "@/lib/auth/rbac";
+import {
+  getReportPackageForCurrentUser,
+  getReportPackageForOsa,
+} from "@/lib/data/reports";
 import { listTermsForLedger } from "@/lib/data/transactions";
-import { Semester } from "@prisma/client";
+import {
+  listTermsForOsaOrganization,
+  validateOsaOrganization,
+} from "@/lib/data/osa";
+import { Role, Semester } from "@prisma/client";
 import { SummaryReport } from "@/components/reports/summary-report";
 import { Schedule1Collections } from "@/components/reports/schedule-1-collections";
 import { Schedule2Expenses } from "@/components/reports/schedule-2-expenses";
@@ -14,35 +22,83 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireManagementUser();
-  if (!user.organizationId) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">You are not assigned to an organization.</p>
-        </div>
-      </div>
-    );
-  }
-
+  const user = await requireUser();
   const params = await searchParams;
 
-  let academicYear: string | undefined = undefined;
+  let ayRaw: string | undefined = undefined;
   if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
-    academicYear = params.academicYear.trim();
+    ayRaw = params.academicYear.trim();
   }
 
-  let semester: Semester | undefined = undefined;
+  let semRaw: Semester | undefined = undefined;
   if (
     typeof params.semester === "string" &&
     Object.values(Semester).includes(params.semester.trim() as Semester)
   ) {
-    semester = params.semester.trim() as Semester;
+    semRaw = params.semester.trim() as Semester;
   }
 
-  const terms = await listTermsForLedger();
-  const report = await getReportPackageForCurrentUser(academicYear, semester);
+  let orgRaw: string | undefined = undefined;
+  if (typeof params.org === "string" && params.org.trim().length > 0) {
+    orgRaw = params.org.trim();
+  }
+
+  const isManagement = isManagementRole(user.role);
+  const isOsa = user.role === Role.OSA;
+
+  let report = null;
+  let terms: { id: string; academicYear: string; semester: Semester; active: boolean }[] = [];
+
+  if (isOsa) {
+    if (!orgRaw) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
+          <div className="bg-[#004aad]/5 border-2 border-dashed border-[#004aad]/30 p-8 rounded-xl text-center space-y-3">
+            <h2 className="text-lg font-bold text-[#004aad]">Select an Organization</h2>
+            <p className="text-sm text-slate-600 max-w-xl mx-auto">
+              Please select an active student organization from the OSA Monitoring Overview to inspect financial reports.
+            </p>
+            <Link href="/osa" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Go to OSA Overview
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    const validatedOrg = await validateOsaOrganization(orgRaw);
+    if (!validatedOrg) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
+          <div className="bg-amber-50 border-2 border-dashed border-amber-300 p-8 rounded-xl text-center space-y-3">
+            <h2 className="text-lg font-bold text-amber-900">Invalid or Inactive Organization</h2>
+            <p className="text-sm text-amber-700">The requested organization parameter is invalid or inactive.</p>
+            <Link href="/osa" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Go to OSA Overview
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    report = await getReportPackageForOsa(validatedOrg.slug, ayRaw, semRaw);
+    terms = await listTermsForOsaOrganization(validatedOrg.slug);
+  } else {
+    if (!user.organizationId) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
+            <p className="font-semibold text-amber-800">You are not assigned to an organization.</p>
+          </div>
+        </div>
+      );
+    }
+    report = await getReportPackageForCurrentUser(ayRaw, semRaw);
+    terms = await listTermsForLedger();
+  }
 
   if (!report || terms.length === 0) {
     return (
@@ -50,10 +106,20 @@ export default async function ReportsPage({
         <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
         <div className="bg-amber-50 border-2 border-dashed border-amber-300 p-8 rounded-xl text-center space-y-3">
           <h2 className="text-lg font-bold text-amber-900">No Financial Data Available</h2>
-          <p className="text-sm text-amber-700">Please set up an active academic term and record transactions first.</p>
-          <Link href="/ledger" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
-            Go to Digital Ledger
-          </Link>
+          <p className="text-sm text-amber-700">No active or historical financial report data is available for this organization.</p>
+          {isOsa ? (
+            <Link href="/osa" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Back to OSA Overview
+            </Link>
+          ) : isManagement ? (
+            <Link href="/ledger" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Go to Digital Ledger
+            </Link>
+          ) : (
+            <Link href="/dashboard" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Back to Dashboard
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -94,13 +160,13 @@ export default async function ReportsPage({
             {report.organizationName} &bull; {report.academicYear} {report.semesterLabel}
           </p>
         </div>
-        <Link href="/dashboard" className="text-sm text-[#004aad] font-semibold hover:underline">
-          &larr; Back to Dashboard
+        <Link href={isOsa ? "/osa" : "/dashboard"} className="text-sm text-[#004aad] font-semibold hover:underline">
+          &larr; Back to {isOsa ? "OSA Overview" : "Dashboard"}
         </Link>
       </div>
 
       {/* Toolbar & Actions */}
-      <ReportToolbar terms={terms} currentTermId={report.termId} />
+      <ReportToolbar terms={terms} currentTermId={report.termId} canExport={isManagement} />
 
       {/* Printable Report Package */}
       <div className="space-y-8 print:space-y-0 print:m-0 print:p-0">

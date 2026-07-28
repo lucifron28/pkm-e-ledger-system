@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { logoutAction } from "@/lib/actions/logout";
-import { isMonitoringRole, isManagementRole } from "@/lib/auth/rbac";
+import { isMonitoringRole } from "@/lib/auth/rbac";
+import { PortalNav } from "@/components/navigation/portal-nav";
+import { Suspense } from "react";
 import Link from "next/link";
 
 export default async function PortalLayout({
@@ -9,9 +11,7 @@ export default async function PortalLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-
   const isMonitoring = isMonitoringRole(user.role);
-  const isManagement = isManagementRole(user.role);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
@@ -27,52 +27,9 @@ export default async function PortalLayout({
             </Link>
 
             {/* Navigation links based on role */}
-            <nav className="hidden md:flex items-center space-x-4 text-sm font-semibold">
-              {isMonitoring ? (
-                <Link href="/osa" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
-                  OSA Monitoring Overview
-                </Link>
-              ) : (
-                <Link href="/dashboard" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
-                  Financial Dashboard
-                </Link>
-              )}
-              {isManagement && (
-                <Link
-                  href="/settings/term"
-                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
-                >
-                  Term Settings
-                </Link>
-              )}
-              {isManagement && (
-                <Link
-                  href="/ledger"
-                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
-                >
-                  Digital Ledger
-                </Link>
-              )}
-              {isManagement && (
-                <Link
-                  href="/reports"
-                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
-                >
-                  Financial Reports
-                </Link>
-              )}
-              {isManagement && (
-                <Link
-                  href="/audit-log"
-                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
-                >
-                  Treasurer Log
-                </Link>
-              )}
-              <Link href="/account" className="px-3 py-1.5 rounded hover:bg-blue-800 transition">
-                Account Settings
-              </Link>
-            </nav>
+            <Suspense fallback={null}>
+              <PortalNav role={user.role} />
+            </Suspense>
           </div>
 
           {/* Right Header User & Organization Info */}

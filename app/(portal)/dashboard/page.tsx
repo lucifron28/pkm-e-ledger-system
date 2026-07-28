@@ -1,25 +1,49 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { isManagementRole } from "@/lib/auth/rbac";
-import { getActiveTermForCurrentUser, getSemesterLabel } from "@/lib/data/terms";
-import { getDashboardBalances } from "@/lib/data/transactions";
+import { getSemesterLabel, listTermsForCurrentUser } from "@/lib/data/terms";
+import { getDashboardBalancesForUser } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
-import { Role } from "@prisma/client";
+import { Role, Semester } from "@prisma/client";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { DashboardTermSelector } from "@/components/dashboard/dashboard-term-selector";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
 
   if (user.role === Role.OSA) {
     redirect("/osa");
   }
 
+  const params = await searchParams;
+
+  let ayRaw: string | undefined = undefined;
+  if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
+    ayRaw = params.academicYear.trim();
+  }
+
+  let semRaw: Semester | undefined = undefined;
+  if (
+    typeof params.semester === "string" &&
+    Object.values(Semester).includes(params.semester.trim() as Semester)
+  ) {
+    semRaw = params.semester.trim() as Semester;
+  }
+
   const isManagement = isManagementRole(user.role);
-  const activeTerm = await getActiveTermForCurrentUser();
-  const balances = await getDashboardBalances();
+  const terms = await listTermsForCurrentUser();
+  const dashboardData = await getDashboardBalancesForUser(ayRaw, semRaw);
+
+  const activeTerm = dashboardData?.term;
+  const balances = dashboardData?.balances;
 
   return (
     <div className="space-y-6">
+      {/* Header Banner */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="inline-block bg-blue-100 text-[#004aad] text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded mb-2">
@@ -34,7 +58,11 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {terms.length > 0 && activeTerm && (
+            <DashboardTermSelector terms={terms} currentTermId={activeTerm.id} />
+          )}
+
           {isManagement && (
             <Link
               href="/settings/term"
@@ -43,6 +71,7 @@ export default async function DashboardPage() {
               Term Settings
             </Link>
           )}
+
           <Link
             href="/account"
             className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-xs border border-slate-300 transition"
@@ -52,44 +81,25 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Active Academic Term Context */}
+      {/* Active / Historical Academic Term Banner */}
       {activeTerm ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="bg-[#004aad] text-white px-6 py-4 flex items-center justify-between">
+          <div className="bg-[#004aad] text-white px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="bg-[#f9d818] text-[#004aad] text-xs font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider">
-                Active Academic Term
+                {activeTerm.active ? "Active Academic Term" : "Historical Academic Term"}
               </span>
               <h2 className="text-lg font-extrabold mt-1.5">
                 {activeTerm.academicYear} &mdash; {getSemesterLabel(activeTerm.semester)}
               </h2>
             </div>
-          </div>
-          <div className="px-6 py-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Opening Cash on Hand
-              </div>
-              <div className="text-xl font-extrabold text-slate-900 font-mono">
-                {formatPesoFromCents(activeTerm.openingCashOnHandCents)}
-              </div>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Opening Cash in Bank
-              </div>
-              <div className="text-xl font-extrabold text-slate-900 font-mono">
-                {formatPesoFromCents(activeTerm.openingCashInBankCents)}
-              </div>
-            </div>
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Balance Forwarded
-              </div>
-              <div className="text-xl font-extrabold text-[#004aad] font-mono">
-                {formatPesoFromCents(activeTerm.balanceForwardedCents)}
-              </div>
-            </div>
+
+            <Link
+              href={`/reports?academicYear=${encodeURIComponent(activeTerm.academicYear)}&semester=${encodeURIComponent(activeTerm.semester)}`}
+              className="bg-white text-[#004aad] hover:bg-blue-50 font-bold px-4 py-2 rounded-lg text-xs shadow transition text-center"
+            >
+              View Report Package
+            </Link>
           </div>
         </div>
       ) : (
@@ -122,32 +132,103 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      {/* Six Financial Summary Cards */}
       {activeTerm && balances && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-            <h2 className="font-bold text-slate-900">Financial Summary</h2>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-extrabold text-slate-900 text-lg">Organization Financial Summary</h2>
+            <span className="text-xs text-slate-500 font-semibold">
+              {activeTerm.academicYear} &bull; {getSemesterLabel(activeTerm.semester)}
+            </span>
           </div>
-          <div className="px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Income</div>
-              <div className="text-lg font-extrabold text-emerald-700 font-mono">{formatPesoFromCents(balances.totalIncomeCents)}</div>
-            </div>
-            <div className="bg-red-50 rounded-lg p-3 border border-red-100">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Expense</div>
-              <div className="text-lg font-extrabold text-red-700 font-mono">{formatPesoFromCents(balances.totalExpenseCents)}</div>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3 border">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Remaining Balance</div>
-              <div className="text-lg font-extrabold text-slate-900 font-mono">{formatPesoFromCents(balances.remainingCents)}</div>
-            </div>
-            {isManagement && (
-              <div className="flex items-center justify-center">
-                <Link href="/ledger" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition">
-                  Open Digital Ledger
-                </Link>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Card 1: Cash on Hand */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                <span>1. Cash on Hand</span>
+                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Asset</span>
               </div>
-            )}
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {formatPesoFromCents(balances.cashOnHandCents)}
+              </div>
+              <p className="text-xs text-slate-500">Physical cash stored on hand</p>
+            </div>
+
+            {/* Card 2: Cash in Bank */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                <span>2. Cash in Bank</span>
+                <span className="bg-blue-50 text-[#004aad] px-2 py-0.5 rounded font-bold">Bank Account</span>
+              </div>
+              <div className="text-2xl font-black text-[#004aad] font-mono">
+                {formatPesoFromCents(balances.cashInBankCents)}
+              </div>
+              <p className="text-xs text-slate-500">Verified bank depository funds</p>
+            </div>
+
+            {/* Card 3: Total Income */}
+            <div className="bg-white rounded-xl p-5 border border-emerald-200 shadow-sm flex flex-col justify-between space-y-2 bg-emerald-50/30">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-800">
+                <span>3. Total Income</span>
+                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Collections</span>
+              </div>
+              <div className="text-2xl font-black text-emerald-700 font-mono">
+                {formatPesoFromCents(balances.totalIncomeCents)}
+              </div>
+              <p className="text-xs text-slate-500">Total verified collections for term</p>
+            </div>
+
+            {/* Card 4: Total Expenses */}
+            <div className="bg-white rounded-xl p-5 border border-red-200 shadow-sm flex flex-col justify-between space-y-2 bg-red-50/30">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-800">
+                <span>4. Total Expenses</span>
+                <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold">Disbursements</span>
+              </div>
+              <div className="text-2xl font-black text-red-700 font-mono">
+                {formatPesoFromCents(balances.totalExpenseCents)}
+              </div>
+              <p className="text-xs text-slate-500">Operating expenditures for term</p>
+            </div>
+
+            {/* Card 5: Net Remaining Balance */}
+            <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-900 shadow-md flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span>5. Net Remaining Balance</span>
+                <span className="bg-[#f9d818] text-[#004aad] px-2 py-0.5 rounded font-extrabold">Net Fund</span>
+              </div>
+              <div className="text-2xl font-black text-[#f9d818] font-mono">
+                {formatPesoFromCents(balances.remainingCents)}
+              </div>
+              <p className="text-xs text-slate-400">Opening + Income - Expenses</p>
+            </div>
+
+            {/* Card 6: Balance Forwarded */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                <span>6. Balance Forwarded</span>
+                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Opening Fund</span>
+              </div>
+              <div className="text-2xl font-black text-slate-800 font-mono">
+                {formatPesoFromCents(activeTerm.balanceForwardedCents)}
+              </div>
+              <p className="text-xs text-slate-500">Carried forward from previous term</p>
+            </div>
           </div>
+
+          {isManagement && (
+            <div className="pt-2 flex justify-end">
+              <Link
+                href="/ledger"
+                className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm flex items-center gap-2"
+              >
+                <span>Manage Digital Ledger</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

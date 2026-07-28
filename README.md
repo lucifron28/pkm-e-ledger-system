@@ -33,8 +33,8 @@ The repository foundation and database foundation are completed. Feature develop
 * **Phase 2**: Authentication & Access (`feature/auth-and-access`) — **Completed**
 * **Phase 3**: Accounts & Academic Terms (`feature/accounts-and-terms`) — **Completed**
 * **Phase 4**: Ledger & Transactions (`feature/ledger-and-transactions`) — **Completed**
-* **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **In Review**
-* **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **Not Started**
+* **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **Completed**
+* **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **In Review**
 * **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities created)*
 
 ---

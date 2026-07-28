@@ -22,9 +22,9 @@ Do not make current-status claims without inspecting the repository.
 
 ## Current Implementation Status
 
-* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), and Ledger and transactions (`feature/ledger-and-transactions`).
-* **Current**: Reports and exports (`feature/reports-and-exports`).
-* **Next**: Transparency portals (`feature/transparency-portals`).
+* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), and Reports and exports (`feature/reports-and-exports`).
+* **Current**: Transparency portals (`feature/transparency-portals`).
+* **Next**: Testing, hardening, and demo (`feature/testing-hardening-and-demo`).
 
 ## Source of Truth
 

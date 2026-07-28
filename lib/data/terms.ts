@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireUser, requireManagementUser } from "../auth/require-auth";
+import { requireOrgPortalUser, requireManagementUser } from "../auth/require-auth";
 import { Semester } from "@prisma/client";
 import { calculateBalanceForwarded } from "./money";
 export { SEMESTER_LABELS, getSemesterLabel, validateAcademicYear } from "./term-labels";
@@ -72,20 +72,18 @@ async function _getTermById(
 
 /**
  * Returns the active term for the currently authenticated user's organization.
- * Uses requireUser — safe for any authenticated role.
+ * Uses requireOrgPortalUser — safe for organization portal roles.
  */
 export async function getActiveTermForCurrentUser(): Promise<TermDto | null> {
-  const user = await requireUser();
-  if (!user.organizationId) return null;
+  const user = await requireOrgPortalUser();
   return _getActiveTermForOrganization(user.organizationId);
 }
 
 /**
- * Lists all terms for the currently authenticated management user's organization.
+ * Lists all terms for the currently authenticated user's organization.
  */
 export async function listTermsForCurrentUser(): Promise<TermDto[]> {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return [];
+  const user = await requireOrgPortalUser();
   return _listTermsForOrganization(user.organizationId);
 }
 

@@ -1,9 +1,16 @@
-import "server-only";
 import { Role } from "@prisma/client";
 
 export const MANAGEMENT_ROLES: Role[] = [Role.TREASURER, Role.ADVISER, Role.AUDIT];
 export const TRANSPARENCY_ROLES: Role[] = [Role.OFFICER, Role.MEMBER];
 export const MONITORING_ROLES: Role[] = [Role.OSA];
+export const ORGANIZATION_PORTAL_ROLES: Role[] = [
+  ...MANAGEMENT_ROLES,
+  ...TRANSPARENCY_ROLES,
+];
+
+export function isOrganizationPortalRole(role: Role): boolean {
+  return ORGANIZATION_PORTAL_ROLES.includes(role);
+}
 
 export function isManagementRole(role: Role): boolean {
   return MANAGEMENT_ROLES.includes(role);
