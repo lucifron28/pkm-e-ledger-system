@@ -19,6 +19,7 @@
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
     "next": "16.2.10",
+    "pdfkit": "^0.19.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
@@ -28,6 +29,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/exceljs": "^0.5.3",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
