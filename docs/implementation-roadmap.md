@@ -13,8 +13,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase Context** | `docs/project-context` | Align project specification, implementation roadmap, agent instructions, and README with approved FRD. | **Completed** |
 | **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **Completed** |
 | **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Completed** |
-| **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **In Review** |
-| **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Not Started** |
+| **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Completed** |
+| **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **In Review** |
 | **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Not Started** |
 | **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities already implemented)* |
 
@@ -49,47 +49,48 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   3. `docs: define repository agent instructions`
   4. `docs: update README project navigation`
   5. `docs: finalize project specification alignment`
-* **Status**: **In Review**
+* **Status**: **Completed**
 
 ### Phase 2: Authentication & Access
 * **Branch**: `feature/auth-and-access`
 * **Dependencies**: Phase 1
 * **Goal**: Implement user authentication, user registration flow with role authorization, bcrypt password hashing, database session cookies, password reset workflows, and server-side RBAC validation.
-* **Expected Grouped Commits**:
-  1. `feat(auth): implement session store and cookie management`
-  2. `feat(auth): implement login, registration, and password change server actions`
-  3. `feat(auth): implement RBAC matrix and access control helpers`
-* **Status**: **Not Started**
+* **Grouped Commits**:
+  1. `feat(auth): implement secure database sessions and authentication actions`
+  2. `feat(access): add registration password management and rbac guards`
+  3. `feat(ui): add authentication pages and protected portal shell`
+* **Status**: **Completed**
 
 ### Phase 3: Accounts & Academic Terms
 * **Branch**: `feature/accounts-and-terms`
 * **Dependencies**: Phase 2
 * **Goal**: Implement organization context selection, academic term management, and opening cash balance setup (Cash on Hand and Cash in Bank in integer cents).
-* **Expected Grouped Commits**:
+* **Grouped Commits**:
   1. `feat(terms): implement academic term selection and configuration`
   2. `feat(terms): implement opening balance setup for cash on hand and cash in bank`
 * **Status**: **Completed**
-* **Next Phase**: `feature/ledger-and-transactions`
 
 ### Phase 4: Ledger & Transactions
 * **Branch**: `feature/ledger-and-transactions`
 * **Dependencies**: Phase 3
 * **Goal**: Implement income/expense transaction entry, integer-cent monetary arithmetic, insufficient balance checks, soft deletion with deletion reasons, receipt attachment upload/download routes, and Treasurer Log auditing.
-* **Expected Grouped Commits**:
+* **Grouped Commits**:
   1. `feat(ledger): implement scoped transactions balances and ledger`
   2. `feat(ledger): add soft deletion audit logs and attachments`
-* **Status**: **In Review**
-* **Next Phase**: `feature/reports-and-exports`
+  3. `fix(ledger): enforce atomic financial invariants and scoped data access`
+  4. `fix(ledger): complete attachments and treasurer log requirements`
+  5. `fix(ledger): finalize attachment and transaction validation`
+* **Status**: **Completed**
 
 ### Phase 5: Reports & Exports
 * **Branch**: `feature/reports-and-exports`
 * **Dependencies**: Phase 4
 * **Goal**: Build in-app HTML report viewer, Schedule 1 & 2 layouts, print CSS stylesheets, PDF generator, and `.xlsx` Excel exporter (`exceljs`) based on the official workbook reference.
-* **Expected Grouped Commits**:
-  1. `feat(reports): implement summary report, schedule 1 collections, and schedule 2 expenses views`
-  2. `feat(reports): implement print css layout and pdf printing support`
-  3. `feat(reports): implement excel workbook export generator`
-* **Status**: **Not Started**
+* **Grouped Commits**:
+  1. `feat(reports): add shared report package and printable views`
+  2. `feat(exports): add pdf and excel report downloads`
+* **Status**: **In Review**
+* **Next Phase**: `feature/transparency-portals`
 
 ### Phase 6: Transparency Portals & OSA Monitoring
 * **Branch**: `feature/transparency-portals`

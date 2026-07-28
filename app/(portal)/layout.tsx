@@ -55,6 +55,14 @@ export default async function PortalLayout({
               )}
               {isManagement && (
                 <Link
+                  href="/reports"
+                  className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
+                >
+                  Financial Reports
+                </Link>
+              )}
+              {isManagement && (
+                <Link
                   href="/audit-log"
                   className="px-3 py-1.5 rounded hover:bg-blue-800 transition"
                 >
