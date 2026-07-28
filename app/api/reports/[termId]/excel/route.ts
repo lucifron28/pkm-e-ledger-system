@@ -78,11 +78,12 @@ async function buildReportExcelBuffer(report: ReportPackageDto): Promise<Buffer>
   summarySheet.addRow([]);
   summarySheet.addRow([]);
 
-  // Signatures block
+  // Signatures block (4 Signatures)
   summarySheet.addRow(["SIGNATURES & VERIFICATION", ""]);
   summarySheet.addRow(["Prepared by: _______________________", report.signatories.treasurerTitle]);
   summarySheet.addRow(["Certified Correct: _______________________", report.signatories.auditorTitle]);
   summarySheet.addRow(["Approved by: _______________________", report.signatories.adviserTitle]);
+  summarySheet.addRow(["Noted by / Approved by: _______________________", report.signatories.presidentOsaTitle]);
 
   // 2. SCHEDULE 1 COLLECTIONS SHEET
   const sched1Sheet = workbook.addWorksheet("SCHEDULE 1 - COLLECTIONS", {
@@ -131,7 +132,7 @@ async function buildReportExcelBuffer(report: ReportPackageDto): Promise<Buffer>
   sched1TotalRow.font = { bold: true };
   sched1TotalRow.getCell(7).numFmt = pesoFmt;
 
-  // 3. SCHEDULE 2 EXPENSES SHEET
+  // 3. SCHEDULE 2 EXPENSES SHEET (Fixed 8 buckets)
   const sched2Sheet = workbook.addWorksheet("SCHEDULE 2 - EXPENSES", {
     views: [{ state: "frozen", ySplit: 1 }],
   });
@@ -144,9 +145,9 @@ async function buildReportExcelBuffer(report: ReportPackageDto): Promise<Buffer>
     { header: "Total Amount", key: "total", width: 18 },
   ];
   const catCols = report.expenseCategories.map((c) => ({
-    header: c.categoryName,
-    key: `cat_${c.categoryId}`,
-    width: 20,
+    header: c.bucketName,
+    key: `cat_${c.bucketKey}`,
+    width: 18,
   }));
   sched2Sheet.columns = [...baseCols, ...catCols];
 
@@ -167,7 +168,7 @@ async function buildReportExcelBuffer(report: ReportPackageDto): Promise<Buffer>
     ];
 
     for (const cat of report.expenseCategories) {
-      const valCents = rowItem.categoryBucketCents[cat.categoryId] || 0;
+      const valCents = rowItem.categoryBucketCents[cat.bucketKey] || 0;
       rowValues.push(valCents > 0 ? valCents / 100 : 0);
     }
 
@@ -249,8 +250,7 @@ export async function GET(
   }
 
   try {
-    const excelBuffer = await buildReportExcelBuffer(report);
-
+    // Mandatory audit logging BEFORE returning Excel workbook
     await createAuditLog({
       userId: sessionUser.id,
       organizationId: sessionUser.organizationId,
@@ -259,8 +259,10 @@ export async function GET(
       entityType: "ReportPackage",
       entityId: termId,
       metadata: { format: "XLSX", termId, academicYear: report.academicYear, semester: report.semester },
+      throwOnError: true,
     });
 
+    const excelBuffer = await buildReportExcelBuffer(report);
     const safeSlug = report.organizationSlug.replace(/[^a-z0-9_-]/gi, "_");
     const safeAY = report.academicYear.replace(/[^a-z0-9_-]/gi, "_");
     const fileName = `Financial_Report_${safeSlug}_${safeAY}_${report.semester}.xlsx`;
@@ -273,7 +275,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("Excel generation error:", error);
-    return new NextResponse("Failed to generate Excel report", { status: 500 });
+    console.error("Excel generation or mandatory audit log error:", error);
+    return new NextResponse("Failed to generate Excel report due to mandatory audit log failure.", { status: 500 });
   }
 }

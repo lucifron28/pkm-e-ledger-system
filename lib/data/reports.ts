@@ -4,6 +4,31 @@ import { requireManagementUser } from "../auth/require-auth";
 import { calculateAccountBalances } from "../domain/financial";
 import { Semester, TransactionType } from "@prisma/client";
 
+export const SCHEDULE_2_BUCKETS = [
+  "Supplies",
+  "Equipment",
+  "Transportation",
+  "Meals",
+  "Service",
+  "Misc",
+  "Donation",
+  "Others",
+] as const;
+
+export type Schedule2Bucket = (typeof SCHEDULE_2_BUCKETS)[number];
+
+export function getSchedule2BucketKey(categoryName: string): Schedule2Bucket {
+  const lower = categoryName.trim().toLowerCase();
+  if (lower.includes("suppl")) return "Supplies";
+  if (lower.includes("equip")) return "Equipment";
+  if (lower.includes("transport")) return "Transportation";
+  if (lower.includes("meal") || lower.includes("food")) return "Meals";
+  if (lower.includes("servic")) return "Service";
+  if (lower.includes("misc")) return "Misc";
+  if (lower.includes("donat")) return "Donation";
+  return "Others";
+}
+
 export interface CollectionItemDto {
   sequenceNumber: number;
   transactionId: string;
@@ -22,9 +47,9 @@ export interface CollectionCategoryGroupDto {
   items: CollectionItemDto[];
 }
 
-export interface ExpenseCategoryBucketDto {
-  categoryId: string;
-  categoryName: string;
+export interface ExpenseBucketSummaryDto {
+  bucketKey: Schedule2Bucket;
+  bucketName: Schedule2Bucket;
   totalCents: number;
 }
 
@@ -39,7 +64,8 @@ export interface ExpenseRowItemDto {
   amountCents: number;
   categoryId: string;
   categoryName: string;
-  categoryBucketCents: Record<string, number>;
+  mappedBucket: Schedule2Bucket;
+  categoryBucketCents: Record<Schedule2Bucket, number>;
 }
 
 export interface AttachmentReferenceDto {
@@ -84,8 +110,8 @@ export interface ReportPackageDto {
   collectionGroups: CollectionCategoryGroupDto[];
   totalCollectionItemsCount: number;
 
-  // Expenses
-  expenseCategories: ExpenseCategoryBucketDto[];
+  // Expenses (Fixed 8 Schedule 2 Buckets)
+  expenseCategories: ExpenseBucketSummaryDto[];
   expenseRows: ExpenseRowItemDto[];
 
   // Attachment references
@@ -96,6 +122,7 @@ export interface ReportPackageDto {
     treasurerTitle: string;
     auditorTitle: string;
     adviserTitle: string;
+    presidentOsaTitle: string;
   };
 }
 
@@ -139,13 +166,6 @@ export async function getReportPackageForTerm(
       },
     },
     orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
-  });
-
-  // Fetch active expense categories to construct Schedule 2 columns
-  const rawExpenseCategories = await prisma.transactionCategory.findMany({
-    where: { type: TransactionType.EXPENSE, active: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
   });
 
   // Opening Balances
@@ -236,28 +256,39 @@ export async function getReportPackageForTerm(
     })
   );
 
-  // Group Schedule 2 Expenses with dynamic bucket columns
-  const expenseBucketTotals = new Map<string, number>();
-  for (const cat of rawExpenseCategories) {
-    expenseBucketTotals.set(cat.id, 0);
-  }
+  // Group Schedule 2 Expenses using the 8 fixed buckets in exact order
+  const bucketTotals: Record<Schedule2Bucket, number> = {
+    Supplies: 0,
+    Equipment: 0,
+    Transportation: 0,
+    Meals: 0,
+    Service: 0,
+    Misc: 0,
+    Donation: 0,
+    Others: 0,
+  };
 
   let expenseSeq = 1;
   const expenseRows: ExpenseRowItemDto[] = [];
 
   for (const t of expenseTransactions) {
-    const catId = t.categoryId;
     const catName = t.category.name;
+    const mappedBucket = getSchedule2BucketKey(catName);
 
-    const bucketCents: Record<string, number> = {};
-    for (const cat of rawExpenseCategories) {
-      if (cat.id === catId) {
-        bucketCents[cat.id] = t.amountCents;
-        expenseBucketTotals.set(cat.id, (expenseBucketTotals.get(cat.id) || 0) + t.amountCents);
-      } else {
-        bucketCents[cat.id] = 0;
-      }
-    }
+    const bucketCents: Record<Schedule2Bucket, number> = {
+      Supplies: 0,
+      Equipment: 0,
+      Transportation: 0,
+      Meals: 0,
+      Service: 0,
+      Misc: 0,
+      Donation: 0,
+      Others: 0,
+    };
+
+    // Exactly one bucket contains amountCents, all others 0
+    bucketCents[mappedBucket] = t.amountCents;
+    bucketTotals[mappedBucket] += t.amountCents;
 
     expenseRows.push({
       sequenceNumber: expenseSeq++,
@@ -268,16 +299,17 @@ export async function getReportPackageForTerm(
       description: t.description,
       referenceDescription: t.referenceDescription,
       amountCents: t.amountCents,
-      categoryId: catId,
+      categoryId: t.categoryId,
       categoryName: catName,
+      mappedBucket,
       categoryBucketCents: bucketCents,
     });
   }
 
-  const expenseCategories: ExpenseCategoryBucketDto[] = rawExpenseCategories.map((cat) => ({
-    categoryId: cat.id,
-    categoryName: cat.name,
-    totalCents: expenseBucketTotals.get(cat.id) || 0,
+  const expenseCategories: ExpenseBucketSummaryDto[] = SCHEDULE_2_BUCKETS.map((bKey) => ({
+    bucketKey: bKey,
+    bucketName: bKey,
+    totalCents: bucketTotals[bKey],
   }));
 
   // Attachments reference list
@@ -335,6 +367,7 @@ export async function getReportPackageForTerm(
       treasurerTitle: "Organization Treasurer",
       auditorTitle: "Organization Auditor",
       adviserTitle: "Faculty Adviser",
+      presidentOsaTitle: "President / OSA Representative",
     },
   };
 }

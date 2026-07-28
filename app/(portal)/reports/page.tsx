@@ -28,7 +28,11 @@ export default async function ReportsPage({
 
   const params = await searchParams;
   const ayRaw = params.academicYear as string | undefined;
-  const semRaw = params.semester as Semester | undefined;
+
+  let semRaw: Semester | undefined = undefined;
+  if (params.semester && Object.values(Semester).includes(params.semester as Semester)) {
+    semRaw = params.semester as Semester;
+  }
 
   const terms = await listTermsForLedger();
   const report = await getReportPackageForCurrentUser(ayRaw, semRaw);
@@ -50,6 +54,31 @@ export default async function ReportsPage({
 
   return (
     <div className="space-y-6">
+      {/* Embedded Print CSS */}
+      <style>{`
+        @media print {
+          @page {
+            size: letter portrait;
+            margin: 0.5in;
+          }
+          @page landscape-section {
+            size: letter landscape;
+            margin: 0.5in;
+          }
+          .print-portrait {
+            page-break-after: always;
+            break-after: page;
+          }
+          .print-landscape {
+            page: landscape-section;
+            page-break-before: always;
+            page-break-after: always;
+            break-before: page;
+            break-after: page;
+          }
+        }
+      `}</style>
+
       {/* Title & Navigation (Hidden on Print) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
         <div>
@@ -69,22 +98,22 @@ export default async function ReportsPage({
       {/* Printable Report Package */}
       <div className="space-y-8 print:space-y-0 print:m-0 print:p-0">
         {/* Section 1: Summary Report (Portrait) */}
-        <section className="print:break-after-page">
+        <section className="print-portrait">
           <SummaryReport report={report} />
         </section>
 
         {/* Section 2: Schedule 1 Collections (Portrait) */}
-        <section className="print:break-after-page print:pt-6">
+        <section className="print-portrait">
           <Schedule1Collections report={report} />
         </section>
 
         {/* Section 3: Schedule 2 Expenses (Landscape) */}
-        <section className="print:break-after-page print:pt-6">
+        <section className="print-landscape">
           <Schedule2Expenses report={report} />
         </section>
 
         {/* Section 4: Attachment References (Portrait) */}
-        <section className="print:pt-6">
+        <section className="print-portrait">
           <AttachmentReferences report={report} />
         </section>
       </div>

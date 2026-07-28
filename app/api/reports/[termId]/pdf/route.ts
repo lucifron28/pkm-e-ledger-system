@@ -28,17 +28,17 @@ function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> {
 
       // Section 1: Balance Forwarded
       doc.fontSize(11).font("Helvetica-Bold").fillColor("#0f172a").text("I. BALANCE FORWARDED (OPENING BALANCES)");
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
       doc.fontSize(10).font("Helvetica").fillColor("#334155");
       doc.text(`   Opening Cash on Hand: ${formatPesoFromCents(report.openingCashOnHandCents)}`);
       doc.text(`   Opening Cash in Bank: ${formatPesoFromCents(report.openingCashInBankCents)}`);
       doc.font("Helvetica-Bold").fillColor("#004aad");
       doc.text(`   Total Balance Forwarded: ${formatPesoFromCents(report.balanceForwardedCents)}`);
-      doc.moveDown(1);
+      doc.moveDown(0.8);
 
       // Section 2: Collections
       doc.fontSize(11).font("Helvetica-Bold").fillColor("#0f172a").text("II. COLLECTIONS (INCOME BY CATEGORY)");
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
       doc.fontSize(10).font("Helvetica").fillColor("#334155");
       if (report.collectionGroups.length === 0) {
         doc.text("   No collections recorded for this academic term.");
@@ -49,50 +49,55 @@ function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> {
       }
       doc.font("Helvetica-Bold").fillColor("#15803d");
       doc.text(`   Total Collections: ${formatPesoFromCents(report.totalIncomeCents)}`);
-      doc.moveDown(1);
+      doc.moveDown(0.8);
 
       // Section 3: Cash Available
       doc.font("Helvetica-Bold").fontSize(11).fillColor("#004aad");
       doc.text(`III. TOTAL CASH AVAILABLE: ${formatPesoFromCents(report.totalCashAvailableCents)}`);
-      doc.moveDown(1);
+      doc.moveDown(0.8);
 
       // Section 4: Operating Expenses
       doc.fontSize(11).font("Helvetica-Bold").fillColor("#0f172a").text("IV. LESS: OPERATING EXPENSES (SCHEDULE 2)");
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
       doc.font("Helvetica-Bold").fontSize(10).fillColor("#b91c1c");
       doc.text(`   Total Expenses: ${formatPesoFromCents(report.totalExpenseCents)}`);
-      doc.moveDown(1);
+      doc.moveDown(0.8);
 
       // Section 5: Ending Balances
       doc.fontSize(11).font("Helvetica-Bold").fillColor("#0f172a").text("V. ENDING BALANCE SUMMARY");
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
       doc.fontSize(10).font("Helvetica").fillColor("#334155");
       doc.text(`   Ending Cash on Hand: ${formatPesoFromCents(report.endingCashOnHandCents)}`);
       doc.text(`   Ending Cash in Bank: ${formatPesoFromCents(report.endingCashInBankCents)}`);
       doc.font("Helvetica-Bold").fillColor("#004aad").fontSize(11);
       doc.text(`   Net Remaining Balance: ${formatPesoFromCents(report.endingBalanceCents)}`);
-      doc.moveDown(2);
-
-      // Signatures
-      doc.fontSize(10).font("Helvetica-Bold").fillColor("#0f172a").text("SIGNATURES & VERIFICATION", { align: "center" });
       doc.moveDown(1.5);
+
+      // Signatures (4 columns)
+      doc.fontSize(10).font("Helvetica-Bold").fillColor("#0f172a").text("SIGNATURES & VERIFICATION", { align: "center" });
+      doc.moveDown(1.2);
       const sigY = doc.y;
-      doc.font("Helvetica").fontSize(9).fillColor("#475569");
+      doc.font("Helvetica").fontSize(8).fillColor("#475569");
 
-      // Column 1: Treasurer
+      // Col 1: Treasurer
       doc.text("Prepared by:", 36, sigY);
-      doc.text("_______________________", 36, sigY + 25);
-      doc.text(report.signatories.treasurerTitle, 36, sigY + 40);
+      doc.text("_________________", 36, sigY + 25);
+      doc.text(report.signatories.treasurerTitle, 36, sigY + 38);
 
-      // Column 2: Auditor
-      doc.text("Certified Correct:", 220, sigY);
-      doc.text("_______________________", 220, sigY + 25);
-      doc.text(report.signatories.auditorTitle, 220, sigY + 40);
+      // Col 2: Auditor
+      doc.text("Certified Correct:", 170, sigY);
+      doc.text("_________________", 170, sigY + 25);
+      doc.text(report.signatories.auditorTitle, 170, sigY + 38);
 
-      // Column 3: Adviser
-      doc.text("Approved by:", 400, sigY);
-      doc.text("_______________________", 400, sigY + 25);
-      doc.text(report.signatories.adviserTitle, 400, sigY + 40);
+      // Col 3: Adviser
+      doc.text("Approved by:", 310, sigY);
+      doc.text("_________________", 310, sigY + 25);
+      doc.text(report.signatories.adviserTitle, 310, sigY + 38);
+
+      // Col 4: President / OSA
+      doc.text("Noted / Approved:", 450, sigY);
+      doc.text("_________________", 450, sigY + 25);
+      doc.text(report.signatories.presidentOsaTitle, 450, sigY + 38);
 
       // PAGE 2: Schedule 1 — Collections
       doc.addPage({ size: "LETTER", margin: 36 });
@@ -121,28 +126,78 @@ function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> {
         doc.text(`OVERALL TOTAL COLLECTIONS: ${formatPesoFromCents(report.totalIncomeCents)}`);
       }
 
-      // PAGE 3: Schedule 2 — Expenses (Landscape)
+      // PAGE 3: Schedule 2 — Expenses (Landscape with exact 8 bucket columns)
       doc.addPage({ size: "LETTER", layout: "landscape", margin: 36 });
       doc.fontSize(14).font("Helvetica-Bold").fillColor("#0f172a").text("SCHEDULE 2 — OPERATING EXPENSE SCHEDULE", { align: "center" });
       doc.fontSize(10).font("Helvetica").fillColor("#475569").text(`${report.organizationName} • ${report.academicYear} ${report.semesterLabel}`, { align: "center" });
-      doc.moveDown(1.5);
+      doc.moveDown(1.2);
 
       if (report.expenseRows.length === 0) {
         doc.fontSize(10).text("No operating expenses recorded for this academic term.");
       } else {
-        doc.fontSize(9).font("Helvetica-Bold").fillColor("#0f172a");
-        doc.text("Doc No. | Date | Payee Name | Particulars | Total Amount | Mapped Category");
-        doc.moveDown(0.4);
+        // Table Header
+        doc.fontSize(8).font("Helvetica-Bold").fillColor("#0f172a");
+        const headers = ["Doc #", "Date", "Payee", "Particulars", "Total", "Supplies", "Equip", "Trans", "Meals", "Service", "Misc", "Donation", "Others"];
+        const colWidths = [45, 55, 80, 95, 60, 48, 48, 48, 48, 48, 48, 48, 48];
+        const startX = 36;
+        let curX = startX;
 
-        doc.fontSize(8.5).font("Helvetica").fillColor("#334155");
+        headers.forEach((h, i) => {
+          doc.text(h, curX, doc.y, { width: colWidths[i], align: i >= 4 ? "right" : "left" });
+          curX += colWidths[i];
+        });
+        doc.moveDown(0.5);
+
+        // Table Rows
+        doc.fontSize(7.5).font("Helvetica").fillColor("#334155");
         for (const row of report.expenseRows) {
+          const y = doc.y;
+          if (y > 540) {
+            doc.addPage({ size: "LETTER", layout: "landscape", margin: 36 });
+          }
+          const rowY = doc.y;
           const dateStr = row.transactionDate.toISOString().split("T")[0];
-          const docStr = row.documentNumber || "N/A";
-          doc.text(`${docStr} | ${dateStr} | ${row.payeeName} | ${row.description} | ${formatPesoFromCents(row.amountCents)} | Category: ${row.categoryName}`);
+          const values = [
+            row.documentNumber || "N/A",
+            dateStr,
+            row.payeeName,
+            row.description,
+            formatPesoFromCents(row.amountCents),
+            row.categoryBucketCents.Supplies > 0 ? formatPesoFromCents(row.categoryBucketCents.Supplies) : "—",
+            row.categoryBucketCents.Equipment > 0 ? formatPesoFromCents(row.categoryBucketCents.Equipment) : "—",
+            row.categoryBucketCents.Transportation > 0 ? formatPesoFromCents(row.categoryBucketCents.Transportation) : "—",
+            row.categoryBucketCents.Meals > 0 ? formatPesoFromCents(row.categoryBucketCents.Meals) : "—",
+            row.categoryBucketCents.Service > 0 ? formatPesoFromCents(row.categoryBucketCents.Service) : "—",
+            row.categoryBucketCents.Misc > 0 ? formatPesoFromCents(row.categoryBucketCents.Misc) : "—",
+            row.categoryBucketCents.Donation > 0 ? formatPesoFromCents(row.categoryBucketCents.Donation) : "—",
+            row.categoryBucketCents.Others > 0 ? formatPesoFromCents(row.categoryBucketCents.Others) : "—",
+          ];
+
+          let cX = startX;
+          values.forEach((v, i) => {
+            doc.text(v, cX, rowY, { width: colWidths[i], align: i >= 4 ? "right" : "left" });
+            cX += colWidths[i];
+          });
+          doc.moveDown(0.4);
         }
-        doc.moveDown(1);
-        doc.fontSize(10).font("Helvetica-Bold").fillColor("#b91c1c");
-        doc.text(`OVERALL TOTAL OPERATING EXPENSES: ${formatPesoFromCents(report.totalExpenseCents)}`);
+
+        // Totals Row
+        doc.moveDown(0.5);
+        const totY = doc.y;
+        doc.fontSize(8).font("Helvetica-Bold").fillColor("#b91c1c");
+        const totValues = [
+          "",
+          "",
+          "TOTALS",
+          "",
+          formatPesoFromCents(report.totalExpenseCents),
+          ...report.expenseCategories.map((c) => formatPesoFromCents(c.totalCents)),
+        ];
+        let tX = startX;
+        totValues.forEach((v, i) => {
+          doc.text(v, tX, totY, { width: colWidths[i], align: i >= 4 ? "right" : "left" });
+          tX += colWidths[i];
+        });
       }
 
       // PAGE 4: Supporting Attachments Reference (Portrait)
@@ -188,8 +243,7 @@ export async function GET(
   }
 
   try {
-    const pdfBuffer = await buildReportPdfBuffer(report);
-
+    // Mandatory audit logging BEFORE returning PDF
     await createAuditLog({
       userId: sessionUser.id,
       organizationId: sessionUser.organizationId,
@@ -198,8 +252,10 @@ export async function GET(
       entityType: "ReportPackage",
       entityId: termId,
       metadata: { format: "PDF", termId, academicYear: report.academicYear, semester: report.semester },
+      throwOnError: true,
     });
 
+    const pdfBuffer = await buildReportPdfBuffer(report);
     const safeSlug = report.organizationSlug.replace(/[^a-z0-9_-]/gi, "_");
     const safeAY = report.academicYear.replace(/[^a-z0-9_-]/gi, "_");
     const fileName = `Financial_Report_${safeSlug}_${safeAY}_${report.semester}.pdf`;
@@ -212,7 +268,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("PDF generation error:", error);
-    return new NextResponse("Failed to generate PDF report", { status: 500 });
+    console.error("PDF generation or mandatory audit log error:", error);
+    return new NextResponse("Failed to generate PDF report due to mandatory audit log failure.", { status: 500 });
   }
 }

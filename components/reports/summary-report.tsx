@@ -139,16 +139,16 @@ export function SummaryReport({ report }: SummaryReportProps) {
         </div>
       </div>
 
-      {/* Signature Section */}
+      {/* Signature Section - 4 Signatures */}
       <div className="pt-10 border-t space-y-12">
         <h4 className="font-bold text-slate-800 uppercase tracking-wider text-xs text-center">
           Signatures & Verification
         </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center text-xs">
           <div className="space-y-8">
             <p className="text-slate-500 font-semibold">Prepared by:</p>
             <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">__________________________</p>
+              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
               <p className="text-slate-600 font-medium">{report.signatories.treasurerTitle}</p>
             </div>
           </div>
@@ -156,7 +156,7 @@ export function SummaryReport({ report }: SummaryReportProps) {
           <div className="space-y-8">
             <p className="text-slate-500 font-semibold">Certified Correct:</p>
             <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">__________________________</p>
+              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
               <p className="text-slate-600 font-medium">{report.signatories.auditorTitle}</p>
             </div>
           </div>
@@ -164,8 +164,16 @@ export function SummaryReport({ report }: SummaryReportProps) {
           <div className="space-y-8">
             <p className="text-slate-500 font-semibold">Approved by:</p>
             <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">__________________________</p>
+              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
               <p className="text-slate-600 font-medium">{report.signatories.adviserTitle}</p>
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            <p className="text-slate-500 font-semibold">Noted by / Approved by:</p>
+            <div className="border-b border-slate-400 pb-1">
+              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
+              <p className="text-slate-600 font-medium">{report.signatories.presidentOsaTitle}</p>
             </div>
           </div>
         </div>

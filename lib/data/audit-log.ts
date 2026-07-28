@@ -12,6 +12,7 @@ export interface LogAuditParams {
   entityId?: string | null;
   metadata?: Record<string, unknown> | null;
   tx?: Prisma.TransactionClient;
+  throwOnError?: boolean;
 }
 
 /**
@@ -51,7 +52,7 @@ export async function createAuditLog(params: LogAuditParams): Promise<void> {
       },
     });
   } catch (error) {
-    if (params.tx) {
+    if (params.tx || params.throwOnError) {
       throw error;
     }
     console.error("Failed to write audit log:", error);
