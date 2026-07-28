@@ -14,8 +14,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 2** | `feature/auth-and-access` | Authentication, user registration flow, bcrypt password hashing, database sessions, password changes, and RBAC matrix. | **Completed** |
 | **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Completed** |
 | **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Completed** |
-| **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **In Review** |
-| **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Not Started** |
+| **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Completed** |
+| **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **In Review** |
 | **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities already implemented)* |
 
 ---
@@ -89,17 +89,19 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 * **Grouped Commits**:
   1. `feat(reports): add shared report package and printable views`
   2. `feat(exports): add pdf and excel report downloads`
-* **Status**: **In Review**
-* **Next Phase**: `feature/transparency-portals`
+  3. `fix(reports): align report layouts exports and audit integrity`
+  4. `fix(reports): finalize export audit and query validation`
+* **Status**: **Completed**
 
 ### Phase 6: Transparency Portals & OSA Monitoring
 * **Branch**: `feature/transparency-portals`
 * **Dependencies**: Phase 5
 * **Goal**: Build Member/Officer view-only transparency portal and OSA read-only multi-organization monitoring overview with organization switcher.
-* **Expected Grouped Commits**:
+* **Grouped Commits**:
   1. `feat(transparency): implement member transparency dashboard and report viewer`
   2. `feat(osa): implement read-only multi-organization monitoring dashboard`
-* **Status**: **Not Started**
+* **Status**: **In Review**
+* **Next Phase**: `feature/testing-hardening-and-demo`
 
 ### Phase 7: Testing, Hardening & Demo Preparation
 * **Branch**: `feature/testing-hardening-and-demo`

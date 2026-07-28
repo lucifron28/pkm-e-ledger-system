@@ -1,4 +1,5 @@
-import { requireManagementUser } from "@/lib/auth/require-auth";
+import { requireUser } from "@/lib/auth/require-auth";
+import { isManagementRole } from "@/lib/auth/rbac";
 import { getActiveTermForCurrentUser, getSemesterLabel } from "@/lib/data/terms";
 import {
   getDashboardBalances,
@@ -6,14 +7,25 @@ import {
   listLedgerTransactions,
   listTermsForLedger,
 } from "@/lib/data/transactions";
+import {
+  getOsaLedgerSummary,
+  listOsaOrganizationsOverview,
+  listTermsForOsaOrganization,
+  validateOsaOrganization,
+} from "@/lib/data/osa";
 import type { TransactionFilters } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
-import { Semester, TransactionType, CashAccount } from "@prisma/client";
+import { Role, Semester, TransactionType, CashAccount } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { CreateTransactionForm } from "./create-transaction-form";
 import { EditTransactionForm } from "./edit-transaction-form";
 import { DeleteTransactionForm } from "./delete-transaction-form";
 import { LedgerFilters } from "./ledger-filters";
 import { AttachmentManager } from "./attachment-manager";
+import {
+  OsaLedgerSummaryView,
+  OsaOrganizationSelectView,
+} from "@/components/ledger/osa-ledger-summary";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -21,16 +33,78 @@ export default async function LedgerPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireManagementUser();
-  if (!user.organizationId) {
+  const user = await requireUser();
+
+  // Officers and Members MUST NOT access detailed ledger
+  if (user.role === Role.OFFICER || user.role === Role.MEMBER) {
+    redirect("/dashboard");
+  }
+
+  const params = await searchParams;
+
+  let ayRaw: string | undefined = undefined;
+  if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
+    ayRaw = params.academicYear.trim();
+  }
+
+  let semRaw: Semester | undefined = undefined;
+  if (
+    typeof params.semester === "string" &&
+    Object.values(Semester).includes(params.semester.trim() as Semester)
+  ) {
+    semRaw = params.semester.trim() as Semester;
+  }
+
+  let orgRaw: string | undefined = undefined;
+  if (typeof params.org === "string" && params.org.trim().length > 0) {
+    orgRaw = params.org.trim();
+  }
+
+  // OSA Summarized Ledger View
+  if (user.role === Role.OSA) {
+    const orgsOverview = await listOsaOrganizationsOverview();
+    const organizations = orgsOverview.map((o) => ({
+      id: o.organizationId,
+      name: o.organizationName,
+      slug: o.organizationSlug,
+    }));
+
+    if (!orgRaw) {
+      return (
+        <OsaOrganizationSelectView
+          organizations={organizations}
+          state="missing"
+        />
+      );
+    }
+
+    const validatedOrg = await validateOsaOrganization(orgRaw);
+    if (!validatedOrg) {
+      return (
+        <OsaOrganizationSelectView
+          organizations={organizations}
+          state="invalid"
+        />
+      );
+    }
+
+    const terms = await listTermsForOsaOrganization(validatedOrg.slug);
+    const summary = await getOsaLedgerSummary(validatedOrg.slug, ayRaw, semRaw);
+
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Digital Ledger</h1>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">You are not assigned to an organization.</p>
-        </div>
-      </div>
+      <OsaLedgerSummaryView
+        summary={summary}
+        organizations={organizations}
+        terms={terms}
+        currentOrgSlug={validatedOrg.slug}
+        currentTermId={summary?.termId || null}
+      />
     );
+  }
+
+  // Management Detailed Ledger View (Treasurer, Adviser, Audit)
+  if (!user.organizationId || !isManagementRole(user.role)) {
+    redirect("/access-denied");
   }
 
   const activeTerm = await getActiveTermForCurrentUser();
@@ -49,18 +123,14 @@ export default async function LedgerPage({
     );
   }
 
-  const params = await searchParams;
-
   const filters: TransactionFilters = {};
   const typeRaw = params.type as string | undefined;
   if (typeRaw && Object.values(TransactionType).includes(typeRaw as TransactionType)) {
     filters.type = typeRaw as TransactionType;
   }
   if (params.categoryId) filters.categoryId = params.categoryId as string;
-  if (params.academicYear) filters.academicYear = params.academicYear as string;
-  if (params.semester && Object.values(Semester).includes(params.semester as Semester)) {
-    filters.semester = params.semester as Semester;
-  }
+  if (ayRaw) filters.academicYear = ayRaw;
+  if (semRaw) filters.semester = semRaw;
   if (params.cashAccount && Object.values(CashAccount).includes(params.cashAccount as CashAccount)) {
     filters.cashAccount = params.cashAccount as CashAccount;
   }
@@ -120,9 +190,9 @@ export default async function LedgerPage({
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Expense</div>
             <div className="text-lg font-extrabold text-red-700 font-mono">{formatPesoFromCents(balances.totalExpenseCents)}</div>
           </div>
-          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Remaining</div>
-            <div className="text-lg font-extrabold text-[#004aad] font-mono">{formatPesoFromCents(balances.remainingCents)}</div>
+          <div className="bg-[#004aad] text-white rounded-lg p-3 border border-[#004aad]">
+            <div className="text-blue-100 font-bold uppercase tracking-wider text-[10px] mb-1">Remaining Balance</div>
+            <div className="text-lg font-extrabold text-[#f9d818] font-mono">{formatPesoFromCents(balances.remainingCents)}</div>
           </div>
         </div>
       </div>

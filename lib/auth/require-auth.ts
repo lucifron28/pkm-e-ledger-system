@@ -6,6 +6,7 @@ import {
   MANAGEMENT_ROLES,
   TRANSPARENCY_ROLES,
   MONITORING_ROLES,
+  ORGANIZATION_PORTAL_ROLES,
 } from "./rbac";
 
 /**
@@ -46,6 +47,19 @@ export async function requireTransparencyUser(): Promise<SessionUser> {
     redirect("/access-denied");
   }
   return user;
+}
+
+/**
+ * Requires an authenticated user with an Organization Portal role (Treasurer, Adviser, Audit, Officer, Member).
+ * Rejects OSA even if an OSA database record incorrectly has an organizationId.
+ * Requires a valid organization assignment (organizationId).
+ */
+export async function requireOrgPortalUser(): Promise<SessionUser & { organizationId: string }> {
+  const user = await requireUser();
+  if (!ORGANIZATION_PORTAL_ROLES.includes(user.role) || !user.organizationId) {
+    redirect("/access-denied");
+  }
+  return user as SessionUser & { organizationId: string };
 }
 
 /**
