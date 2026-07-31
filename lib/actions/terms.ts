@@ -12,7 +12,7 @@ import {
   PesoParseError,
   calculateBalanceForwarded,
 } from "../data/money";
-import { calculateAccountBalances, hasNegativeAccountBalance } from "../domain/financial";
+import { hasNegativeAccountBalance, projectMutationBalances } from "../domain/financial";
 import {
   validateAcademicYear,
   getActiveTermForCurrentUser,
@@ -278,12 +278,17 @@ export async function updateOpeningBalancesAction(
 
       const rows = await tx.transaction.findMany({
         where: { organizationId: user.organizationId!, termId: existing.id, deletedAt: null },
-        select: { type: true, amountCents: true, cashAccount: true },
+        select: { id: true, type: true, amountCents: true, cashAccount: true },
       });
-      const projected = calculateAccountBalances(
-        cashOnHandCents,
-        cashInBankCents,
-        rows
+      const projected = projectMutationBalances(
+        existing.openingCashOnHandCents,
+        existing.openingCashInBankCents,
+        rows,
+        {
+          type: "SET_OPENING",
+          openingCashOnHandCents: cashOnHandCents,
+          openingCashInBankCents: cashInBankCents,
+        }
       );
       if (hasNegativeAccountBalance(projected)) {
         throw new ValidationError("Opening balance update would create a negative account balance.");

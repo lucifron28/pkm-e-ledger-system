@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { PrismaClient } = require("@prisma/client");
 
 function logResult(label, passed, details = "") {
   const icon = passed ? "✓" : "✗";
@@ -24,7 +25,6 @@ async function verifyReadiness() {
   } else {
     logResult("Environment file (.env)", true);
 
-    // Load env manually
     const env = {};
     const content = fs.readFileSync(envPath, "utf8");
     content.split(/\r?\n/).forEach((line) => {
@@ -38,11 +38,8 @@ async function verifyReadiness() {
       }
     });
 
-    // 2. SESSION_SECRET check removed as session store is database-backed
-
-
-    // 3. Check DATABASE_URL & SQLite file
-    const dbUrl = env.DATABASE_URL;
+    // 2. Check DATABASE_URL & SQLite file
+    const dbUrl = env.DATABASE_URL || process.env.DATABASE_URL;
     if (!dbUrl) {
       logResult("DATABASE_URL check", false, "Missing DATABASE_URL");
       overallPassed = false;
@@ -70,11 +67,25 @@ async function verifyReadiness() {
           logResult("SQLite database permissions", false, `Cannot read/write database file at ${dbPath}`);
           overallPassed = false;
         }
+
+        // Check actual database connectivity via Prisma query
+        const prisma = new PrismaClient({
+          datasources: { db: { url: dbUrl.startsWith("file:") ? dbUrl : `file:${dbPath}` } },
+        });
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+          logResult("SQLite database query connectivity", true, "Database query SELECT 1 executed successfully");
+        } catch (dbErr) {
+          logResult("SQLite database query connectivity", false, `Failed to query database: ${dbErr.message}`);
+          overallPassed = false;
+        } finally {
+          await prisma.$disconnect();
+        }
       }
     }
   }
 
-  // 4. Check uploads directory permissions
+  // 3. Check uploads directory permissions
   const uploadsDir = path.join(rootDir, "uploads");
   if (!fs.existsSync(uploadsDir)) {
     try {
@@ -100,7 +111,7 @@ async function verifyReadiness() {
     }
   }
 
-  // 5. Verify Node Modules & Prisma client compilation
+  // 4. Verify Node Modules & Prisma client compilation
   try {
     execSync("npx prisma --version", { stdio: "ignore" });
     logResult("Prisma CLI availability", true);
@@ -112,11 +123,17 @@ async function verifyReadiness() {
   console.log("\n=============================================");
   if (overallPassed) {
     console.log("✓ ALL CHECKS PASSED. Codebase is ready for deployment.");
-    process.exit(0);
+    if (require.main === module) process.exit(0);
+    return true;
   } else {
     console.log("✗ VERIFICATION FAILED. Fix the issues listed above before deploying.");
-    process.exit(1);
+    if (require.main === module) process.exit(1);
+    return false;
   }
 }
 
-verifyReadiness();
+if (require.main === module) {
+  verifyReadiness();
+}
+
+module.exports = { verifyReadiness };

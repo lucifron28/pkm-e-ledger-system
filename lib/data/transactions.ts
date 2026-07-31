@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireManagementUser, requireOrgPortalUser } from "../auth/require-auth";
+import { requireManagementUser, requireOrgPortalUser, SessionUser } from "../auth/require-auth";
+import { isManagementRole } from "../auth/rbac";
 import { calculateAccountBalances, type AccountBalances } from "../domain/financial";
 import {
   CashAccount,
@@ -232,11 +233,13 @@ function parseValidFilterDate(value?: string | null): Date | null {
   return date;
 }
 
-export async function listLedgerTransactions(
-  filters: TransactionFilters
+export async function listLedgerTransactionsForUser(
+  filters: TransactionFilters,
+  user: SessionUser
 ): Promise<TransactionDto[]> {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return [];
+  if (!user || user.active === false || !user.organizationId || !isManagementRole(user.role)) {
+    return [];
+  }
 
   const activeTerm = await prisma.academicTerm.findFirst({
     where: { organizationId: user.organizationId, active: true },
@@ -308,9 +311,20 @@ export async function listLedgerTransactions(
   return transactions.map(toTransactionDto);
 }
 
-export async function getTransactionForEdit(id: string): Promise<TransactionDto | null> {
+export async function listLedgerTransactions(
+  filters: TransactionFilters
+): Promise<TransactionDto[]> {
   const user = await requireManagementUser();
-  if (!user.organizationId) return null;
+  return listLedgerTransactionsForUser(filters, user);
+}
+
+export async function getTransactionForEditForUser(
+  id: string,
+  user: SessionUser
+): Promise<TransactionDto | null> {
+  if (!user || user.active === false || !user.organizationId || !isManagementRole(user.role)) {
+    return null;
+  }
   const transaction = await prisma.transaction.findFirst({
     where: { id, organizationId: user.organizationId },
     include: transactionInclude,
@@ -318,6 +332,10 @@ export async function getTransactionForEdit(id: string): Promise<TransactionDto 
   return transaction ? toTransactionDto(transaction) : null;
 }
 
+export async function getTransactionForEdit(id: string): Promise<TransactionDto | null> {
+  const user = await requireManagementUser();
+  return getTransactionForEditForUser(id, user);
+}
 export async function listTransactionAttachments(transactionId: string): Promise<AttachmentDto[]> {
   const user = await requireManagementUser();
   if (!user.organizationId) return [];

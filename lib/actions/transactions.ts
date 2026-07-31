@@ -10,8 +10,8 @@ import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
 import { parsePesoToCents, PesoParseError } from "../data/money";
-import { calculateAccountBalances, hasNegativeAccountBalance } from "../domain/financial";
-import { validateAttachmentFile } from "../domain/attachments";
+import { hasNegativeAccountBalance, projectMutationBalances, FinancialMutation } from "../domain/financial";
+import { validateAttachmentFile, validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
 import { AuditAction, CashAccount, Prisma, TransactionType } from "@prisma/client";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
@@ -71,13 +71,12 @@ function getAttachmentFile(formData: FormData): File {
   return file;
 }
 
-async function writeAttachmentFile(file: File) {
-  const extension = file.name.split(".").pop()!.toLowerCase();
-  const storedName = `${crypto.randomUUID()}.${extension}`;
+async function writeAttachmentBuffer(validated: ValidatedAttachment) {
+  const storedName = `${crypto.randomUUID()}.${validated.extension}`;
   const storagePath = path.join(UPLOADS_DIR, storedName);
   await mkdir(UPLOADS_DIR, { recursive: true });
-  await writeFile(storagePath, Buffer.from(await file.arrayBuffer()));
-  return { storedName, storagePath, extension };
+  await writeFile(storagePath, validated.buffer);
+  return { storedName, storagePath, extension: validated.extension };
 }
 
 function actionError(error: unknown, fallback: string): TxActionState {
@@ -118,25 +117,19 @@ function transactionFields(formData: FormData) {
   };
 }
 
-type FinancialRow = { type: TransactionType; amountCents: number; cashAccount: CashAccount };
-
 async function getProjectedBalances(
   tx: Prisma.TransactionClient,
   organizationId: string,
   termId: string,
   openingCashOnHandCents: number,
   openingCashInBankCents: number,
-  replacement?: FinancialRow & { id?: string }
+  mutation: FinancialMutation
 ) {
   const rows = await tx.transaction.findMany({
     where: { organizationId, termId, deletedAt: null },
     select: { id: true, type: true, amountCents: true, cashAccount: true },
   });
-  const projectedRows = replacement
-    ? rows.filter((row) => row.id !== replacement.id).map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount }))
-    : rows.map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount }));
-  if (replacement) projectedRows.push(replacement);
-  return calculateAccountBalances(openingCashOnHandCents, openingCashInBankCents, projectedRows);
+  return projectMutationBalances(openingCashOnHandCents, openingCashInBankCents, rows, mutation);
 }
 
 function insufficientFundsError(): TransactionValidationError {
@@ -168,9 +161,15 @@ export async function createTransactionAction(
     return actionError(error, "Please fix the transaction details and attachment.");
   }
 
+  const fileValidation = await validateAndReadAttachmentFile(file);
+  if (!fileValidation.success) {
+    return { error: fileValidation.error };
+  }
+  const validatedFile = fileValidation.data;
+
   let fileInfo: { storedName: string; storagePath: string; extension: string } | null = null;
   try {
-    fileInfo = await writeAttachmentFile(file);
+    fileInfo = await writeAttachmentBuffer(validatedFile);
     await prisma.$transaction(async (tx) => {
       const term = await tx.academicTerm.findFirst({
         where: { organizationId: user.organizationId!, active: true },
@@ -188,7 +187,14 @@ export async function createTransactionAction(
         term.id,
         term.openingCashOnHandCents,
         term.openingCashInBankCents,
-        { type: validation.data.type, amountCents, cashAccount: validation.data.cashAccount }
+        {
+          type: "CREATE",
+          row: {
+            type: validation.data.type,
+            amountCents,
+            cashAccount: validation.data.cashAccount,
+          },
+        }
       );
       if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
 
@@ -301,7 +307,15 @@ export async function editTransactionAction(
         term.id,
         term.openingCashOnHandCents,
         term.openingCashInBankCents,
-        { id: existing.id, type: validation.data.type, amountCents, cashAccount: validation.data.cashAccount }
+        {
+          type: "EDIT",
+          existingId: existing.id,
+          newRow: {
+            type: validation.data.type,
+            amountCents,
+            cashAccount: validation.data.cashAccount,
+          },
+        }
       );
       if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
 
@@ -383,7 +397,10 @@ export async function softDeleteTransactionAction(
         term.id,
         term.openingCashOnHandCents,
         term.openingCashInBankCents,
-        { id: existing.id, type: existing.type, amountCents: 0, cashAccount: existing.cashAccount }
+        {
+          type: "DELETE",
+          existingId: existing.id,
+        }
       );
       if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
 

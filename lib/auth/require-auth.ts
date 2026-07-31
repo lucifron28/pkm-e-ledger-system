@@ -1,6 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { getSession, SessionUser } from "./session";
+export type { SessionUser } from "./session";
 import { Role } from "@prisma/client";
 import {
   MANAGEMENT_ROLES,

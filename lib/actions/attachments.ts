@@ -7,19 +7,18 @@ import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { validateAttachmentFile } from "../domain/attachments";
+import { validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
 import { AuditAction } from "@prisma/client";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 export type AttachmentState = { error?: string } | null;
 
-async function persistUploadedFile(file: File) {
-  const extension = file.name.split(".").pop()!.toLowerCase();
-  const storedName = `${crypto.randomUUID()}.${extension}`;
+async function persistUploadedBuffer(validated: ValidatedAttachment) {
+  const storedName = `${crypto.randomUUID()}.${validated.extension}`;
   const storagePath = path.join(UPLOADS_DIR, storedName);
   await mkdir(UPLOADS_DIR, { recursive: true });
-  await writeFile(storagePath, Buffer.from(await file.arrayBuffer()));
+  await writeFile(storagePath, validated.buffer);
   return { storedName, storagePath };
 }
 
@@ -35,12 +34,14 @@ export async function uploadAttachmentAction(
   if (!transactionId) return { error: "Transaction ID is required." };
   if (!(file instanceof File)) return { error: "File is required." };
 
-  const fileError = validateAttachmentFile(file);
-  if (fileError) return { error: fileError };
-
+  const validation = await validateAndReadAttachmentFile(file);
+  if (!validation.success) {
+    return { error: validation.error };
+  }
+  const validated = validation.data;
   let fileInfo: { storedName: string; storagePath: string } | null = null;
   try {
-    fileInfo = await persistUploadedFile(file);
+    fileInfo = await persistUploadedBuffer(validated);
     await prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.findFirst({
         where: { id: transactionId, organizationId: user.organizationId!, deletedAt: null },
