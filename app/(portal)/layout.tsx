@@ -16,9 +16,9 @@ export default async function PortalLayout({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
       {/* Top Header Navigation */}
-      <header className="bg-[#004aad] text-white shadow border-b-4 border-[#f9d818]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-6">
+      <header className="relative bg-[#004aad] text-white shadow border-b-4 border-[#f9d818]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 min-h-[4rem] flex items-center justify-between">
+          <div className="flex items-center space-x-4 md:space-x-6">
             <Link href={isMonitoring ? "/osa" : "/dashboard"} className="flex items-center space-x-2.5">
               <span className="bg-[#f9d818] text-[#004aad] font-extrabold w-9 h-9 rounded-lg flex items-center justify-center text-base shadow-inner">
                 PKM
@@ -28,13 +28,14 @@ export default async function PortalLayout({
 
             {/* Navigation links based on role */}
             <Suspense fallback={null}>
-              <PortalNav role={user.role} />
+              <PortalNav role={user.role} userName={user.fullName} userOrgName={user.organizationName || undefined} />
             </Suspense>
           </div>
 
           {/* Right Header User & Organization Info */}
-          <div className="flex items-center space-x-4 text-xs">
-            <div className="hidden sm:block text-right">
+          {/* Right Header User & Organization Info - hidden below md */}
+          <div className="hidden md:flex items-center space-x-4 text-xs">
+            <div className="text-right">
               <div className="font-bold text-white text-sm leading-tight">{user.fullName}</div>
               <div className="text-blue-100 flex items-center justify-end space-x-1.5">
                 <span className="bg-blue-900 text-yellow-300 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider text-[10px]">

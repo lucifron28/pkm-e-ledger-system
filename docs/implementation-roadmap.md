@@ -15,8 +15,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 3** | `feature/accounts-and-terms` | Organization contexts, academic terms, and opening cash balances (Cash on Hand vs. Cash in Bank). | **Completed** |
 | **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Completed** |
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Completed** |
-| **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **In Review** |
-| **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Partially Started** *(Supporting backup, restore, readiness, and deployment utilities already implemented)* |
+| **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Completed** |
+| **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **In Review** |
 
 ---
 
@@ -100,16 +100,16 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 * **Grouped Commits**:
   1. `feat(transparency): implement member transparency dashboard and report viewer`
   2. `feat(osa): implement read-only multi-organization monitoring dashboard`
-* **Status**: **In Review**
-* **Next Phase**: `feature/testing-hardening-and-demo`
+* **Status**: **Completed**
 
 ### Phase 7: Testing, Hardening & Demo Preparation
 * **Branch**: `feature/testing-hardening-and-demo`
 * **Dependencies**: Phase 6
 * **Goal**: Add focused automated unit tests for financial logic and RBAC, apply security hardening, polish responsive UI layouts, conduct end-to-end demo preparation, and verify FRD traceability. Supporting backup (`backup.js`), disaster recovery (`restore.js`), readiness check (`verify-readiness.js`), and deployment manual (`DEPLOYMENT.md`) utilities are already completed as supporting infrastructure.
-* **Expected Grouped Commits**:
+* **Grouped Commits**:
   1. `test(core): add focused unit tests for financial calculations and rbac`
   2. `fix(security): apply authorization and route security hardening`
   3. `style(ui): polish responsive layouts and print styling`
   4. `docs(demo): prepare demo scripts and final FRD verification checklist`
-* **Status**: **Partially Started** *(Supporting utility scripts completed)*
+* **Status**: **In Review**
+* **Next Phase**: Final external audit and merge

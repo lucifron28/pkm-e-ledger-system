@@ -12,7 +12,13 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset",
-    "test:db": "node scripts/smoke-test.js"
+    "test": "node scripts/run-tests.js all",
+    "test:core": "node scripts/run-tests.js core",
+    "test:integration": "node scripts/run-tests.js integration",
+    "test:db": "node scripts/smoke-test.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "verify-readiness": "node scripts/verify-readiness.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -22,6 +28,7 @@
     "pdfkit": "^0.19.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

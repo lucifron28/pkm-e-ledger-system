@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
+import { getSession, SessionUser } from "@/lib/auth/session";
 import { isManagementRole } from "@/lib/auth/rbac";
-import { getReportPackageForTerm, type ReportPackageDto } from "@/lib/data/reports";
+import { getReportPackageForUser, type ReportPackageDto } from "@/lib/data/reports";
 import { createAuditLog } from "@/lib/data/audit-log";
 import { AuditAction } from "@prisma/client";
 import ExcelJS from "exceljs";
@@ -231,11 +231,10 @@ async function buildReportExcelBuffer(report: ReportPackageDto): Promise<Buffer>
   return Buffer.from(buffer);
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ termId: string }> }
-) {
-  const sessionUser = await getSession();
+export async function handleReportExcelExportRequest(
+  termId: string,
+  sessionUser: SessionUser | null
+): Promise<NextResponse> {
   if (!sessionUser) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
@@ -243,17 +242,14 @@ export async function GET(
     return new NextResponse("Access denied. Report generation is restricted to authorized officers.", { status: 403 });
   }
 
-  const { termId } = await params;
-  const report = await getReportPackageForTerm(termId);
+  const report = await getReportPackageForUser(sessionUser, termId);
   if (!report || report.organizationId !== sessionUser.organizationId) {
     return new NextResponse("Report term not found or access denied.", { status: 404 });
   }
 
   try {
-    // 1. Generate file buffer first
     const excelBuffer = await buildReportExcelBuffer(report);
 
-    // 2. Write mandatory audit log
     await createAuditLog({
       userId: sessionUser.id,
       organizationId: sessionUser.organizationId,
@@ -265,7 +261,6 @@ export async function GET(
       throwOnError: true,
     });
 
-    // 3. Return file response only after both succeed
     const safeSlug = report.organizationSlug.replace(/[^a-z0-9_-]/gi, "_");
     const safeAY = report.academicYear.replace(/[^a-z0-9_-]/gi, "_");
     const fileName = `Financial_Report_${safeSlug}_${safeAY}_${report.semester}.xlsx`;
@@ -275,10 +270,21 @@ export async function GET(
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Content-Length": excelBuffer.length.toString(),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
     console.error("Excel export error:", error);
     return new NextResponse("Failed to export report.", { status: 500 });
   }
+}
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ termId: string }> }
+) {
+  const sessionUser = await getSession();
+  const { termId } = await params;
+  return handleReportExcelExportRequest(termId, sessionUser);
 }

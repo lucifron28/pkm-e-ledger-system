@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireOrgPortalUser, requireManagementUser } from "../auth/require-auth";
-import { Semester } from "@prisma/client";
+import { requireOrgPortalUser, requireManagementUser, SessionUser } from "../auth/require-auth";
+import { isOrganizationPortalRole } from "../auth/rbac";
+import { Role, Semester } from "@prisma/client";
 import { calculateBalanceForwarded } from "./money";
 export { SEMESTER_LABELS, getSemesterLabel, validateAcademicYear } from "./term-labels";
 
@@ -74,26 +75,43 @@ async function _getTermById(
  * Returns the active term for the currently authenticated user's organization.
  * Uses requireOrgPortalUser — safe for organization portal roles.
  */
-export async function getActiveTermForCurrentUser(): Promise<TermDto | null> {
-  const user = await requireOrgPortalUser();
+export async function getActiveTermForUser(user: SessionUser): Promise<TermDto | null> {
+  if (!user || user.active === false || !user.organizationId || user.role === Role.OSA || !isOrganizationPortalRole(user.role)) {
+    return null;
+  }
   return _getActiveTermForOrganization(user.organizationId);
 }
 
-/**
- * Lists all terms for the currently authenticated user's organization.
- */
-export async function listTermsForCurrentUser(): Promise<TermDto[]> {
+export async function getActiveTermForCurrentUser(): Promise<TermDto | null> {
   const user = await requireOrgPortalUser();
+  return getActiveTermForUser(user);
+}
+
+export async function listTermsForUser(user: SessionUser): Promise<TermDto[]> {
+  if (!user || user.active === false || !user.organizationId || user.role === Role.OSA || !isOrganizationPortalRole(user.role)) {
+    return [];
+  }
   return _listTermsForOrganization(user.organizationId);
 }
 
-/**
- * Retrieves a single term by ID, scoped to the authenticated management user's organization.
- */
+export async function listTermsForCurrentUser(): Promise<TermDto[]> {
+  const user = await requireOrgPortalUser();
+  return listTermsForUser(user);
+}
+
+export async function getTermByIdForUser(
+  termId: string,
+  user: SessionUser
+): Promise<TermDto | null> {
+  if (!user || user.active === false || !user.organizationId || user.role === Role.OSA || !isOrganizationPortalRole(user.role)) {
+    return null;
+  }
+  return _getTermById(termId, user.organizationId);
+}
+
 export async function getTermByIdForCurrentUser(
   termId: string
 ): Promise<TermDto | null> {
   const user = await requireManagementUser();
-  if (!user.organizationId) return null;
-  return _getTermById(termId, user.organizationId);
+  return getTermByIdForUser(termId, user);
 }

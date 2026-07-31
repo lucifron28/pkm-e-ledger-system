@@ -1,8 +1,8 @@
 import "server-only";
 import { prisma } from "../db/prisma";
-import { requireOsaUser } from "../auth/require-auth";
+import { requireOsaUser, SessionUser } from "../auth/require-auth";
 import { calculateAccountBalances } from "../domain/financial";
-import { Semester, TransactionType } from "@prisma/client";
+import { Role, Semester, TransactionType } from "@prisma/client";
 
 export interface OsaOrganizationSummaryDto {
   organizationId: string;
@@ -79,8 +79,13 @@ function getSemesterLabel(semester: Semester): string {
  * Validates that an organization exists by ID or slug and is active.
  * Only callable by authenticated OSA users.
  */
-export async function validateOsaOrganization(orgSlugOrId: string) {
-  await requireOsaUser();
+export async function validateOsaOrganizationForUser(
+  orgSlugOrId: string,
+  user: SessionUser
+) {
+  if (user.role !== Role.OSA) {
+    throw new Error("Access denied: OSA monitoring access required.");
+  }
   if (typeof orgSlugOrId !== "string" || !orgSlugOrId.trim()) return null;
 
   return prisma.organization.findFirst({
@@ -90,6 +95,11 @@ export async function validateOsaOrganization(orgSlugOrId: string) {
     },
     select: { id: true, name: true, slug: true },
   });
+}
+
+export async function validateOsaOrganization(orgSlugOrId: string) {
+  const user = await requireOsaUser();
+  return validateOsaOrganizationForUser(orgSlugOrId, user);
 }
 
 /**
@@ -199,12 +209,13 @@ export async function listTermsForOsaOrganization(
  * Returns a summarized ledger DTO for a specific organization and academic term (OSA only).
  * Contains NO individual transaction rows.
  */
-export async function getOsaLedgerSummary(
+export async function getOsaLedgerSummaryForUser(
   orgSlugOrId: string,
+  user: SessionUser,
   academicYear?: string,
   semester?: Semester
 ): Promise<OsaLedgerSummaryDto | null> {
-  const org = await validateOsaOrganization(orgSlugOrId);
+  const org = await validateOsaOrganizationForUser(orgSlugOrId, user);
   if (!org) return null;
 
   let term;
@@ -232,7 +243,6 @@ export async function getOsaLedgerSummary(
     transactions.map((t) => ({ type: t.type, amountCents: t.amountCents, cashAccount: t.cashAccount }))
   );
 
-  // Group sub-totals by category
   const incomeCategoryMap = new Map<string, { categoryName: string; totalCents: number }>();
   const expenseCategoryMap = new Map<string, { categoryName: string; totalCents: number }>();
 
@@ -293,4 +303,13 @@ export async function getOsaLedgerSummary(
 
     lastActivityDate,
   };
+}
+
+export async function getOsaLedgerSummary(
+  orgSlugOrId: string,
+  academicYear?: string,
+  semester?: Semester
+): Promise<OsaLedgerSummaryDto | null> {
+  const user = await requireOsaUser();
+  return getOsaLedgerSummaryForUser(orgSlugOrId, user, academicYear, semester);
 }
