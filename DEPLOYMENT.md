@@ -106,49 +106,62 @@ To keep the application running persistently in the background and restart autom
 
 ## 6. Disaster Recovery: Automated Backups
 
-To protect student organization ledgers and scanned receipts from hard drive failures, schedule automated daily backups.
+To protect student organization ledgers and scanned receipts from hard drive failures, schedule automated backups.
+
+### Offline Backup Requirement
+The SQLite backup utility requires the application writer process (PM2) to be stopped before taking a backup. Running backup while the application process is writing can result in unflushed WAL state or database lock errors.
+
+Before backing up:
+1. Stop the application process via PM2:
+   ```bash
+   pm2 stop pkm-eledger
+   ```
+2. Run the backup utility with confirmation flag (or `APP_WRITER_STOPPED=true` env var):
+   ```bash
+   node scripts/backup.js --confirm-app-stopped
+   ```
+3. Restart the application process:
+   ```bash
+   pm2 start pkm-eledger
+   ```
+
+Backups are saved inside `backups/backup_YYYYMMDD_HHMMSS/`. The backup utility verifies SQLite `PRAGMA integrity_check` and retains the latest 10 backups.
 
 ### Scheduling Backups on Windows (Task Scheduler)
-
-1. Open **Task Scheduler** (`taskschd.msc`) on the server.
-2. Select **Create Basic Task...** in the Actions pane.
-3. Configure the following:
-   * **Name**: `PKM e-Ledger Daily Backup`
-   * **Trigger**: `Daily` (Set to a quiet time, e.g., `12:00 AM`)
-   * **Action**: `Start a program`
-   * **Program/script**: `node`
-   * **Add arguments**: `scripts/backup.js`
-   * **Start in**: `C:\pkm-eledger`
-4. Save the task.
-
-### Running Backups Manually
-To perform an on-demand backup before doing system upgrades or configuration changes, run:
-```bash
-node scripts/backup.js
+To automate daily backups during off-peak hours (e.g., 2:00 AM), create a batch script `scripts/daily-backup.cmd`:
+```cmd
+pm2 stop pkm-eledger
+node scripts/backup.js --confirm-app-stopped
+pm2 start pkm-eledger
 ```
-Backups are saved inside `C:\pkm-eledger\backups\backup_YYYYMMDD_HHMMSS\`. The backup utility automatically keeps only the **latest 10 backups** to optimize disk space.
+Configure Task Scheduler (`taskschd.msc`) to run `scripts/daily-backup.cmd` daily.
 
 ---
 
 ## 7. Restoring Data from Backup
 
-If you need to recover the system to a previous state:
+Restoring data overwrites active SQLite database files and attachment uploads. The application process MUST be stopped before restoring.
 
-1. Execute the restore utility:
+1. Stop the application process:
    ```bash
-   node scripts/restore.js
+   pm2 stop pkm-eledger
    ```
-2. The script will list all available backups from the `backups/` folder. Select the desired number.
-3. Confirm with `yes`.
-4. *Safety Guard*: The script automatically saves a temporary rollback copy of your current active files in `backups/temp_safety_rollback/` before overwriting. If anything fails, it reverts itself.
-
----
+2. Execute the restore utility:
+   ```bash
+   node scripts/restore.js --confirm-app-stopped
+   ```
+3. Select the target backup from the interactive prompt (or pass target folder: `node scripts/restore.js backup_YYYYMMDD_HHMMSS --confirm-app-stopped`).
+4. *Safety Guard*: The restore utility validates `PRAGMA integrity_check` on the backup *before* modifying active files, clears stale WAL sidecar files, overwrites active database and uploads, runs `PRAGMA integrity_check` on the restored database, and automatically rolls back if any step fails.
+5. Restart the application process:
+   ```bash
+   pm2 start pkm-eledger
+   ```
 
 ## 8. Verification & Pre-flight Health Check
 
-Run the pre-flight verification script to ensure all write permissions, folders, and env parameters are validated and configured:
+Run the pre-flight verification script to ensure local environment prerequisites, database connection, and folder write permissions are configured:
 
 ```bash
 node scripts/verify-readiness.js
 ```
-If this outputs `✓ ALL CHECKS PASSED`, the system is fully configured and ready for live production use.
+*Note*: The readiness script verifies environment prerequisites and storage permissions; it does not prove end-to-end production deployment success or replace functional testing.

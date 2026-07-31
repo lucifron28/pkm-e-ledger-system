@@ -56,3 +56,11 @@ prisma/*.db-shm
 # local file uploads (receipts, documents)
 /uploads/*
 !/uploads/.gitkeep
+
+# local backups & test databases
+/backups/
+tests/**/*.db
+tests/**/*.db-journal
+tests/**/*.db-wal
+tests/**/*.db-shm
+
