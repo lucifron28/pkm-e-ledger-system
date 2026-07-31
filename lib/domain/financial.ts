@@ -51,3 +51,44 @@ export function calculateAccountBalances(
 export function hasNegativeAccountBalance(balances: AccountBalances): boolean {
   return balances.cashOnHandCents < 0 || balances.cashInBankCents < 0;
 }
+
+export type FinancialMutation =
+  | { type: "CREATE"; row: FinancialRow }
+  | { type: "EDIT"; existingId: string; newRow: FinancialRow }
+  | { type: "DELETE"; existingId: string }
+  | { type: "SET_OPENING"; openingCashOnHandCents: number; openingCashInBankCents: number };
+
+export function projectMutationBalances(
+  currentOpeningCashOnHandCents: number,
+  currentOpeningCashInBankCents: number,
+  existingRows: (FinancialRow & { id?: string })[],
+  mutation: FinancialMutation
+): AccountBalances {
+  let openingOnHand = currentOpeningCashOnHandCents;
+  let openingInBank = currentOpeningCashInBankCents;
+  let rows: FinancialRow[] = [];
+
+  switch (mutation.type) {
+    case "CREATE":
+      rows = [...existingRows.map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount })), mutation.row];
+      break;
+    case "EDIT":
+      rows = existingRows
+        .filter((r) => r.id !== mutation.existingId)
+        .map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount }));
+      rows.push(mutation.newRow);
+      break;
+    case "DELETE":
+      rows = existingRows
+        .filter((r) => r.id !== mutation.existingId)
+        .map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount }));
+      break;
+    case "SET_OPENING":
+      openingOnHand = mutation.openingCashOnHandCents;
+      openingInBank = mutation.openingCashInBankCents;
+      rows = existingRows.map(({ type, amountCents, cashAccount }) => ({ type, amountCents, cashAccount }));
+      break;
+  }
+
+  return calculateAccountBalances(openingOnHand, openingInBank, rows);
+}
