@@ -2,13 +2,24 @@ import "server-only";
 import { prisma } from "../db/prisma";
 import { requireManagementUser, requireOrgPortalUser, SessionUser } from "../auth/require-auth";
 import { isManagementRole } from "../auth/rbac";
-import { calculateAccountBalances, type AccountBalances } from "../domain/financial";
+import {
+  calculateAccountBalances,
+  financialRowsToMovements,
+  transferRowsToMovements,
+  type AccountBalances,
+} from "../domain/financial";
+import {
+  calculateEffectiveDateRange,
+  parseLedgerQueryParams,
+  ParsedLedgerQuery,
+} from "../domain/query";
 import {
   CashAccount,
   Prisma,
   Semester,
   TransactionType,
 } from "@prisma/client";
+import { CashTransferDto } from "../application/transfers";
 
 export interface AttachmentDto {
   id: string;
@@ -20,9 +31,8 @@ export interface AttachmentDto {
 
 export interface TransactionDto {
   id: string;
+  organizationId: string;
   termId: string;
-  academicYear: string;
-  semester: Semester;
   type: TransactionType;
   documentNumber: string | null;
   transactionDate: Date;
@@ -34,12 +44,10 @@ export interface TransactionDto {
   description: string;
   referenceDescription: string;
   eventActivityName: string | null;
-  recordedByUsername: string;
-  recordedByFullName: string;
+  recordedByUserId: string;
+  recordedByName: string;
+  version: number;
   createdAt: Date;
-  deletedAt: Date | null;
-  deleteReason: string | null;
-  attachments: AttachmentDto[];
 }
 
 export type BalanceSnapshot = AccountBalances;
@@ -51,33 +59,11 @@ export interface CategoryDto {
   active: boolean;
 }
 
-export interface TransactionFilters {
-  academicYear?: string | null;
-  semester?: Semester | null;
-  type?: TransactionType | null;
-  categoryId?: string | null;
-  cashAccount?: CashAccount | null;
-  month?: string | null;
-  eventActivityName?: string | null;
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  search?: string | null;
-}
+export type TransactionFilters = ParsedLedgerQuery;
 
 const transactionInclude = {
   category: { select: { name: true } },
-  term: { select: { academicYear: true, semester: true } },
-  recordedBy: { select: { username: true, fullName: true } },
-  attachments: {
-    select: {
-      id: true,
-      originalName: true,
-      mimeType: true,
-      sizeBytes: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" as const },
-  },
+  recordedBy: { select: { fullName: true } },
 } as const;
 
 type TransactionWithDetails = Prisma.TransactionGetPayload<{
@@ -87,9 +73,8 @@ type TransactionWithDetails = Prisma.TransactionGetPayload<{
 function toTransactionDto(tx: TransactionWithDetails): TransactionDto {
   return {
     id: tx.id,
+    organizationId: tx.organizationId,
     termId: tx.termId,
-    academicYear: tx.term.academicYear,
-    semester: tx.term.semester,
     type: tx.type,
     documentNumber: tx.documentNumber,
     transactionDate: tx.transactionDate,
@@ -101,47 +86,15 @@ function toTransactionDto(tx: TransactionWithDetails): TransactionDto {
     description: tx.description,
     referenceDescription: tx.referenceDescription,
     eventActivityName: tx.eventActivityName,
-    recordedByUsername: tx.recordedBy.username,
-    recordedByFullName: tx.recordedBy.fullName,
+    recordedByUserId: tx.recordedByUserId,
+    recordedByName: tx.recordedBy.fullName,
+    version: tx.version,
     createdAt: tx.createdAt,
-    deletedAt: tx.deletedAt,
-    deleteReason: tx.deleteReason,
-    attachments: tx.attachments,
   };
 }
 
-async function getRowsForTerm(organizationId: string, termId: string) {
-  return prisma.transaction.findMany({
-    where: { organizationId, termId, deletedAt: null },
-    select: { type: true, amountCents: true, cashAccount: true },
-  });
-}
-
-async function getBalanceSnapshotForTerm(
-  organizationId: string,
-  termId: string
-): Promise<BalanceSnapshot | null> {
-  const term = await prisma.academicTerm.findFirst({
-    where: { id: termId, organizationId },
-    select: { openingCashOnHandCents: true, openingCashInBankCents: true },
-  });
-  if (!term) return null;
-  const rows = await getRowsForTerm(organizationId, termId);
-  return calculateAccountBalances(term.openingCashOnHandCents, term.openingCashInBankCents, rows);
-}
-
-export async function getDashboardBalances(): Promise<BalanceSnapshot | null> {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return null;
-  const term = await prisma.academicTerm.findFirst({
-    where: { organizationId: user.organizationId, active: true },
-    select: { id: true },
-  });
-  if (!term) return null;
-  return getBalanceSnapshotForTerm(user.organizationId, term.id);
-}
-
 export async function getDashboardBalancesForUser(
+  user: SessionUser,
   academicYear?: string,
   semester?: Semester
 ): Promise<{
@@ -156,40 +109,64 @@ export async function getDashboardBalancesForUser(
   };
   balances: BalanceSnapshot;
 } | null> {
+  if (!user || user.active === false || !user.organizationId) return null;
+
+  return prisma.$transaction(async (tx) => {
+    let term;
+    if (academicYear && semester) {
+      term = await tx.academicTerm.findFirst({
+        where: { organizationId: user.organizationId!, academicYear, semester },
+      });
+    } else {
+      term = await tx.academicTerm.findFirst({
+        where: { organizationId: user.organizationId!, active: true },
+      });
+    }
+
+    if (!term) return null;
+
+    const transactions = await tx.transaction.findMany({
+      where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
+      select: { type: true, amountCents: true, cashAccount: true },
+    });
+
+    const transfers = await tx.cashTransfer.findMany({
+      where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
+      select: { amountCents: true, fromAccount: true, toAccount: true },
+    });
+
+    const movements = [
+      ...financialRowsToMovements(transactions),
+      ...transferRowsToMovements(transfers),
+    ];
+
+    const balances = calculateAccountBalances(
+      term.openingCashOnHandCents,
+      term.openingCashInBankCents,
+      movements
+    );
+
+    return {
+      term: {
+        id: term.id,
+        academicYear: term.academicYear,
+        semester: term.semester,
+        openingCashOnHandCents: term.openingCashOnHandCents,
+        openingCashInBankCents: term.openingCashInBankCents,
+        balanceForwardedCents: term.openingCashOnHandCents + term.openingCashInBankCents,
+        active: term.active,
+      },
+      balances,
+    };
+  });
+}
+
+export async function getDashboardBalances(
+  academicYear?: string,
+  semester?: Semester
+) {
   const user = await requireOrgPortalUser();
-
-  let term;
-  if (academicYear && semester) {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: user.organizationId, academicYear, semester },
-    });
-  } else {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: user.organizationId, active: true },
-    });
-  }
-
-  if (!term) return null;
-
-  const rows = await getRowsForTerm(user.organizationId, term.id);
-  const balances = calculateAccountBalances(
-    term.openingCashOnHandCents,
-    term.openingCashInBankCents,
-    rows
-  );
-
-  return {
-    term: {
-      id: term.id,
-      academicYear: term.academicYear,
-      semester: term.semester,
-      openingCashOnHandCents: term.openingCashOnHandCents,
-      openingCashInBankCents: term.openingCashInBankCents,
-      balanceForwardedCents: term.openingCashOnHandCents + term.openingCashInBankCents,
-      active: term.active,
-    },
-    balances,
-  };
+  return getDashboardBalancesForUser(user, academicYear, semester);
 }
 
 export async function listCategoriesForType(type: TransactionType): Promise<CategoryDto[]> {
@@ -207,112 +184,242 @@ export async function listTermsForLedger(): Promise<
 > {
   const user = await requireOrgPortalUser();
   return prisma.academicTerm.findMany({
-    where: { organizationId: user.organizationId },
+    where: { organizationId: user.organizationId! },
     orderBy: [{ academicYear: "desc" }, { createdAt: "desc" }],
     select: { id: true, academicYear: true, semester: true, active: true },
   });
 }
 
-function parseValidFilterDate(value?: string | null): Date | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() + 1 !== month ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return date;
+export interface LedgerPageSnapshotDto {
+  selectedTerm: {
+    id: string;
+    academicYear: string;
+    semester: Semester;
+    openingCashOnHandCents: number;
+    openingCashInBankCents: number;
+    balanceForwardedCents: number;
+    active: boolean;
+  } | null;
+  balances: BalanceSnapshot | null;
+  transactions: TransactionDto[];
+  transfers: CashTransferDto[];
+  categories: CategoryDto[];
+  terms: { id: string; academicYear: string; semester: Semester; active: boolean }[];
+  pagination: {
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 }
 
-export async function listLedgerTransactionsForUser(
-  filters: TransactionFilters,
-  user: SessionUser
-): Promise<TransactionDto[]> {
+export async function getLedgerPageSnapshot(
+  user: SessionUser,
+  rawParams: Record<string, unknown> = {}
+): Promise<LedgerPageSnapshotDto> {
   if (!user || user.active === false || !user.organizationId || !isManagementRole(user.role)) {
-    return [];
-  }
-
-  const activeTerm = await prisma.academicTerm.findFirst({
-    where: { organizationId: user.organizationId, active: true },
-    select: { academicYear: true, semester: true },
-  });
-  if (!activeTerm) return [];
-
-  const term = await prisma.academicTerm.findFirst({
-    where: {
-      organizationId: user.organizationId,
-      academicYear: filters.academicYear ?? activeTerm.academicYear,
-      semester: filters.semester ?? activeTerm.semester,
-    },
-    select: { id: true },
-  });
-  if (!term) return [];
-
-  const where: Prisma.TransactionWhereInput = {
-    organizationId: user.organizationId,
-    termId: term.id,
-    deletedAt: null,
-  };
-  if (filters.type) where.type = filters.type;
-  if (filters.categoryId) where.categoryId = filters.categoryId;
-  if (filters.cashAccount) where.cashAccount = filters.cashAccount;
-  if (filters.eventActivityName) where.eventActivityName = { contains: filters.eventActivityName.trim() };
-
-  if (filters.month) {
-    const trimmedMonth = filters.month.trim();
-    const match = /^(\d{4})-(\d{2})$/.exec(trimmedMonth);
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      if (month >= 1 && month <= 12) {
-        where.transactionDate = {
-          gte: new Date(Date.UTC(year, month - 1, 1)),
-          lte: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
-        };
-      }
-    }
-  }
-
-  const validFrom = parseValidFilterDate(filters.dateFrom);
-  const validTo = parseValidFilterDate(filters.dateTo);
-  if (validFrom || validTo) {
-    where.transactionDate = {
-      ...(validFrom ? { gte: validFrom } : {}),
-      ...(validTo ? { lte: new Date(validTo.getTime() + 86399999) } : {}),
+    return {
+      selectedTerm: null,
+      balances: null,
+      transactions: [],
+      transfers: [],
+      categories: [],
+      terms: [],
+      pagination: { hasMore: false, nextCursor: null },
     };
   }
 
-  if (filters.search) {
-    const searchTrimmed = filters.search.trim();
-    if (searchTrimmed) {
-      where.OR = [
-        { description: { contains: searchTrimmed } },
-        { counterpartyName: { contains: searchTrimmed } },
-        { documentNumber: { contains: searchTrimmed } },
-        { referenceDescription: { contains: searchTrimmed } },
+  const query = parseLedgerQueryParams(rawParams);
+
+  return prisma.$transaction(async (tx) => {
+    const terms = await tx.academicTerm.findMany({
+      where: { organizationId: user.organizationId! },
+      orderBy: [{ academicYear: "desc" }, { createdAt: "desc" }],
+      select: { id: true, academicYear: true, semester: true, active: true },
+    });
+
+    let selectedTermRecord;
+    if (query.academicYear && query.semester) {
+      selectedTermRecord = await tx.academicTerm.findFirst({
+        where: { organizationId: user.organizationId!, academicYear: query.academicYear, semester: query.semester },
+      });
+    } else {
+      selectedTermRecord = await tx.academicTerm.findFirst({
+        where: { organizationId: user.organizationId!, active: true },
+      });
+    }
+
+    if (!selectedTermRecord) {
+      const categories = await tx.transactionCategory.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, type: true, active: true },
+      });
+      return {
+        selectedTerm: null,
+        balances: null,
+        transactions: [],
+        transfers: [],
+        categories,
+        terms,
+        pagination: { hasMore: false, nextCursor: null },
+      };
+    }
+
+    const termId = selectedTermRecord.id;
+
+    // Load active transactions and transfers for selected term balance calculation
+    const allActiveTxs = await tx.transaction.findMany({
+      where: { organizationId: user.organizationId!, termId, deletedAt: null },
+      select: { type: true, amountCents: true, cashAccount: true },
+    });
+
+    const allActiveTransfers = await tx.cashTransfer.findMany({
+      where: { organizationId: user.organizationId!, termId, deletedAt: null },
+      select: { amountCents: true, fromAccount: true, toAccount: true },
+    });
+
+    const movements = [
+      ...financialRowsToMovements(allActiveTxs),
+      ...transferRowsToMovements(allActiveTransfers),
+    ];
+
+    const balances = calculateAccountBalances(
+      selectedTermRecord.openingCashOnHandCents,
+      selectedTermRecord.openingCashInBankCents,
+      movements
+    );
+
+    // Filtered transaction query building with date range intersection
+    const dateRange = calculateEffectiveDateRange(query.month, query.dateFrom, query.dateTo);
+
+    if (dateRange.invalid) {
+      const categories = await tx.transactionCategory.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, type: true, active: true },
+      });
+      return {
+        selectedTerm: {
+          id: selectedTermRecord.id,
+          academicYear: selectedTermRecord.academicYear,
+          semester: selectedTermRecord.semester,
+          openingCashOnHandCents: selectedTermRecord.openingCashOnHandCents,
+          openingCashInBankCents: selectedTermRecord.openingCashInBankCents,
+          balanceForwardedCents: selectedTermRecord.openingCashOnHandCents + selectedTermRecord.openingCashInBankCents,
+          active: selectedTermRecord.active,
+        },
+        balances,
+        transactions: [],
+        transfers: [],
+        categories,
+        terms,
+        pagination: { hasMore: false, nextCursor: null },
+      };
+    }
+
+    const txWhere: Prisma.TransactionWhereInput = {
+      organizationId: user.organizationId!,
+      termId,
+      deletedAt: null,
+    };
+
+    if (query.type) txWhere.type = query.type;
+    if (query.categoryId) txWhere.categoryId = query.categoryId;
+    if (query.cashAccount) txWhere.cashAccount = query.cashAccount;
+    if (query.eventActivityName) txWhere.eventActivityName = { contains: query.eventActivityName };
+
+    if (dateRange.gte || dateRange.lte) {
+      txWhere.transactionDate = {
+        ...(dateRange.gte ? { gte: dateRange.gte } : {}),
+        ...(dateRange.lte ? { lte: dateRange.lte } : {}),
+      };
+    }
+
+    if (query.search) {
+      txWhere.OR = [
+        { description: { contains: query.search } },
+        { counterpartyName: { contains: query.search } },
+        { documentNumber: { contains: query.search } },
+        { referenceDescription: { contains: query.search } },
       ];
     }
-  }
 
-  const transactions = await prisma.transaction.findMany({
-    where,
-    include: transactionInclude,
-    orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
+    // Cursor pagination (fetch 1 extra row to check hasMore)
+    const limit = query.pageSize;
+    const fetchTake = limit + 1;
+
+    const txsRaw = await tx.transaction.findMany({
+      where: txWhere,
+      take: fetchTake,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      include: transactionInclude,
+      orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    });
+
+    const hasMore = txsRaw.length > limit;
+    const paginatedTxs = hasMore ? txsRaw.slice(0, limit) : txsRaw;
+    const nextCursor = hasMore && paginatedTxs.length > 0 ? paginatedTxs[paginatedTxs.length - 1].id : null;
+
+    const categories = await tx.transactionCategory.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, type: true, active: true },
+    });
+
+    const transfersRaw = await tx.cashTransfer.findMany({
+      where: { organizationId: user.organizationId!, termId, deletedAt: null },
+      include: { recordedBy: { select: { fullName: true } } },
+      orderBy: [{ transferDate: "desc" }, { createdAt: "desc" }],
+    });
+
+    return {
+      selectedTerm: {
+        id: selectedTermRecord.id,
+        academicYear: selectedTermRecord.academicYear,
+        semester: selectedTermRecord.semester,
+        openingCashOnHandCents: selectedTermRecord.openingCashOnHandCents,
+        openingCashInBankCents: selectedTermRecord.openingCashInBankCents,
+        balanceForwardedCents: selectedTermRecord.openingCashOnHandCents + selectedTermRecord.openingCashInBankCents,
+        active: selectedTermRecord.active,
+      },
+      balances,
+      transactions: paginatedTxs.map(toTransactionDto),
+      transfers: transfersRaw.map((tr) => ({
+        id: tr.id,
+        organizationId: tr.organizationId,
+        termId: tr.termId,
+        transferDate: tr.transferDate,
+        fromAccount: tr.fromAccount,
+        toAccount: tr.toAccount,
+        amountCents: tr.amountCents,
+        documentNumber: tr.documentNumber,
+        description: tr.description,
+        referenceDescription: tr.referenceDescription,
+        eventActivityName: tr.eventActivityName,
+        recordedByUserId: tr.recordedByUserId,
+        recordedByName: tr.recordedBy.fullName,
+        version: tr.version,
+        createdAt: tr.createdAt,
+      })),
+      categories,
+      terms,
+      pagination: {
+        hasMore,
+        nextCursor,
+      },
+    };
   });
-  return transactions.map(toTransactionDto);
+}
+
+export async function listLedgerTransactionsForUser(
+  filters: Record<string, unknown>,
+  user: SessionUser
+): Promise<TransactionDto[]> {
+  const snapshot = await getLedgerPageSnapshot(user, filters);
+  return snapshot.transactions;
 }
 
 export async function listLedgerTransactions(
-  filters: TransactionFilters
+  filters: Record<string, unknown>
 ): Promise<TransactionDto[]> {
   const user = await requireManagementUser();
   return listLedgerTransactionsForUser(filters, user);
@@ -335,18 +442,4 @@ export async function getTransactionForEditForUser(
 export async function getTransactionForEdit(id: string): Promise<TransactionDto | null> {
   const user = await requireManagementUser();
   return getTransactionForEditForUser(id, user);
-}
-export async function listTransactionAttachments(transactionId: string): Promise<AttachmentDto[]> {
-  const user = await requireManagementUser();
-  if (!user.organizationId) return [];
-  const transaction = await prisma.transaction.findFirst({
-    where: { id: transactionId, organizationId: user.organizationId, deletedAt: null },
-    select: { id: true },
-  });
-  if (!transaction) return [];
-  return prisma.attachment.findMany({
-    where: { transactionId },
-    select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-  });
 }

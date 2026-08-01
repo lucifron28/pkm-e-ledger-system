@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback } from "react";
-import type { CategoryDto, TransactionFilters } from "@/lib/data/transactions";
+import type { CategoryDto } from "@/lib/data/transactions";
 import { SEMESTER_LABELS } from "@/lib/data/term-labels";
 import { Semester, TransactionType } from "@prisma/client";
+import { ParsedLedgerQuery } from "@/lib/domain/query";
 
 interface LedgerTermOption {
   id: string;
@@ -18,7 +19,7 @@ export function LedgerFilters({
   expenseCategories,
   terms,
 }: {
-  filters: TransactionFilters;
+  filters: ParsedLedgerQuery;
   incomeCategories: CategoryDto[];
   expenseCategories: CategoryDto[];
   terms: LedgerTermOption[];
@@ -32,7 +33,21 @@ export function LedgerFilters({
 
   const buildUrl = useCallback(
     (overrides: Record<string, string | undefined>) => {
-      const merged = { ...filters, ...overrides } as Record<string, string | undefined>;
+      const merged: Record<string, unknown> = {
+        academicYear: filters.academicYear,
+        semester: filters.semester,
+        type: filters.type,
+        categoryId: filters.categoryId,
+        cashAccount: filters.cashAccount,
+        month: filters.month,
+        event: filters.eventActivityName,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        search: filters.search,
+        cursor: filters.cursor,
+        ...overrides,
+      };
+
       const params = new URLSearchParams();
       for (const key of [
         "academicYear",
@@ -45,8 +60,12 @@ export function LedgerFilters({
         "dateFrom",
         "dateTo",
         "search",
+        "cursor",
       ]) {
-        if (merged[key]) params.set(key, merged[key]!);
+        const val = merged[key];
+        if (typeof val === "string" && val.trim().length > 0) {
+          params.set(key, val.trim());
+        }
       }
       const query = params.toString();
       return `/ledger${query ? `?${query}` : ""}`;
@@ -55,55 +74,100 @@ export function LedgerFilters({
   );
 
   const handleChange = (key: string, value: string) => {
-    window.location.href = buildUrl({
-      [key]: value || undefined,
-      ...(key === "type" ? { categoryId: undefined } : {}),
-    });
+    const url = buildUrl({ [key]: value || undefined });
+    window.location.href = url;
   };
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <select value={filters.academicYear || ""} onChange={(e) => handleChange("academicYear", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
-          <option value="">Active Academic Year</option>
-          {terms.map((term) => (
-            <option key={term.id} value={term.academicYear}>{term.academicYear}</option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Term Select */}
+        <div>
+          <label htmlFor="term-select" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Academic Term
+          </label>
+          <select
+            id="term-select"
+            value={
+              filters.academicYear && filters.semester
+                ? `${filters.academicYear}:${filters.semester}`
+                : ""
+            }
+            onChange={(e) => {
+              const val = e.target.value;
+              if (!val) {
+                window.location.href = buildUrl({ academicYear: undefined, semester: undefined });
+              } else {
+                const [ay, sem] = val.split(":");
+                window.location.href = buildUrl({ academicYear: ay, semester: sem });
+              }
+            }}
+            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]"
+          >
+            <option value="">-- Active Term (Default) --</option>
+            {terms.map((t) => (
+              <option key={t.id} value={`${t.academicYear}:${t.semester}`}>
+                {t.academicYear} - {SEMESTER_LABELS[t.semester]} {t.active ? "(Active)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <select value={filters.semester || ""} onChange={(e) => handleChange("semester", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
-          <option value="">Active Semester</option>
-          {Object.entries(SEMESTER_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
+        {/* Type Select */}
+        <div>
+          <label htmlFor="type-select" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Type
+          </label>
+          <select
+            id="type-select"
+            value={filters.type || ""}
+            onChange={(e) => handleChange("type", e.target.value)}
+            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]"
+          >
+            <option value="">All Types</option>
+            <option value={TransactionType.INCOME}>Income</option>
+            <option value={TransactionType.EXPENSE}>Expense</option>
+          </select>
+        </div>
 
-        <select value={filters.type || ""} onChange={(e) => handleChange("type", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
-          <option value="">All Types</option>
-          <option value="INCOME">Income</option>
-          <option value="EXPENSE">Expense</option>
-        </select>
+        {/* Category Select */}
+        <div>
+          <label htmlFor="category-select" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Category
+          </label>
+          <select
+            id="category-select"
+            value={filters.categoryId || ""}
+            onChange={(e) => handleChange("categoryId", e.target.value)}
+            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]"
+          >
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.type})
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <select value={filters.categoryId || ""} onChange={(e) => handleChange("categoryId", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
-          <option value="">All Categories</option>
-          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
-
-        <select value={filters.cashAccount || ""} onChange={(e) => handleChange("cashAccount", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
-          <option value="">All Accounts</option>
-          <option value="CASH_ON_HAND">Cash on Hand</option>
-          <option value="CASH_IN_BANK">Cash in Bank</option>
-        </select>
-
-        <input type="month" value={filters.month || ""} onChange={(e) => handleChange("month", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]" />
-        <input type="text" placeholder="Event / Activity" defaultValue={filters.eventActivityName || ""} onKeyDown={(e) => e.key === "Enter" && handleChange("event", (e.target as HTMLInputElement).value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]" />
-        <input type="date" value={filters.dateFrom || ""} onChange={(e) => handleChange("dateFrom", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]" />
-        <input type="date" value={filters.dateTo || ""} onChange={(e) => handleChange("dateTo", e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]" />
-        <input type="text" placeholder="Search" defaultValue={filters.search || ""} onKeyDown={(e) => e.key === "Enter" && handleChange("search", (e.target as HTMLInputElement).value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] flex-1 min-w-[150px]" />
-
-        {Object.values(filters).some(Boolean) && (
-          <button type="button" onClick={() => { window.location.href = "/ledger"; }} className="text-xs text-red-600 font-semibold hover:underline px-2">Clear Filters</button>
-        )}
+        {/* Search */}
+        <div>
+          <label htmlFor="search-input" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Search
+          </label>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Search description, OR #..."
+            defaultValue={filters.search || ""}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleChange("search", (e.target as HTMLInputElement).value);
+              }
+            }}
+            className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]"
+          />
+        </div>
       </div>
     </div>
   );

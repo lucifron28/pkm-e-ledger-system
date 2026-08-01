@@ -91,10 +91,14 @@ export async function getSessionResult(): Promise<SessionResult | null> {
       !dbSession.lastUsedAt ||
       now.getTime() - dbSession.lastUsedAt.getTime() > STALE_THRESHOLD_MS
     ) {
-      await prisma.session.update({
-        where: { id: dbSession.id },
-        data: { lastUsedAt: now },
-      });
+      try {
+        await prisma.session.update({
+          where: { id: dbSession.id },
+          data: { lastUsedAt: now },
+        });
+      } catch {
+        /* Best-effort touch: do not fail session validation if touch update fails */
+      }
     }
 
     return {

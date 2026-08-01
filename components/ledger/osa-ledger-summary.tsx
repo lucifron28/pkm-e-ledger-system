@@ -1,16 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { OsaLedgerSummaryDto } from "@/lib/data/osa";
+import type { OsaLedgerSummaryDto, OsaOrganizationSummaryDto } from "@/lib/data/osa";
 import type { Semester } from "@prisma/client";
 import { formatPesoFromCents } from "@/lib/data/money";
 import Link from "next/link";
-
-interface OrgOption {
-  id: string;
-  name: string;
-  slug: string;
-}
 
 interface TermOption {
   id: string;
@@ -20,13 +14,13 @@ interface TermOption {
 }
 
 interface OsaOrganizationSelectViewProps {
-  organizations: OrgOption[];
-  state: "missing" | "invalid";
+  organizations: OsaOrganizationSummaryDto[];
+  state?: "missing" | "invalid";
 }
 
 export function OsaOrganizationSelectView({
   organizations,
-  state,
+  state = "missing",
 }: OsaOrganizationSelectViewProps) {
   const router = useRouter();
 
@@ -65,8 +59,8 @@ export function OsaOrganizationSelectView({
         >
           <option value="">-- Select Organization --</option>
           {organizations.map((o) => (
-            <option key={o.id} value={o.slug}>
-              {o.name} ({o.slug})
+            <option key={o.organizationId} value={o.organizationSlug}>
+              {o.organizationName} ({o.organizationSlug})
             </option>
           ))}
         </select>
@@ -80,7 +74,7 @@ export function OsaOrganizationSelectView({
 
 interface OsaLedgerSummaryViewProps {
   summary: OsaLedgerSummaryDto | null;
-  organizations: OrgOption[];
+  organizations: OsaOrganizationSummaryDto[];
   terms: TermOption[];
   currentOrgSlug: string;
   currentTermId: string | null;
@@ -128,8 +122,8 @@ export function OsaLedgerSummaryView({
               className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#004aad]"
             >
               {organizations.map((o) => (
-                <option key={o.id} value={o.slug}>
-                  {o.name} ({o.slug})
+                <option key={o.organizationId} value={o.organizationSlug}>
+                  {o.organizationName} ({o.organizationSlug})
                 </option>
               ))}
             </select>

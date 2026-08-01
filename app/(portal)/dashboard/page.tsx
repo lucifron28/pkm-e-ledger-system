@@ -36,7 +36,7 @@ export default async function DashboardPage({
 
   const isManagement = isManagementRole(user.role);
   const terms = await listTermsForCurrentUser();
-  const dashboardData = await getDashboardBalancesForUser(ayRaw, semRaw);
+  const dashboardData = await getDashboardBalancesForUser(user, ayRaw, semRaw);
 
   const activeTerm = dashboardData?.term;
   const balances = dashboardData?.balances;

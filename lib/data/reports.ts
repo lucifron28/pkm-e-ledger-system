@@ -36,29 +36,45 @@ async function _getReportPackageForTermInternal(
   organizationId: string,
   termId: string
 ): Promise<ReportPackageDto | null> {
-  const term = await prisma.academicTerm.findFirst({
-    where: { id: termId, organizationId },
-    include: { organization: { select: { id: true, name: true, slug: true } } },
-  });
-  if (!term) return null;
+  return prisma.$transaction(async (tx) => {
+    const term = await tx.academicTerm.findFirst({
+      where: { id: termId, organizationId },
+      include: { organization: { select: { id: true, name: true, slug: true } } },
+    });
+    if (!term) return null;
 
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      organizationId,
-      termId: term.id,
-      deletedAt: null,
-    },
-    include: {
-      category: { select: { id: true, name: true, type: true } },
-      attachments: {
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
-        orderBy: { createdAt: "asc" },
+    const transactions = await tx.transaction.findMany({
+      where: {
+        organizationId,
+        termId: term.id,
+        deletedAt: null,
       },
-    },
-    orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
-  });
+      include: {
+        category: { select: { id: true, name: true, type: true, reportBucket: true } },
+        attachments: {
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
+    });
 
-  return buildReportPackage(term, transactions);
+    const transfers = await tx.cashTransfer.findMany({
+      where: {
+        organizationId,
+        termId: term.id,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        amountCents: true,
+        fromAccount: true,
+        toAccount: true,
+      },
+    });
+
+    return buildReportPackage(term, transactions, transfers);
+  });
 }
 
 export async function getReportPackageForUser(
