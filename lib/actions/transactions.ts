@@ -9,84 +9,27 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { parsePesoToCents, PesoParseError } from "../data/money";
-import { hasNegativeAccountBalance, projectMutationBalances, FinancialMutation } from "../domain/financial";
-import { validateAttachmentFile, validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
-import { AuditAction, CashAccount, Prisma, TransactionType } from "@prisma/client";
+import { parsePesoToCents } from "../domain/money";
+import { parseStrictDate } from "../domain/query";
+import { validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
+import { AuditAction, CashAccount, TransactionType } from "@prisma/client";
+import {
+  createTransactionService,
+  deleteTransactionService,
+  editTransactionService,
+} from "../application/transactions";
+import { DomainError } from "../domain/errors";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 type TxActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 
-class TransactionValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TransactionValidationError";
-  }
-}
-
-function parseAmount(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) throw new TransactionValidationError("Amount is required.");
-  try {
-    const cents = parsePesoToCents(trimmed);
-    if (cents <= 0) throw new TransactionValidationError("Amount must be positive.");
-    return cents;
-  } catch (error) {
-    if (error instanceof PesoParseError || error instanceof TransactionValidationError) {
-      throw new TransactionValidationError(error.message);
-    }
-    throw error;
-  }
-}
-
-function parseTransactionDate(value: string): Date {
-  const trimmed = value.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-  if (!match) {
-    throw new TransactionValidationError("Transaction date is invalid.");
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() + 1 !== month ||
-    date.getUTCDate() !== day
-  ) {
-    throw new TransactionValidationError("Transaction date is invalid.");
-  }
-  return date;
-}
-
 function getAttachmentFile(formData: FormData): File {
   const file = formData.get("attachment");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new TransactionValidationError("One receipt attachment is required.");
+  if (!(file instanceof File) || file.size <= 0) {
+    throw new DomainError("Receipt attachment file is required.");
   }
-  const error = validateAttachmentFile(file);
-  if (error) throw new TransactionValidationError(error);
   return file;
-}
-
-async function writeAttachmentBuffer(validated: ValidatedAttachment) {
-  const storedName = `${crypto.randomUUID()}.${validated.extension}`;
-  const storagePath = path.join(UPLOADS_DIR, storedName);
-  await mkdir(UPLOADS_DIR, { recursive: true });
-  await writeFile(storagePath, validated.buffer);
-  return { storedName, storagePath, extension: validated.extension };
-}
-
-function actionError(error: unknown, fallback: string): TxActionState {
-  if (error instanceof TransactionValidationError) return { error: error.message };
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    console.error(fallback, error);
-    return { error: fallback };
-  }
-  console.error(fallback, error);
-  return { error: fallback };
 }
 
 const transactionSchema = z.object({
@@ -95,11 +38,12 @@ const transactionSchema = z.object({
   amount: z.string().trim().min(1, "Amount is required."),
   cashAccount: z.nativeEnum(CashAccount, { message: "Cash account is required." }),
   categoryId: z.string().trim().min(1, "Category is required."),
-  documentNumber: z.string().trim().optional(),
-  counterpartyName: z.string().trim().min(1, "Payor / Payee is required."),
-  description: z.string().trim().min(1, "Description is required."),
-  referenceDescription: z.string().trim().min(1, "Reference description is required."),
-  eventActivityName: z.string().trim().min(1, "Event / Activity is required."),
+  documentNumber: z.string().trim().max(100, "Document number must be under 100 characters.").optional(),
+  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(200, "Payor / Payee must be under 200 characters."),
+  description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
+  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(200, "Event / Activity name must be under 200 characters."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 function transactionFields(formData: FormData) {
@@ -114,28 +58,8 @@ function transactionFields(formData: FormData) {
     description: formData.get("description")?.toString() || "",
     referenceDescription: formData.get("referenceDescription")?.toString() || "",
     eventActivityName: formData.get("eventActivityName")?.toString() || "",
+    idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   };
-}
-
-async function getProjectedBalances(
-  tx: Prisma.TransactionClient,
-  organizationId: string,
-  termId: string,
-  openingCashOnHandCents: number,
-  openingCashInBankCents: number,
-  mutation: FinancialMutation
-) {
-  const rows = await tx.transaction.findMany({
-    where: { organizationId, termId, deletedAt: null },
-    select: { id: true, type: true, amountCents: true, cashAccount: true },
-  });
-  return projectMutationBalances(openingCashOnHandCents, openingCashInBankCents, rows, mutation);
-}
-
-function insufficientFundsError(): TransactionValidationError {
-  return new TransactionValidationError(
-    "Transaction failed: Insufficient funds in Cash on Hand/Bank balance."
-  );
 }
 
 export async function createTransactionAction(
@@ -154,11 +78,12 @@ export async function createTransactionAction(
   let transactionDate: Date;
   let file: File;
   try {
-    amountCents = parseAmount(validation.data.amount);
-    transactionDate = parseTransactionDate(validation.data.transactionDate);
+    amountCents = parsePesoToCents(validation.data.amount);
+    transactionDate = parseStrictDate(validation.data.transactionDate);
     file = getAttachmentFile(formData);
   } catch (error) {
-    return actionError(error, "Please fix the transaction details and attachment.");
+    if (error instanceof DomainError) return { error: error.message };
+    return { error: "Please fix the transaction details and attachment." };
   }
 
   const fileValidation = await validateAndReadAttachmentFile(file);
@@ -167,93 +92,30 @@ export async function createTransactionAction(
   }
   const validatedFile = fileValidation.data;
 
-  let fileInfo: { storedName: string; storagePath: string; extension: string } | null = null;
   try {
-    fileInfo = await writeAttachmentBuffer(validatedFile);
-    await prisma.$transaction(async (tx) => {
-      const term = await tx.academicTerm.findFirst({
-        where: { organizationId: user.organizationId!, active: true },
-      });
-      if (!term) throw new TransactionValidationError("No active academic term configured.");
-
-      const category = await tx.transactionCategory.findFirst({
-        where: { id: validation.data.categoryId, type: validation.data.type, active: true },
-      });
-      if (!category) throw new TransactionValidationError("Invalid or inactive category for this transaction type.");
-
-      const projected = await getProjectedBalances(
-        tx,
-        user.organizationId!,
-        term.id,
-        term.openingCashOnHandCents,
-        term.openingCashInBankCents,
-        {
-          type: "CREATE",
-          row: {
-            type: validation.data.type,
-            amountCents,
-            cashAccount: validation.data.cashAccount,
-          },
-        }
-      );
-      if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
-
-      const transaction = await tx.transaction.create({
-        data: {
-          organizationId: user.organizationId!,
-          termId: term.id,
-          type: validation.data.type,
-          transactionDate,
-          amountCents,
-          cashAccount: validation.data.cashAccount,
-          categoryId: category.id,
-          documentNumber: validation.data.documentNumber?.trim() || null,
-          counterpartyName: validation.data.counterpartyName.trim(),
-          description: validation.data.description.trim(),
-          referenceDescription: validation.data.referenceDescription.trim(),
-          eventActivityName: validation.data.eventActivityName.trim(),
-          recordedByUserId: user.id,
-        },
-      });
-
-      const attachment = await tx.attachment.create({
-        data: {
-          transactionId: transaction.id,
-          uploadedById: user.id,
-          originalName: file.name,
-          storedName: fileInfo!.storedName,
-          storagePath: fileInfo!.storagePath,
-          mimeType: file.type,
-          sizeBytes: file.size,
-        },
-      });
-
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: validation.data.type === TransactionType.INCOME ? AuditAction.ADDED_INCOME : AuditAction.ADDED_EXPENSE,
-        entityType: "Transaction",
-        entityId: transaction.id,
-        metadata: { type: transaction.type, cashAccount: transaction.cashAccount, amountCents },
-        tx,
-      });
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.UPLOADED_ATTACHMENT,
-        entityType: "Attachment",
-        entityId: attachment.id,
-        metadata: { transactionId: transaction.id, originalName: file.name, sizeBytes: file.size },
-        tx,
-      });
+    await createTransactionService(user, {
+      type: validation.data.type,
+      transactionDate,
+      amountCents,
+      cashAccount: validation.data.cashAccount,
+      categoryId: validation.data.categoryId,
+      documentNumber: validation.data.documentNumber,
+      counterpartyName: validation.data.counterpartyName,
+      description: validation.data.description,
+      referenceDescription: validation.data.referenceDescription,
+      eventActivityName: validation.data.eventActivityName,
+      idempotencyKey: validation.data.idempotencyKey,
+      attachment: {
+        originalName: validatedFile.originalName,
+        mimeType: validatedFile.mimeType,
+        sizeBytes: validatedFile.sizeBytes,
+        buffer: validatedFile.buffer,
+      },
     });
   } catch (error) {
-    if (fileInfo) {
-      try { await unlink(fileInfo.storagePath); } catch { /* best effort cleanup */ }
-    }
-    return actionError(error, "Failed to record transaction. Please try again.");
+    if (error instanceof DomainError) return { error: error.message };
+    console.error("Create transaction error:", error);
+    return { error: "Failed to record transaction. Please try again." };
   }
 
   revalidatePath("/dashboard");
@@ -261,7 +123,10 @@ export async function createTransactionAction(
   redirect("/ledger");
 }
 
-const editTransactionSchema = transactionSchema.extend({ id: z.string().trim().min(1) });
+const editTransactionSchema = transactionSchema.extend({
+  id: z.string().trim().min(1, "Transaction ID is required."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+});
 
 export async function editTransactionAction(
   _prevState: TxActionState,
@@ -269,89 +134,47 @@ export async function editTransactionAction(
 ): Promise<TxActionState> {
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
-  const validation = editTransactionSchema.safeParse({ ...transactionFields(formData), id: formData.get("id")?.toString() || "" });
+
+  const rawVersion = formData.get("version")?.toString();
+  if (!rawVersion || !rawVersion.trim()) {
+    return { error: "Missing or malformed transaction version." };
+  }
+
+  const rawFields = {
+    ...transactionFields(formData),
+    id: formData.get("id")?.toString() || "",
+    version: rawVersion.trim(),
+  };
+
+  const validation = editTransactionSchema.safeParse(rawFields);
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
 
-  let amountCents: number;
-  let transactionDate: Date;
   try {
-    amountCents = parseAmount(validation.data.amount);
-    transactionDate = parseTransactionDate(validation.data.transactionDate);
-  } catch (error) {
-    return actionError(error, "Please fix the transaction details.");
-  }
+    const amountCents = parsePesoToCents(validation.data.amount);
+    const transactionDate = parseStrictDate(validation.data.transactionDate);
+    const expectedVersion = parseInt(validation.data.version, 10);
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      const existing = await tx.transaction.findFirst({
-        where: { id: validation.data.id, organizationId: user.organizationId! },
-      });
-      if (!existing) throw new TransactionValidationError("Transaction not found.");
-      if (existing.deletedAt) throw new TransactionValidationError("Cannot edit a deleted transaction.");
-
-      const term = await tx.academicTerm.findFirst({
-        where: { id: existing.termId, organizationId: user.organizationId! },
-      });
-      if (!term) throw new TransactionValidationError("Transaction term not found.");
-
-      const category = await tx.transactionCategory.findFirst({
-        where: { id: validation.data.categoryId, type: validation.data.type, active: true },
-      });
-      if (!category) throw new TransactionValidationError("Invalid or inactive category for this transaction type.");
-
-      const projected = await getProjectedBalances(
-        tx,
-        user.organizationId!,
-        term.id,
-        term.openingCashOnHandCents,
-        term.openingCashInBankCents,
-        {
-          type: "EDIT",
-          existingId: existing.id,
-          newRow: {
-            type: validation.data.type,
-            amountCents,
-            cashAccount: validation.data.cashAccount,
-          },
-        }
-      );
-      if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
-
-      await tx.transaction.update({
-        where: { id: existing.id },
-        data: {
-          type: validation.data.type,
-          transactionDate,
-          amountCents,
-          cashAccount: validation.data.cashAccount,
-          categoryId: category.id,
-          documentNumber: validation.data.documentNumber?.trim() || null,
-          counterpartyName: validation.data.counterpartyName.trim(),
-          description: validation.data.description.trim(),
-          referenceDescription: validation.data.referenceDescription.trim(),
-          eventActivityName: validation.data.eventActivityName.trim(),
-          updatedByUserId: user.id,
-        },
-      });
-
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.EDITED_TRANSACTION,
-        entityType: "Transaction",
-        entityId: existing.id,
-        metadata: {
-          before: { type: existing.type, amountCents: existing.amountCents, cashAccount: existing.cashAccount, categoryId: existing.categoryId },
-          after: { type: validation.data.type, amountCents, cashAccount: validation.data.cashAccount, categoryId: category.id },
-        },
-        tx,
-      });
+    await editTransactionService(user, {
+      id: validation.data.id,
+      expectedVersion,
+      type: validation.data.type,
+      transactionDate,
+      amountCents,
+      cashAccount: validation.data.cashAccount,
+      categoryId: validation.data.categoryId,
+      documentNumber: validation.data.documentNumber,
+      counterpartyName: validation.data.counterpartyName,
+      description: validation.data.description,
+      referenceDescription: validation.data.referenceDescription,
+      eventActivityName: validation.data.eventActivityName,
+      idempotencyKey: validation.data.idempotencyKey,
     });
   } catch (error) {
-    return actionError(error, "Failed to edit transaction. Please try again.");
+    if (error instanceof DomainError) return { error: error.message };
+    console.error("Edit transaction error:", error);
+    return { error: "Failed to edit transaction. Please try again." };
   }
 
   revalidatePath("/dashboard");
@@ -360,8 +183,10 @@ export async function editTransactionAction(
 }
 
 const deleteTransactionSchema = z.object({
-  id: z.string().trim().min(1),
-  deleteReason: z.string().trim().min(1, "Deletion reason is required."),
+  id: z.string().trim().min(1, "Transaction ID is required."),
+  deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 export async function softDeleteTransactionAction(
@@ -370,57 +195,34 @@ export async function softDeleteTransactionAction(
 ): Promise<TxActionState> {
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
+
+  const rawVersion = formData.get("version")?.toString();
+  if (!rawVersion || !rawVersion.trim()) {
+    return { error: "Missing or malformed transaction version." };
+  }
+
   const validation = deleteTransactionSchema.safeParse({
     id: formData.get("id")?.toString() || "",
     deleteReason: formData.get("deleteReason")?.toString() || "",
+    version: rawVersion.trim(),
+    idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   });
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const existing = await tx.transaction.findFirst({
-        where: { id: validation.data.id, organizationId: user.organizationId! },
-      });
-      if (!existing) throw new TransactionValidationError("Transaction not found.");
-      if (existing.deletedAt) throw new TransactionValidationError("Transaction is already deleted.");
-
-      const term = await tx.academicTerm.findFirst({
-        where: { id: existing.termId, organizationId: user.organizationId! },
-      });
-      if (!term) throw new TransactionValidationError("Transaction term not found.");
-
-      const projected = await getProjectedBalances(
-        tx,
-        user.organizationId!,
-        term.id,
-        term.openingCashOnHandCents,
-        term.openingCashInBankCents,
-        {
-          type: "DELETE",
-          existingId: existing.id,
-        }
-      );
-      if (hasNegativeAccountBalance(projected)) throw insufficientFundsError();
-
-      await tx.transaction.update({
-        where: { id: existing.id },
-        data: { deletedAt: new Date(), deletedByUserId: user.id, deleteReason: validation.data.deleteReason.trim() },
-      });
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.DELETED_TRANSACTION,
-        entityType: "Transaction",
-        entityId: existing.id,
-        metadata: { deleteReason: validation.data.deleteReason.trim(), type: existing.type, amountCents: existing.amountCents, cashAccount: existing.cashAccount },
-        tx,
-      });
+    const expectedVersion = parseInt(validation.data.version, 10);
+    await deleteTransactionService(user, {
+      id: validation.data.id,
+      expectedVersion,
+      deleteReason: validation.data.deleteReason,
+      idempotencyKey: validation.data.idempotencyKey,
     });
   } catch (error) {
-    return actionError(error, "Failed to delete transaction. Please try again.");
+    if (error instanceof DomainError) return { error: error.message };
+    console.error("Delete transaction error:", error);
+    return { error: "Failed to delete transaction. Please try again." };
   }
 
   revalidatePath("/dashboard");

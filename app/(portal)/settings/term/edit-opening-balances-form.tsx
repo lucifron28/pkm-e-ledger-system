@@ -1,16 +1,18 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useMemo } from "react";
 import { updateOpeningBalancesAction } from "@/lib/actions/terms";
 
 interface EditOpeningBalancesFormProps {
   termId: string;
+  version?: number;
   initialCashOnHand: string;
   initialCashInBank: string;
 }
 
 export function EditOpeningBalancesForm({
   termId,
+  version = 1,
   initialCashOnHand,
   initialCashInBank,
 }: EditOpeningBalancesFormProps) {
@@ -19,7 +21,7 @@ export function EditOpeningBalancesForm({
     null
   );
   const [isOpen, setIsOpen] = useState(false);
-
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
   return (
     <div className="relative">
       {!isOpen && (
@@ -56,7 +58,8 @@ export function EditOpeningBalancesForm({
 
             <form action={formAction} className="space-y-4">
               <input type="hidden" name="termId" value={termId} />
-
+              <input type="hidden" name="version" value={version} />
+              <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
               <div>
                 <label
                   htmlFor={`cohand-${termId}`}

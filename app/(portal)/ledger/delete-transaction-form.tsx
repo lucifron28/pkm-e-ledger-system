@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useMemo } from "react";
 import { softDeleteTransactionAction } from "@/lib/actions/transactions";
 
-export function DeleteTransactionForm({ id }: { id: string }) {
+export function DeleteTransactionForm({ id, version }: { id: string; version: number }) {
   const [state, formAction, isPending] = useActionState(softDeleteTransactionAction, null);
   const [isOpen, setIsOpen] = useState(false);
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
     <div className="inline">
@@ -27,7 +28,8 @@ export function DeleteTransactionForm({ id }: { id: string }) {
 
             <form action={formAction} className="space-y-4">
               <input type="hidden" name="id" value={id} />
-
+              <input type="hidden" name="version" value={version} />
+              <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Deletion Reason</label>
                 <textarea
