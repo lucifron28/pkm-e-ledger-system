@@ -4,6 +4,7 @@ import {
   ConcurrentModificationError,
   IdempotencyConflictError,
   InsufficientFundsError,
+  IdempotencyInProgressError,
   RecordNotFoundError,
   StorageConsistencyError,
   ValidationError,
@@ -36,6 +37,7 @@ export function isNonRetryableDomainError(error: unknown): boolean {
     error instanceof InsufficientFundsError ||
     error instanceof ConcurrentModificationError ||
     error instanceof IdempotencyConflictError ||
+    error instanceof IdempotencyInProgressError ||
     error instanceof StorageConsistencyError
   );
 }

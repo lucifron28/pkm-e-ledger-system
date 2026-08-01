@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS "_LegacyReportArchive" (
 );
 
 INSERT INTO "_LegacyReportArchive" ("id", "organizationId", "termId", "type", "title", "generatedById", "snapshotDataJson", "fileStoragePath", "fileMimeType", "fileSizeBytes", "createdAt")
-SELECT "id", "organizationId", "termId", "type", "title", "generatedById", "snapshotDataJson", "fileStoragePath", "fileMimeType", "fileSizeBytes", "createdAt"
+SELECT "id", "organizationId", "termId", "type", "title", "generatedById", "filtersJson", NULL, NULL, NULL, "createdAt"
 FROM "Report"
 WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='Report');
 
@@ -32,6 +32,10 @@ DROP INDEX IF EXISTS "Report_organizationId_type_idx";
 DROP TABLE IF EXISTS "Report";
 
 -- 2. Deduplicate multiple active academic terms per organization BEFORE creating unique index
+-- Phase 7 AcademicTerm rows predate optimistic concurrency. Add the field
+-- before the normalization projection reads it.
+ALTER TABLE "AcademicTerm" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 1;
+
 UPDATE "AcademicTerm"
 SET "active" = 0
 WHERE ("active" = 1 OR "active" = true)
@@ -46,45 +50,44 @@ WHERE ("active" = 1 OR "active" = true)
     ) WHERE rn = 1
   );
 
--- 3. Academic-year normalization and conceptual term deduplication
--- Temporary table to calculate normalized academicYear
+-- 3. Academic-year normalization and conceptual term deduplication.
+-- Repoint dependents and delete duplicate terms before changing the retained
+-- row's unique academicYear value. Prefer the legacy A.Y. spelling when it
+-- exists, so the retained row is deterministic and preserves its identity.
 CREATE TEMP TABLE "_NormalizedTerm" AS
 SELECT
   "id",
   "organizationId",
   "semester",
+  "academicYear" AS "originalYear",
   TRIM(REPLACE(REPLACE(REPLACE(REPLACE("academicYear", 'A.Y. ', ''), 'AY ', ''), 'A.Y.', ''), 'AY', '')) AS "normYear",
+  "active",
+  "version",
   "updatedAt",
   "createdAt"
 FROM "AcademicTerm";
 
--- Identify canonical term ID per (organizationId, normYear, semester)
 CREATE TEMP TABLE "_CanonicalTermMap" AS
 SELECT
   "id" AS "oldId",
   FIRST_VALUE("id") OVER (
     PARTITION BY "organizationId", "normYear", "semester"
-    ORDER BY "updatedAt" DESC, "createdAt" DESC, "id" DESC
+    ORDER BY
+      CASE WHEN "originalYear" LIKE 'A.Y.%' OR "originalYear" LIKE 'AY %' THEN 0 ELSE 1 END,
+      "updatedAt" DESC,
+      "createdAt" DESC,
+      "id" DESC
   ) AS "canonicalId"
 FROM "_NormalizedTerm";
 
--- Update AcademicTerm academicYear to normalized value for canonical terms
-UPDATE "AcademicTerm"
-SET "academicYear" = (
-  SELECT "normYear" FROM "_NormalizedTerm" WHERE "_NormalizedTerm"."id" = "AcademicTerm"."id"
-)
-WHERE "id" IN (SELECT "canonicalId" FROM "_CanonicalTermMap");
-
--- Repoint transactions referencing non-canonical duplicate terms
+-- Repoint transactions referencing non-canonical duplicate terms.
 UPDATE "Transaction"
 SET "termId" = (
   SELECT "canonicalId" FROM "_CanonicalTermMap" WHERE "_CanonicalTermMap"."oldId" = "Transaction"."termId"
 )
-WHERE "termId" IN (
-  SELECT "oldId" FROM "_CanonicalTermMap" WHERE "oldId" <> "canonicalId"
-);
+WHERE "termId" IN (SELECT "oldId" FROM "_CanonicalTermMap" WHERE "oldId" <> "canonicalId");
 
--- Repoint cash transfers if any table exists
+-- Repoint cash transfers if any table exists.
 CREATE TABLE IF NOT EXISTS "CashTransfer" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
@@ -116,11 +119,39 @@ WHERE "termId" IN (
   SELECT "oldId" FROM "_CanonicalTermMap" WHERE "oldId" <> "canonicalId"
 );
 
--- Delete duplicate non-canonical terms
+UPDATE "_LegacyReportArchive"
+SET "termId" = (
+  SELECT "canonicalId" FROM "_CanonicalTermMap" WHERE "_CanonicalTermMap"."oldId" = "_LegacyReportArchive"."termId"
+)
+WHERE "termId" IN (
+  SELECT "oldId" FROM "_CanonicalTermMap" WHERE "oldId" <> "canonicalId"
+);
+
+-- Preserve active selection on the canonical row before deleting duplicates.
+UPDATE "AcademicTerm"
+SET "active" = CASE WHEN EXISTS (
+  SELECT 1
+  FROM "_NormalizedTerm" n
+  WHERE n."organizationId" = "AcademicTerm"."organizationId"
+    AND n."semester" = "AcademicTerm"."semester"
+    AND n."normYear" = (
+      SELECT norm."normYear" FROM "_NormalizedTerm" norm WHERE norm."id" = "AcademicTerm"."id"
+    )
+    AND n."active" = 1
+) THEN 1 ELSE "active" END
+WHERE "id" IN (SELECT "canonicalId" FROM "_CanonicalTermMap");
+
+-- Delete duplicate non-canonical terms before normalization.
 DELETE FROM "AcademicTerm"
 WHERE "id" IN (
   SELECT "oldId" FROM "_CanonicalTermMap" WHERE "oldId" <> "canonicalId"
 );
+
+UPDATE "AcademicTerm"
+SET "academicYear" = (
+  SELECT "normYear" FROM "_NormalizedTerm" WHERE "_NormalizedTerm"."id" = "AcademicTerm"."id"
+)
+WHERE "id" IN (SELECT "canonicalId" FROM "_CanonicalTermMap");
 
 DROP TABLE "_CanonicalTermMap";
 DROP TABLE "_NormalizedTerm";
@@ -142,8 +173,8 @@ CREATE TABLE "new_AcademicTerm" (
     CONSTRAINT "AcademicTerm_version_positive" CHECK ("version" >= 1),
     CONSTRAINT "AcademicTerm_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-INSERT INTO "new_AcademicTerm" ("academicYear", "active", "createdAt", "id", "openingCashInBankCents", "openingCashOnHandCents", "organizationId", "semester", "updatedAt")
-SELECT "academicYear", "active", "createdAt", "id", "openingCashInBankCents", "openingCashOnHandCents", "organizationId", "semester", "updatedAt" FROM "AcademicTerm";
+INSERT INTO "new_AcademicTerm" ("academicYear", "active", "createdAt", "id", "openingCashInBankCents", "openingCashOnHandCents", "organizationId", "semester", "updatedAt", "version")
+SELECT "academicYear", "active", "createdAt", "id", "openingCashInBankCents", "openingCashOnHandCents", "organizationId", "semester", "updatedAt", "version" FROM "AcademicTerm";
 DROP TABLE "AcademicTerm";
 ALTER TABLE "new_AcademicTerm" RENAME TO "AcademicTerm";
 CREATE INDEX "AcademicTerm_academicYear_semester_idx" ON "AcademicTerm"("academicYear", "semester");
@@ -286,9 +317,15 @@ CREATE INDEX "CashTransfer_deletedAt_idx" ON "CashTransfer"("deletedAt");
 
 -- 8. Create new Attachment table with XOR owner constraint & relative storagePath update
 -- Normalize storagePath in existing records to relative key (storedName)
+-- Phase 7 attachments were transaction-only. Add optional transfer ownership
+-- before rebuilding the table with the XOR constraint.
+ALTER TABLE "Attachment" ADD COLUMN "cashTransferId" TEXT;
+
 UPDATE "Attachment"
 SET "storagePath" = "storedName"
-WHERE "storagePath" LIKE '/%' OR "storagePath" LIKE '%\%';
+WHERE "storedName" IS NOT NULL
+  AND TRIM("storedName") <> ''
+  AND ("storagePath" LIKE '/%' OR "storagePath" LIKE '%\%');
 
 CREATE TABLE "new_Attachment" (
     "id" TEXT NOT NULL PRIMARY KEY,

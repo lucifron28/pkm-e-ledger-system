@@ -1,9 +1,9 @@
-import { prisma } from "../db/prisma";
 import { AcademicTerm, Semester } from "@prisma/client";
 import { SessionUser } from "../auth/session";
 import { isManagementRole } from "../auth/rbac";
 import {
   AccessDeniedError,
+  ConcurrentModificationError,
   RecordNotFoundError,
   ValidationError,
 } from "../domain/errors";
@@ -48,14 +48,14 @@ export async function createAcademicTermService(
     activate: Boolean(input.activate),
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "CREATE_ACADEMIC_TERM",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "CREATE_ACADEMIC_TERM",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existingActive = await tx.academicTerm.findFirst({
           where: { organizationId: user.organizationId!, active: true },
         });
@@ -107,9 +107,9 @@ export async function createAcademicTermService(
         });
 
         return { result: term, resultEntityType: "AcademicTerm", resultEntityId: term.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }
 
 export interface ActivateTermInput {
@@ -125,20 +125,29 @@ export async function activateAcademicTermService(
     throw new AccessDeniedError("Only authorized management roles can activate academic terms.");
   }
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "ACTIVATE_ACADEMIC_TERM",
-    input.idempotencyKey,
-    { termId: input.termId },
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "ACTIVATE_ACADEMIC_TERM",
+      input.idempotencyKey,
+      { termId: input.termId },
+      async (tx) => {
         const targetTerm = await tx.academicTerm.findFirst({
           where: { id: input.termId, organizationId: user.organizationId! },
         });
         if (!targetTerm) {
           throw new RecordNotFoundError("Academic term not found or access denied.");
         }
+
+        const previousActiveTerm = await tx.academicTerm.findFirst({
+          where: {
+            organizationId: user.organizationId!,
+            active: true,
+            id: { not: targetTerm.id },
+          },
+          select: { id: true },
+        });
 
         await tx.academicTerm.updateMany({
           where: { organizationId: user.organizationId!, active: true },
@@ -150,10 +159,25 @@ export async function activateAcademicTermService(
           data: { active: true },
         });
 
+        await createAuditLog({
+          userId: user.id,
+          organizationId: user.organizationId,
+          role: user.role,
+          action: AuditAction.ACTIVATED_ACADEMIC_TERM,
+          entityType: "AcademicTerm",
+          entityId: activated.id,
+          metadata: {
+            academicYear: activated.academicYear,
+            semester: activated.semester,
+            previousActiveTermId: previousActiveTerm?.id || null,
+          },
+          tx,
+        });
+
         return { result: activated, resultEntityType: "AcademicTerm", resultEntityId: activated.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }
 
 export interface UpdateOpeningBalancesInput {
@@ -182,21 +206,21 @@ export async function updateOpeningBalancesService(
     openingCashInBankCents: input.openingCashInBankCents,
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "UPDATE_OPENING_BALANCES",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "UPDATE_OPENING_BALANCES",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existing = await tx.academicTerm.findFirst({
           where: { id: input.termId, organizationId: user.organizationId! },
         });
         if (!existing) throw new RecordNotFoundError("Academic term not found.");
 
         if (existing.version !== input.expectedVersion) {
-          throw new ValidationError("Academic term was modified by another user.");
+          throw new ConcurrentModificationError("Academic term was modified by another user.");
         }
 
         const activeTransactions = await tx.transaction.findMany({
@@ -235,7 +259,7 @@ export async function updateOpeningBalancesService(
         });
 
         if (updatedResult.count === 0) {
-          throw new ValidationError("Concurrent modification conflict.");
+          throw new ConcurrentModificationError();
         }
 
         const updated = await tx.academicTerm.findUnique({
@@ -260,15 +284,21 @@ export async function updateOpeningBalancesService(
             newCashOnHandCents: input.openingCashOnHandCents,
             previousCashInBankCents: existing.openingCashInBankCents,
             newCashInBankCents: input.openingCashInBankCents,
-            previousVersion: existing.version,
-            newVersion: updated.version,
+            previousBalanceForwardedCents: calculateBalanceForwarded(
+              existing.openingCashOnHandCents,
+              existing.openingCashInBankCents
+            ),
+            newBalanceForwardedCents: calculateBalanceForwarded(
+              input.openingCashOnHandCents,
+              input.openingCashInBankCents
+            ),
             operation: "UPDATE",
           },
           tx,
         });
 
         return { result: updated, resultEntityType: "AcademicTerm", resultEntityId: updated.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }

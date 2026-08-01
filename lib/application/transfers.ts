@@ -1,15 +1,24 @@
 import { prisma } from "../db/prisma";
-import { processIdempotentCommand } from "./idempotency";
+import crypto from "crypto";
+import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import {
+  claimCommandReceipt,
+  processIdempotentCommand,
+  releaseCommandReceipt,
+} from "./idempotency";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import { AuditAction, CashAccount, CashTransfer } from "@prisma/client";
 import { SessionUser } from "../auth/session";
 import { isManagementRole } from "../auth/rbac";
 import {
   AccessDeniedError,
+  ConcurrentModificationError,
   InsufficientFundsError,
+  RecordNotFoundError,
   ValidationError,
 } from "../domain/errors";
 import { validateMoneyAmount } from "../domain/money";
+import { validateAttachmentPayload } from "../domain/attachments";
 import {
   projectMutationBalances,
   TransferRow,
@@ -55,6 +64,7 @@ function toCashTransferDto(transfer: CashTransfer & { recordedBy?: { fullName: s
 }
 
 export interface CreateTransferInput {
+  termId?: string;
   transferDate: Date;
   fromAccount: CashAccount;
   toAccount: CashAccount;
@@ -64,11 +74,22 @@ export interface CreateTransferInput {
   referenceDescription: string;
   eventActivityName?: string | null;
   idempotencyKey: string;
+  attachment: {
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    buffer: Uint8Array;
+  };
+}
+
+export interface TransferServiceDependencies {
+  storageService?: typeof defaultAttachmentStorageService;
 }
 
 export async function createCashTransferService(
   user: SessionUser,
-  input: CreateTransferInput
+  input: CreateTransferInput,
+  dependencies: TransferServiceDependencies = {}
 ): Promise<CashTransferDto> {
   if (!user || user.active === false || !user.organizationId || !isManagementRole(user.role)) {
     throw new AccessDeniedError("Only authorized management roles can record cash transfers.");
@@ -79,6 +100,14 @@ export async function createCashTransferService(
   }
 
   validateMoneyAmount(input.amountCents, false, "Transfer amount");
+  const attachmentError = validateAttachmentPayload(
+    input.attachment.originalName,
+    input.attachment.mimeType,
+    input.attachment.buffer,
+    input.attachment.sizeBytes
+  );
+  if (attachmentError) throw new ValidationError(attachmentError);
+  const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
 
   const payload = {
     transferDate: input.transferDate.toISOString(),
@@ -89,93 +118,166 @@ export async function createCashTransferService(
     description: input.description,
     referenceDescription: input.referenceDescription,
     eventActivityName: input.eventActivityName || null,
+    attachment: {
+      originalName: input.attachment.originalName,
+      mimeType: input.attachment.mimeType,
+      sizeBytes: input.attachment.sizeBytes,
+      fileHash,
+    },
   };
 
-  return processIdempotentCommand(
+  const receipt = await claimCommandReceipt<CashTransferDto>(
     user.id,
-    user.organizationId!,
+    user.organizationId,
     "CREATE_CASH_TRANSFER",
     input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
-        const term = await tx.academicTerm.findFirst({
-          where: { organizationId: user.organizationId!, active: true },
-        });
-        if (!term) {
-          throw new ValidationError("No active academic term configured for cash transfers.");
-        }
+    payload
+  );
+  if (receipt.status === "COMPLETED") {
+    return receipt.result;
+  }
 
-        const activeTransactions = await tx.transaction.findMany({
-          where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
-          select: { id: true, type: true, amountCents: true, cashAccount: true },
-        });
+  const claim = receipt.claim;
+  const storageService = dependencies.storageService || defaultAttachmentStorageService;
+  let staged: Awaited<ReturnType<typeof storageService.stageUpload>> | null = null;
+  let committedName: string | null = null;
+  try {
+    staged = await storageService.stageUpload(
+      input.attachment.buffer,
+      input.attachment.originalName,
+      input.attachment.mimeType
+    );
+    const committed = await storageService.commitUpload(staged.stageId, staged.extension);
+    committedName = committed.storageKey;
 
-        const activeTransfers = await tx.cashTransfer.findMany({
-          where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
-          select: { id: true, amountCents: true, fromAccount: true, toAccount: true },
-        });
+    const outcome = await withTransientRetry(() =>
+      processIdempotentCommand<CashTransferDto>(
+        user.id,
+        user.organizationId!,
+        "CREATE_CASH_TRANSFER",
+        input.idempotencyKey,
+        payload,
+        async (tx) => {
+          const term = await tx.academicTerm.findFirst({
+            where: { organizationId: user.organizationId!, active: true },
+          });
+          if (!term) {
+            throw new ValidationError("No active academic term configured for cash transfers.");
+          }
+          if (input.termId && input.termId !== term.id) {
+            throw new ValidationError("Supplied term is not the active academic term. New entries may only be recorded in the active term.");
+          }
 
-        const newTransferRow: TransferRow = {
-          amountCents: input.amountCents,
-          fromAccount: input.fromAccount,
-          toAccount: input.toAccount,
-        };
+          const activeTransactions = await tx.transaction.findMany({
+            where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
+            select: { id: true, type: true, amountCents: true, cashAccount: true },
+          });
 
-        const projected = projectMutationBalances(
-          term.openingCashOnHandCents,
-          term.openingCashInBankCents,
-          activeTransactions,
-          { type: "CREATE_TRANSFER", transfer: newTransferRow },
-          activeTransfers
-        );
+          const activeTransfers = await tx.cashTransfer.findMany({
+            where: { organizationId: user.organizationId!, termId: term.id, deletedAt: null },
+            select: { id: true, amountCents: true, fromAccount: true, toAccount: true },
+          });
 
-        if (projected.cashOnHandCents < 0 || projected.cashInBankCents < 0) {
-          throw new InsufficientFundsError("Cash transfer failed: Insufficient balance in source account.");
-        }
-
-        const created = await tx.cashTransfer.create({
-          data: {
-            organizationId: user.organizationId!,
-            termId: term.id,
-            transferDate: input.transferDate,
+          const newTransferRow: TransferRow = {
+            amountCents: input.amountCents,
             fromAccount: input.fromAccount,
             toAccount: input.toAccount,
-            amountCents: input.amountCents,
-            documentNumber: input.documentNumber?.trim() || null,
-            description: input.description.trim(),
-            referenceDescription: input.referenceDescription.trim(),
-            eventActivityName: input.eventActivityName?.trim() || null,
-            recordedByUserId: user.id,
-            idempotencyKey: input.idempotencyKey,
-          },
-          include: {
-            recordedBy: { select: { fullName: true } },
-          },
-        });
+          };
 
-        await createAuditLog({
-          userId: user.id,
-          organizationId: user.organizationId,
-          role: user.role,
-          action: AuditAction.CREATED_CASH_TRANSFER,
-          entityType: "CashTransfer",
-          entityId: created.id,
-          metadata: {
-            amountCents: created.amountCents,
-            fromAccount: created.fromAccount,
-            toAccount: created.toAccount,
-            description: created.description,
-            referenceDescription: created.referenceDescription,
-          },
-          tx,
-        });
+          const projected = projectMutationBalances(
+            term.openingCashOnHandCents,
+            term.openingCashInBankCents,
+            activeTransactions,
+            { type: "CREATE_TRANSFER", transfer: newTransferRow },
+            activeTransfers
+          );
 
-        const dto = toCashTransferDto(created);
-        return { result: dto, resultEntityType: "CashTransfer", resultEntityId: created.id };
-      });
+          if (projected.cashOnHandCents < 0 || projected.cashInBankCents < 0) {
+            throw new InsufficientFundsError("Cash transfer failed: Insufficient balance in source account.");
+          }
+
+          const created = await tx.cashTransfer.create({
+            data: {
+              organizationId: user.organizationId!,
+              termId: term.id,
+              transferDate: input.transferDate,
+              fromAccount: input.fromAccount,
+              toAccount: input.toAccount,
+              amountCents: input.amountCents,
+              documentNumber: input.documentNumber?.trim() || null,
+              description: input.description.trim(),
+              referenceDescription: input.referenceDescription.trim(),
+              eventActivityName: input.eventActivityName?.trim() || null,
+              recordedByUserId: user.id,
+              idempotencyKey: input.idempotencyKey,
+            },
+            include: {
+              recordedBy: { select: { fullName: true } },
+            },
+          });
+
+          const attachment = await tx.attachment.create({
+            data: {
+              cashTransferId: created.id,
+              uploadedById: user.id,
+              originalName: input.attachment.originalName,
+              storageKey: committed.storageKey,
+              mimeType: input.attachment.mimeType,
+              sizeBytes: input.attachment.sizeBytes,
+            },
+          });
+
+          await createAuditLog({
+            userId: user.id,
+            organizationId: user.organizationId,
+            role: user.role,
+            action: AuditAction.CREATED_CASH_TRANSFER,
+            entityType: "CashTransfer",
+            entityId: created.id,
+            metadata: {
+              amountCents: created.amountCents,
+              fromAccount: created.fromAccount,
+              toAccount: created.toAccount,
+              documentNumber: created.documentNumber,
+              description: created.description,
+              referenceDescription: created.referenceDescription,
+              eventActivityName: created.eventActivityName,
+            },
+            tx,
+          });
+
+          await createAuditLog({
+            userId: user.id,
+            organizationId: user.organizationId,
+            role: user.role,
+            action: AuditAction.UPLOADED_ATTACHMENT,
+            entityType: "Attachment",
+            entityId: attachment.id,
+            metadata: { cashTransferId: created.id, originalName: input.attachment.originalName, sizeBytes: input.attachment.sizeBytes },
+            tx,
+          });
+
+          const dto = toCashTransferDto(created);
+          return { result: dto, resultEntityType: "CashTransfer", resultEntityId: created.id };
+        },
+        { claimToken: claim.claimToken }
+      )
+    );
+
+    if (outcome.disposition === "CACHED" && committedName) {
+      // Another claimant completed this command; this caller's committed file
+      // is unreferenced and must be removed. When EXECUTED, retain the file
+      // without a second ownership query. Failures here keep the file for
+      // reconciliation rather than risk deleting a referenced file.
+      await storageService.deleteActiveFile(committedName).catch(() => undefined);
     }
-  );
+
+    return outcome.result;
+  } catch (error) {
+    if (staged) await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    throw error;
+  }
 }
 
 export interface EditTransferInput {
@@ -219,22 +321,22 @@ export async function editCashTransferService(
     eventActivityName: input.eventActivityName || null,
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "EDIT_CASH_TRANSFER",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "EDIT_CASH_TRANSFER",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existing = await tx.cashTransfer.findFirst({
           where: { id: input.id, organizationId: user.organizationId!, deletedAt: null },
         });
         if (!existing) {
-          throw new ValidationError("Cash transfer not found or access denied.");
+          throw new RecordNotFoundError("Cash transfer not found or access denied.");
         }
         if (existing.version !== input.expectedVersion) {
-          throw new ValidationError("This transfer was modified by another user. Reload and review latest version.");
+          throw new ConcurrentModificationError("This transfer was modified by another user. Reload and review latest version.");
         }
 
         const term = await tx.academicTerm.findFirst({
@@ -291,7 +393,7 @@ export async function editCashTransferService(
         });
 
         if (updatedResult.count === 0) {
-          throw new ValidationError("Concurrent modification conflict.");
+          throw new ConcurrentModificationError();
         }
 
         const updated = await tx.cashTransfer.findUnique({
@@ -300,7 +402,7 @@ export async function editCashTransferService(
         });
 
         if (!updated) {
-          throw new ValidationError("Cash transfer update failed.");
+          throw new RecordNotFoundError("Cash transfer update failed.");
         }
 
         await createAuditLog({
@@ -312,21 +414,35 @@ export async function editCashTransferService(
           entityId: updated.id,
           metadata: {
             before: {
-              transferDate: existing.transferDate,
+              id: existing.id,
+              organizationId: existing.organizationId,
+              termId: existing.termId,
+              transferDate: existing.transferDate.toISOString(),
               fromAccount: existing.fromAccount,
               toAccount: existing.toAccount,
               amountCents: existing.amountCents,
+              documentNumber: existing.documentNumber,
               description: existing.description,
               referenceDescription: existing.referenceDescription,
+              eventActivityName: existing.eventActivityName,
+              recordedByUserId: existing.recordedByUserId,
+              createdAt: existing.createdAt.toISOString(),
               version: existing.version,
             },
             after: {
-              transferDate: updated.transferDate,
+              id: updated.id,
+              organizationId: updated.organizationId,
+              termId: updated.termId,
+              transferDate: updated.transferDate.toISOString(),
               fromAccount: updated.fromAccount,
               toAccount: updated.toAccount,
               amountCents: updated.amountCents,
+              documentNumber: updated.documentNumber,
               description: updated.description,
               referenceDescription: updated.referenceDescription,
+              eventActivityName: updated.eventActivityName,
+              recordedByUserId: updated.recordedByUserId,
+              createdAt: updated.createdAt.toISOString(),
               version: updated.version,
             },
           },
@@ -335,9 +451,9 @@ export async function editCashTransferService(
 
         const dto = toCashTransferDto(updated);
         return { result: dto, resultEntityType: "CashTransfer", resultEntityId: updated.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }
 
 export interface DeleteTransferInput {
@@ -366,22 +482,22 @@ export async function deleteCashTransferService(
     deleteReason: reason,
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "DELETE_CASH_TRANSFER",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "DELETE_CASH_TRANSFER",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existing = await tx.cashTransfer.findFirst({
           where: { id: input.id, organizationId: user.organizationId!, deletedAt: null },
         });
         if (!existing) {
-          throw new ValidationError("Cash transfer not found or already deleted.");
+          throw new RecordNotFoundError("Cash transfer not found or already deleted.");
         }
         if (existing.version !== input.expectedVersion) {
-          throw new ValidationError("This transfer was modified by another user. Reload and review latest version.");
+          throw new ConcurrentModificationError("This transfer was modified by another user. Reload and review latest version.");
         }
 
         const term = await tx.academicTerm.findFirst({
@@ -427,7 +543,7 @@ export async function deleteCashTransferService(
         });
 
         if (updatedResult.count === 0) {
-          throw new ValidationError("Concurrent modification conflict.");
+          throw new ConcurrentModificationError();
         }
 
         await createAuditLog({
@@ -438,25 +554,31 @@ export async function deleteCashTransferService(
           entityType: "CashTransfer",
           entityId: existing.id,
           metadata: {
-            preDeletionRecord: {
+            deleteReason: reason,
+            before: {
               id: existing.id,
-              transferDate: existing.transferDate,
+              organizationId: existing.organizationId,
+              termId: existing.termId,
+              transferDate: existing.transferDate.toISOString(),
               fromAccount: existing.fromAccount,
               toAccount: existing.toAccount,
               amountCents: existing.amountCents,
+              documentNumber: existing.documentNumber,
               description: existing.description,
               referenceDescription: existing.referenceDescription,
+              eventActivityName: existing.eventActivityName,
+              recordedByUserId: existing.recordedByUserId,
+              createdAt: existing.createdAt.toISOString(),
               version: existing.version,
             },
-            deleteReason: reason,
           },
           tx,
         });
 
         return { result: undefined as void, resultEntityType: "CashTransfer", resultEntityId: existing.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }
 
 export async function listCashTransfersForUser(

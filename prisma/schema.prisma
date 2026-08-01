@@ -64,6 +64,7 @@ enum AuditAction {
   CREATED_CASH_TRANSFER
   EDITED_CASH_TRANSFER
   DELETED_CASH_TRANSFER
+  ACTIVATED_ACADEMIC_TERM
 }
 
 model Organization {
@@ -240,8 +241,7 @@ model Attachment {
   cashTransferId String?
   uploadedById   String
   originalName   String
-  storedName     String
-  storagePath    String
+  storageKey     String   @unique
   mimeType       String
   sizeBytes      Int
   createdAt      DateTime @default(now())
@@ -263,6 +263,8 @@ model CommandReceipt {
   commandType      String
   requestHash      String
   status           String    @default("PENDING")
+  claimToken       String?
+  leaseExpiresAt   DateTime?
   resultEntityType String?
   resultEntityId   String?
   responseJson     String?
@@ -274,6 +276,8 @@ model CommandReceipt {
 
   @@unique([actorUserId, idempotencyKey])
   @@index([organizationId, commandType])
+  @@index([status, createdAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model AuditLog {
@@ -285,6 +289,10 @@ model AuditLog {
   entityType     String?
   entityId       String?
   metadataJson   String?
+  actorUsernameSnapshot    String?
+  actorFullNameSnapshot    String?
+  actorRoleSnapshot        Role?
+  organizationNameSnapshot String?
   createdAt      DateTime    @default(now())
 
   user         User?         @relation(fields: [userId], references: [id])

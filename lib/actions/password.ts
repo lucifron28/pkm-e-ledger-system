@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { getSessionResult } from "../auth/session";
-import { createAuditLog } from "../data/audit-log";
+import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
 
 const passwordSchema = z.object({
@@ -111,7 +111,7 @@ export async function changePasswordAction(
         throw new Error("Your password was modified in another session. Please reload and try again.");
       }
 
-      await createAuditLog({
+      await createSystemAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,

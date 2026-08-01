@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "path";
 import fs from "fs";
 import { execSync } from "child_process";
-import { PrismaClient, Role } from "@prisma/client";
+import { PrismaClient, Role, ExpenseReportBucket } from "@prisma/client";
 import type { SessionUser } from "../../lib/auth/session";
 
 // Production modules are NEVER statically imported here: they transitively
@@ -89,6 +89,7 @@ test.before(async () => {
 
   // 2. Scaffold the isolated database with the real Prisma schema
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+  fs.writeFileSync(testDbPath, Buffer.alloc(0));
   execSync(`npx prisma db push --skip-generate`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
@@ -140,7 +141,7 @@ test.before(async () => {
     termAId = termA.id;
 
     const catInc = await prisma.transactionCategory.create({
-      data: { name: "Membership Fees", type: "INCOME", reportBucket: "Collections", active: true },
+      data: { name: "Membership Fees", type: "INCOME", reportBucket: ExpenseReportBucket.OTHERS, active: true },
     });
 
     const txA = await prisma.transaction.create({
@@ -166,8 +167,7 @@ test.before(async () => {
         transactionId: txA.id,
         uploadedById: treasurerActor.id,
         originalName: "receipt.png",
-        storedName: sampleFileName,
-        storagePath: sampleFilePath,
+        storageKey: sampleFileName,
         mimeType: "image/png",
         sizeBytes: 10,
       },

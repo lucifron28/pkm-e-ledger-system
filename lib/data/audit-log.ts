@@ -1,9 +1,207 @@
 import "server-only";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
-import { AuditAction, Prisma, Role } from "@prisma/client";
+import { AuditAction, CashAccount, Prisma, Role, Semester, TransactionType } from "@prisma/client";
+import { parseStrictDate } from "../domain/query";
 
-export interface LogAuditParams {
+export interface TransactionSnapshot {
+  id: string;
+  organizationId: string;
+  termId: string;
+  type: TransactionType;
+  transactionDate: string;
+  cashAccount: CashAccount;
+  amountCents: number;
+  categoryId: string | null;
+  categoryName: string | null;
+  documentNumber: string | null;
+  counterpartyName: string | null;
+  description: string;
+  referenceDescription: string;
+  eventActivityName: string | null;
+  recordedByUserId: string;
+  createdAt: string;
+  version: number;
+}
+
+export interface CashTransferSnapshot {
+  id: string;
+  organizationId: string;
+  termId: string;
+  transferDate: string;
+  fromAccount: CashAccount;
+  toAccount: CashAccount;
+  amountCents: number;
+  documentNumber: string | null;
+  description: string;
+  referenceDescription: string;
+  eventActivityName: string | null;
+  recordedByUserId: string;
+  createdAt: string;
+  version: number;
+}
+
+export interface TransactionCreateAuditMetadata {
+  type: TransactionType;
+  cashAccount: CashAccount;
+  amountCents: number;
+  categoryId?: string;
+  categoryName?: string;
+  documentNumber?: string | null;
+  counterpartyName?: string | null;
+  description?: string;
+  referenceDescription?: string;
+  eventActivityName?: string | null;
+}
+
+export interface TransactionEditAuditMetadata {
+  before: TransactionSnapshot;
+  after: TransactionSnapshot;
+}
+
+export interface TransactionDeleteAuditMetadata {
+  deleteReason: string;
+  before: TransactionSnapshot;
+}
+
+export interface CashTransferCreateAuditMetadata {
+  amountCents: number;
+  fromAccount: CashAccount;
+  toAccount: CashAccount;
+  documentNumber?: string | null;
+  description: string;
+  referenceDescription: string;
+  eventActivityName?: string | null;
+}
+
+export interface CashTransferEditAuditMetadata {
+  before: CashTransferSnapshot;
+  after: CashTransferSnapshot;
+}
+
+export interface CashTransferDeleteAuditMetadata {
+  deleteReason: string;
+  before: CashTransferSnapshot;
+}
+
+export interface OpeningBalanceUpdateAuditMetadata {
+  academicYear: string;
+  semester: Semester;
+  previousCashOnHandCents: number;
+  newCashOnHandCents: number;
+  previousCashInBankCents: number;
+  newCashInBankCents: number;
+  previousBalanceForwardedCents: number;
+  newBalanceForwardedCents: number;
+  operation: "CREATE" | "UPDATE";
+}
+
+export interface TermActivationAuditMetadata {
+  academicYear: string;
+  semester: Semester;
+  previousActiveTermId: string | null;
+}
+
+export interface AttachmentUploadAuditMetadata {
+  transactionId?: string | null;
+  cashTransferId?: string | null;
+  originalName: string;
+  mimeType?: string;
+  sizeBytes: number;
+}
+
+export interface AttachmentDeleteAuditMetadata {
+  transactionId?: string | null;
+  cashTransferId?: string | null;
+  originalName: string;
+}
+
+export interface ReportGenerationAuditMetadata {
+  reportType: "SUMMARY" | "PDF" | "EXCEL" | "PACKAGE";
+  termId: string;
+  format?: "PDF" | "EXCEL" | "HTML";
+}
+
+export type ActionSpecificAuditMetadata =
+  | TransactionCreateAuditMetadata
+  | TransactionEditAuditMetadata
+  | TransactionDeleteAuditMetadata
+  | CashTransferCreateAuditMetadata
+  | CashTransferEditAuditMetadata
+  | CashTransferDeleteAuditMetadata
+  | OpeningBalanceUpdateAuditMetadata
+  | TermActivationAuditMetadata
+  | AttachmentUploadAuditMetadata
+  | AttachmentDeleteAuditMetadata
+  | ReportGenerationAuditMetadata;
+
+/**
+ * Maps every audited financial action to the metadata shape its audit entry
+ * must carry. Actions without a mapping carry free-form metadata.
+ */
+export type AuditMetadataByAction = {
+  ADDED_INCOME: TransactionCreateAuditMetadata;
+  ADDED_EXPENSE: TransactionCreateAuditMetadata;
+  EDITED_TRANSACTION: TransactionEditAuditMetadata;
+  DELETED_TRANSACTION: TransactionDeleteAuditMetadata;
+  CREATED_CASH_TRANSFER: CashTransferCreateAuditMetadata;
+  EDITED_CASH_TRANSFER: CashTransferEditAuditMetadata;
+  DELETED_CASH_TRANSFER: CashTransferDeleteAuditMetadata;
+  CHANGED_OPENING_BALANCE: OpeningBalanceUpdateAuditMetadata;
+  ACTIVATED_ACADEMIC_TERM: TermActivationAuditMetadata;
+  UPLOADED_ATTACHMENT: AttachmentUploadAuditMetadata;
+  DELETED_ATTACHMENT: AttachmentDeleteAuditMetadata;
+  GENERATED_REPORT: ReportGenerationAuditMetadata;
+};
+
+/** Compile-time key: ensures the mapping covers every financial AuditAction. */
+export type FinancialAuditAction = keyof Pick<
+  AuditMetadataByAction,
+  | "ADDED_INCOME"
+  | "ADDED_EXPENSE"
+  | "EDITED_TRANSACTION"
+  | "DELETED_TRANSACTION"
+  | "CREATED_CASH_TRANSFER"
+  | "EDITED_CASH_TRANSFER"
+  | "DELETED_CASH_TRANSFER"
+  | "CHANGED_OPENING_BALANCE"
+  | "ACTIVATED_ACADEMIC_TERM"
+>;
+
+/** Generic: selects the exact metadata type required for a given financial action. */
+export type AuditMetadataFor<A extends FinancialAuditAction> = AuditMetadataByAction[A];
+
+export type AuditActionWithMetadata = keyof AuditMetadataByAction;
+
+/**
+ * Mapped actions carry an exact, REQUIRED metadata shape. Actions without a
+ * mapping carry optional free-form metadata.
+ */
+type MappedMetadataField<A extends AuditAction> = A extends AuditActionWithMetadata
+  ? { metadata: AuditMetadataByAction[A] }
+  : { metadata?: Record<string, unknown> | null };
+
+export type LogAuditParams<A extends AuditAction = AuditAction> = MappedMetadataField<A> & {
+  userId?: string | null;
+  organizationId?: string | null;
+  role?: Role | null;
+  action: A;
+  entityType?: string | null;
+  entityId?: string | null;
+  actorUsername?: string | null;
+  actorFullName?: string | null;
+  organizationNameSnapshot?: string | null;
+  tx?: Prisma.TransactionClient;
+  throwOnError?: boolean;
+};
+
+/**
+ * Explicitly untyped/system audit API for events that are not covered by
+ * AuditMetadataByAction (authentication events, registrations, system notices).
+ * Use this deliberately; financial mutations must use the exact typed metadata
+ * enforced by createAuditLog.
+ */
+export interface SystemAuditLogParams {
   userId?: string | null;
   organizationId?: string | null;
   role?: Role | null;
@@ -45,8 +243,13 @@ export function redactSensitiveKeys(value: unknown): unknown {
 
 /**
  * Creates an immutable audit log entry.
+ *
+ * When the action maps to a typed metadata shape (see AuditMetadataByAction),
+ * the metadata parameter is required to be exactly that shape at compile time.
  */
-export async function createAuditLog(params: LogAuditParams): Promise<void> {
+export async function createAuditLog<A extends AuditAction>(
+  params: LogAuditParams<A>
+): Promise<void> {
   const db = params.tx || prisma;
 
   let username = params.actorUsername || null;
@@ -104,6 +307,10 @@ export async function createAuditLog(params: LogAuditParams): Promise<void> {
         entityType: params.entityType || null,
         entityId: params.entityId || null,
         metadataJson: safeMetadataJson,
+        actorUsernameSnapshot: username,
+        actorFullNameSnapshot: fullName,
+        actorRoleSnapshot: params.role || null,
+        organizationNameSnapshot: orgName,
       },
     });
   } catch (error) {
@@ -112,6 +319,16 @@ export async function createAuditLog(params: LogAuditParams): Promise<void> {
     }
     console.error("Failed to write audit log:", error);
   }
+}
+
+/**
+ * Explicitly untyped/system audit entry for events not covered by the
+ * AuditMetadataByAction mapping (e.g. LOGGED_IN, LOGGED_OUT,
+ * CHANGED_PASSWORD, REGISTERED_USER). Mapped financial mutations must use the
+ * typed createAuditLog API so their metadata stays exact and complete.
+ */
+export async function createSystemAuditLog(params: SystemAuditLogParams): Promise<void> {
+  await createAuditLog(params);
 }
 
 export interface AuditLogDto {
@@ -134,6 +351,38 @@ export interface AuditLogPageDto {
   pagination: {
     hasMore: boolean;
     nextCursor: string | null;
+  };
+}
+
+type AuditLogWithRelations = Prisma.AuditLogGetPayload<{
+  include: {
+    user: { select: { id: true; username: true; fullName: true } };
+    organization: { select: { id: true; name: true } };
+  };
+}>;
+
+export function toAuditLogDto(log: AuditLogWithRelations): AuditLogDto {
+  let meta: Record<string, unknown> | null = null;
+  if (log.metadataJson) {
+    try {
+      meta = JSON.parse(log.metadataJson);
+    } catch {
+      /* preserve row even when legacy metadata is malformed */
+    }
+  }
+  return {
+    id: log.id,
+    action: log.action,
+    userId: log.userId,
+    username: log.actorUsernameSnapshot ?? (meta?.actorUsername as string | null) ?? log.user?.username ?? null,
+    fullName: log.actorFullNameSnapshot ?? (meta?.actorFullName as string | null) ?? log.user?.fullName ?? null,
+    role: log.actorRoleSnapshot ?? (meta?.actorRole as Role | null) ?? log.role ?? null,
+    organizationId: log.organizationId,
+    organizationName: log.organizationNameSnapshot ?? (meta?.organizationNameSnapshot as string | null) ?? log.organization?.name ?? null,
+    createdAt: log.createdAt,
+    entityType: log.entityType,
+    entityId: log.entityId,
+    metadataJson: log.metadataJson,
   };
 }
 
@@ -170,27 +419,29 @@ export async function listAuditLogsForCurrentOrganization(
   }
 
   if (filters.dateFrom || filters.dateTo) {
-    let gte: Date | undefined = undefined;
-    let lte: Date | undefined = undefined;
+    try {
+      let gte: Date | undefined = undefined;
+      let lte: Date | undefined = undefined;
 
-    if (filters.dateFrom) {
-      const d = new Date(filters.dateFrom);
-      if (!isNaN(d.getTime())) {
+      if (filters.dateFrom) {
+        const d = parseStrictDate(filters.dateFrom);
         gte = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
       }
-    }
 
-    if (filters.dateTo) {
-      const d = new Date(filters.dateTo);
-      if (!isNaN(d.getTime())) {
+      if (filters.dateTo) {
+        const d = parseStrictDate(filters.dateTo);
         lte = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
       }
-    }
 
-    where.createdAt = {
-      ...(gte ? { gte } : {}),
-      ...(lte ? { lte } : {}),
-    };
+      if (gte && lte && gte > lte) return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+
+      where.createdAt = {
+        ...(gte ? { gte } : {}),
+        ...(lte ? { lte } : {}),
+      };
+    } catch {
+      return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+    }
   }
 
   const logs = await prisma.auditLog.findMany({
@@ -212,26 +463,7 @@ export async function listAuditLogsForCurrentOrganization(
       : null;
 
   return {
-    logs: paginatedLogs.map((log) => {
-      let meta: Record<string, unknown> | null = null;
-      if (log.metadataJson) {
-        try { meta = JSON.parse(log.metadataJson); } catch { /* ignore */ }
-      }
-      return {
-        id: log.id,
-        action: log.action,
-        userId: log.userId,
-        username: log.user?.username ?? (meta?.actorUsername as string | null) ?? null,
-        fullName: log.user?.fullName ?? (meta?.actorFullName as string | null) ?? null,
-        role: log.role ?? (meta?.actorRole as Role | null) ?? null,
-        organizationId: log.organizationId,
-        organizationName: log.organization?.name ?? (meta?.organizationNameSnapshot as string | null) ?? null,
-        createdAt: log.createdAt,
-        entityType: log.entityType,
-        entityId: log.entityId,
-        metadataJson: log.metadataJson,
-      };
-    }),
+    logs: paginatedLogs.map(toAuditLogDto),
     pagination: { hasMore, nextCursor },
   };
 }

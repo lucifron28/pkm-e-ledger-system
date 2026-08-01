@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { hashPassword } from "../auth/password";
-import { createAuditLog } from "../data/audit-log";
+import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
 
 const PUBLIC_ALLOWED_ROLES: Role[] = [Role.OFFICER, Role.MEMBER];
@@ -107,7 +107,7 @@ export async function registerAction(
         },
       });
 
-      await createAuditLog({
+      await createSystemAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,

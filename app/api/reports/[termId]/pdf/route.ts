@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, SessionUser } from "@/lib/auth/session";
-import { isManagementRole } from "@/lib/auth/rbac";
 import { getReportPackageForUser } from "@/lib/data/reports";
 import { createAuditLog } from "@/lib/data/audit-log";
 import { buildReportPdfBuffer } from "@/lib/reports/renderers/pdf-report-renderer";
@@ -36,7 +35,7 @@ export async function handleReportPdfExportRequest(
       action: AuditAction.GENERATED_REPORT,
       entityType: "ReportPackage",
       entityId: termId,
-      metadata: { format: "PDF", termId, academicYear: report.academicYear, semester: report.semester },
+      metadata: { reportType: "PACKAGE", format: "PDF", termId },
       throwOnError: true,
     });
 

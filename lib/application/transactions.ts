@@ -1,7 +1,10 @@
-import { prisma } from "../db/prisma";
 import crypto from "crypto";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
-import { processIdempotentCommand } from "./idempotency";
+import {
+  claimCommandReceipt,
+  processIdempotentCommand,
+  releaseCommandReceipt,
+} from "./idempotency";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import { CashAccount, TransactionType } from "@prisma/client";
 import { SessionUser } from "../auth/session";
@@ -13,6 +16,7 @@ import {
   ValidationError,
 } from "../domain/errors";
 import { validateMoneyAmount } from "../domain/money";
+import { validateAttachmentPayload } from "../domain/attachments";
 import {
   assertSufficientFunds,
   projectMutationBalances,
@@ -42,6 +46,7 @@ export interface TransactionDto {
 }
 
 export interface CreateTransactionInput {
+  termId?: string;
   type: TransactionType;
   transactionDate: Date;
   amountCents: number;
@@ -61,15 +66,27 @@ export interface CreateTransactionInput {
   };
 }
 
+export interface TransactionServiceDependencies {
+  storageService?: typeof defaultAttachmentStorageService;
+}
+
 export async function createTransactionService(
   user: SessionUser,
-  input: CreateTransactionInput
+  input: CreateTransactionInput,
+  dependencies: TransactionServiceDependencies = {}
 ): Promise<TransactionDto> {
   if (!user || user.active === false || !user.organizationId || !isManagementRole(user.role)) {
     throw new AccessDeniedError("Only authorized management roles can record transactions.");
   }
 
   validateMoneyAmount(input.amountCents, false, "Transaction amount");
+  const attachmentError = validateAttachmentPayload(
+    input.attachment.originalName,
+    input.attachment.mimeType,
+    input.attachment.buffer,
+    input.attachment.sizeBytes
+  );
+  if (attachmentError) throw new ValidationError(attachmentError);
   const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
 
   const payloadForHash = {
@@ -91,32 +108,46 @@ export async function createTransactionService(
     },
   };
 
-  // 1. Stage and commit attachment file
-  const storageService = defaultAttachmentStorageService;
-  const staged = await storageService.stageUpload(
-    input.attachment.buffer,
-    input.attachment.originalName,
-    input.attachment.mimeType
+  const receipt = await claimCommandReceipt<TransactionDto>(
+    user.id,
+    user.organizationId,
+    "CREATE_TRANSACTION",
+    input.idempotencyKey,
+    payloadForHash
   );
+  if (receipt.status === "COMPLETED") {
+    return receipt.result;
+  }
 
+  const claim = receipt.claim;
+  const storageService = dependencies.storageService || defaultAttachmentStorageService;
+  let staged: Awaited<ReturnType<typeof storageService.stageUpload>> | null = null;
   let committedName: string | null = null;
   try {
+    staged = await storageService.stageUpload(
+      input.attachment.buffer,
+      input.attachment.originalName,
+      input.attachment.mimeType
+    );
     const committed = await storageService.commitUpload(staged.stageId, staged.extension);
-    committedName = committed.storedName;
+    committedName = committed.storageKey;
 
-    const result = await processIdempotentCommand(
-      user.id,
-      user.organizationId!,
-      "CREATE_TRANSACTION",
-      input.idempotencyKey,
-      payloadForHash,
-      async (tx) => {
-        return withTransientRetry(async () => {
+    const outcome = await withTransientRetry(() =>
+      processIdempotentCommand<TransactionDto>(
+        user.id,
+        user.organizationId!,
+        "CREATE_TRANSACTION",
+        input.idempotencyKey,
+        payloadForHash,
+        async (tx) => {
           const term = await tx.academicTerm.findFirst({
             where: { organizationId: user.organizationId!, active: true },
           });
           if (!term) {
             throw new ValidationError("No active academic term configured for transactions.");
+          }
+          if (input.termId && input.termId !== term.id) {
+            throw new ValidationError("Supplied term is not the active academic term. New entries may only be recorded in the active term.");
           }
 
           const category = await tx.transactionCategory.findFirst({
@@ -181,8 +212,7 @@ export async function createTransactionService(
               transactionId: transaction.id,
               uploadedById: user.id,
               originalName: input.attachment.originalName,
-              storedName: committed.storedName,
-              storagePath: committed.storedName,
+              storageKey: committed.storageKey,
               mimeType: input.attachment.mimeType,
               sizeBytes: input.attachment.sizeBytes,
             },
@@ -195,7 +225,18 @@ export async function createTransactionService(
             action: input.type === TransactionType.INCOME ? AuditAction.ADDED_INCOME : AuditAction.ADDED_EXPENSE,
             entityType: "Transaction",
             entityId: transaction.id,
-            metadata: { type: transaction.type, cashAccount: transaction.cashAccount, amountCents: input.amountCents },
+            metadata: {
+              type: transaction.type,
+              cashAccount: transaction.cashAccount,
+              amountCents: input.amountCents,
+              categoryId: category.id,
+              categoryName: category.name,
+              documentNumber: transaction.documentNumber,
+              counterpartyName: transaction.counterpartyName,
+              description: transaction.description,
+              referenceDescription: transaction.referenceDescription,
+              eventActivityName: transaction.eventActivityName,
+            },
             tx,
           });
 
@@ -232,16 +273,23 @@ export async function createTransactionService(
           };
 
           return { result: dto, resultEntityType: "Transaction", resultEntityId: transaction.id };
-        });
-      }
+        },
+        { claimToken: claim.claimToken }
+      )
     );
 
-    return result;
-  } catch (error) {
-    await storageService.discardStagedUpload(staged.stageId, staged.extension);
-    if (committedName) {
-      await storageService.deleteActiveFile(committedName);
+    if (outcome.disposition === "CACHED" && committedName) {
+      // Another claimant completed this command; this caller's committed file
+      // is unreferenced and must be removed. When EXECUTED, retain the file
+      // without a second ownership query. Failures here keep the file for
+      // reconciliation rather than risk deleting a referenced file.
+      await storageService.deleteActiveFile(committedName).catch(() => undefined);
     }
+
+    return outcome.result;
+  } catch (error) {
+    if (staged) await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    await releaseCommandReceipt(claim).catch(() => undefined);
     throw error;
   }
 }
@@ -287,14 +335,14 @@ export async function editTransactionService(
     eventActivityName: input.eventActivityName || null,
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "EDIT_TRANSACTION",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand<TransactionDto>(
+      user.id,
+      user.organizationId!,
+      "EDIT_TRANSACTION",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existing = await tx.transaction.findFirst({
           where: { id: input.id, organizationId: user.organizationId!, deletedAt: null },
           include: { category: { select: { name: true } } },
@@ -398,10 +446,13 @@ export async function editTransactionService(
           entityId: updated.id,
           metadata: {
             before: {
+              id: existing.id,
+              organizationId: existing.organizationId,
+              termId: existing.termId,
               type: existing.type,
-              transactionDate: existing.transactionDate,
-              amountCents: existing.amountCents,
+              transactionDate: existing.transactionDate.toISOString(),
               cashAccount: existing.cashAccount,
+              amountCents: existing.amountCents,
               categoryId: existing.categoryId,
               categoryName: existing.category.name,
               documentNumber: existing.documentNumber,
@@ -409,13 +460,18 @@ export async function editTransactionService(
               description: existing.description,
               referenceDescription: existing.referenceDescription,
               eventActivityName: existing.eventActivityName,
+              recordedByUserId: existing.recordedByUserId,
+              createdAt: existing.createdAt.toISOString(),
               version: existing.version,
             },
             after: {
+              id: updated.id,
+              organizationId: updated.organizationId,
+              termId: updated.termId,
               type: updated.type,
-              transactionDate: updated.transactionDate,
-              amountCents: updated.amountCents,
+              transactionDate: updated.transactionDate.toISOString(),
               cashAccount: updated.cashAccount,
+              amountCents: updated.amountCents,
               categoryId: updated.categoryId,
               categoryName: updated.category.name,
               documentNumber: updated.documentNumber,
@@ -423,6 +479,8 @@ export async function editTransactionService(
               description: updated.description,
               referenceDescription: updated.referenceDescription,
               eventActivityName: updated.eventActivityName,
+              recordedByUserId: updated.recordedByUserId,
+              createdAt: updated.createdAt.toISOString(),
               version: updated.version,
             },
           },
@@ -451,9 +509,9 @@ export async function editTransactionService(
         };
 
         return { result: dto, resultEntityType: "Transaction", resultEntityId: updated.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }
 
 export interface DeleteTransactionInput {
@@ -482,16 +540,17 @@ export async function deleteTransactionService(
     deleteReason: reason,
   };
 
-  return processIdempotentCommand(
-    user.id,
-    user.organizationId!,
-    "DELETE_TRANSACTION",
-    input.idempotencyKey,
-    payload,
-    async (tx) => {
-      return withTransientRetry(async () => {
+  return withTransientRetry(() =>
+    processIdempotentCommand(
+      user.id,
+      user.organizationId!,
+      "DELETE_TRANSACTION",
+      input.idempotencyKey,
+      payload,
+      async (tx) => {
         const existing = await tx.transaction.findFirst({
           where: { id: input.id, organizationId: user.organizationId!, deletedAt: null },
+          include: { category: { select: { name: true } } },
         });
 
         if (!existing) {
@@ -559,26 +618,32 @@ export async function deleteTransactionService(
           entityType: "Transaction",
           entityId: existing.id,
           metadata: {
-            preDeletionRecord: {
+            deleteReason: reason,
+            before: {
               id: existing.id,
+              organizationId: existing.organizationId,
+              termId: existing.termId,
               type: existing.type,
-              amountCents: existing.amountCents,
+              transactionDate: existing.transactionDate.toISOString(),
               cashAccount: existing.cashAccount,
+              amountCents: existing.amountCents,
               categoryId: existing.categoryId,
+              categoryName: existing.category.name,
               documentNumber: existing.documentNumber,
               counterpartyName: existing.counterpartyName,
               description: existing.description,
               referenceDescription: existing.referenceDescription,
               eventActivityName: existing.eventActivityName,
+              recordedByUserId: existing.recordedByUserId,
+              createdAt: existing.createdAt.toISOString(),
               version: existing.version,
             },
-            deleteReason: reason,
           },
           tx,
         });
 
         return { result: undefined as void, resultEntityType: "Transaction", resultEntityId: existing.id };
-      });
-    }
-  );
+      }
+    )
+  ).then((outcome) => outcome.result);
 }

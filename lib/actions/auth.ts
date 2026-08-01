@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { verifyPassword } from "../auth/password";
 import { getPostLoginDestination, SESSION_COOKIE_NAME, SESSION_DURATION_MS } from "../auth/session";
-import { createAuditLog } from "../data/audit-log";
+import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction } from "@prisma/client";
 
 // Pre-computed bcrypt cost-12 hash for timing-attack mitigation on nonexistent users
@@ -108,7 +108,7 @@ export async function loginAction(
           },
         });
 
-        await createAuditLog({
+        await createSystemAuditLog({
           userId: user.id,
           organizationId: user.organizationId,
           role: user.role,

@@ -1,6 +1,11 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
 import { listAuditLogsForCurrentOrganization } from "@/lib/data/audit-log";
-import { parseScalarString, parsePageSize } from "@/lib/domain/query";
+import {
+  hasScalarValue,
+  parseDateRangeParams,
+  parsePageSize,
+  parseScalarString,
+} from "@/lib/domain/query";
 import Link from "next/link";
 import { AuditAction } from "@prisma/client";
 
@@ -16,11 +21,20 @@ export default async function AuditLogPage({
   const action = Object.values(AuditAction).includes(actionRaw as AuditAction)
     ? (actionRaw as AuditAction)
     : undefined;
-  const dateFrom = parseScalarString(rawParams.dateFrom);
-  const dateTo = parseScalarString(rawParams.dateTo);
+  const dateQuery = parseDateRangeParams(rawParams);
+  const dateFrom = dateQuery.dateFrom;
+  const dateTo = dateQuery.dateTo;
   const actorUserId = parseScalarString(rawParams.actorUserId);
   const cursor = parseScalarString(rawParams.cursor);
-  const pageSize = parsePageSize(rawParams.pageSize, 50, 100);
+  const pageSizeInput = rawParams.pageSize;
+  const pageSizeString = parseScalarString(pageSizeInput);
+  const pageSize = parsePageSize(pageSizeInput, 50, 100);
+  const invalidQuery =
+    (hasScalarValue(rawParams.action) && (!actionRaw || !action)) ||
+    dateQuery.invalidDateRange ||
+    (hasScalarValue(rawParams.actorUserId) && !actorUserId) ||
+    (hasScalarValue(rawParams.cursor) && !cursor) ||
+    (hasScalarValue(pageSizeInput) && (!pageSizeString || !/^\d+$/.test(pageSizeString) || Number(pageSizeString) <= 0 || Number(pageSizeString) > 100));
 
   if (!user.organizationId) {
     return (
@@ -28,6 +42,17 @@ export default async function AuditLogPage({
         <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
           <p className="font-semibold text-amber-800">You are not assigned to an organization.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (invalidQuery) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
+          <p className="font-semibold text-amber-800">Invalid audit-log filter. Check action, dates, cursor, and page size.</p>
         </div>
       </div>
     );

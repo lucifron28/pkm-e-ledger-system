@@ -232,10 +232,22 @@ export async function getOsaLedgerSummaryForUser(
   academicYear?: string,
   semester?: Semester
 ): Promise<OsaLedgerSummaryDto | null> {
-  const org = await validateOsaOrganizationForUser(orgSlugOrId, user);
-  if (!org) return null;
+  if (!user || user.active === false || user.role !== Role.OSA) {
+    throw new Error("Access denied: OSA monitoring access required.");
+  }
+  const organizationKey = typeof orgSlugOrId === "string" ? orgSlugOrId.trim() : "";
+  if (!organizationKey) return null;
 
   return prisma.$transaction(async (tx) => {
+    const org = await tx.organization.findFirst({
+      where: {
+        active: true,
+        OR: [{ id: organizationKey }, { slug: organizationKey }],
+      },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!org) return null;
+
     let term;
     if (academicYear && semester) {
       term = await tx.academicTerm.findFirst({

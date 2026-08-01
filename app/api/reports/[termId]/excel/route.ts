@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, SessionUser } from "@/lib/auth/session";
-import { isManagementRole } from "@/lib/auth/rbac";
 import { getReportPackageForUser } from "@/lib/data/reports";
 import { createAuditLog } from "@/lib/data/audit-log";
 import { buildReportExcelBuffer } from "@/lib/reports/renderers/excel-report-renderer";
@@ -37,7 +36,7 @@ export async function handleReportExcelExportRequest(
       action: AuditAction.GENERATED_REPORT,
       entityType: "ReportPackage",
       entityId: termId,
-      metadata: { format: "XLSX", termId, academicYear: report.academicYear, semester: report.semester },
+      metadata: { reportType: "PACKAGE", format: "EXCEL", termId },
       throwOnError: true,
     });
 

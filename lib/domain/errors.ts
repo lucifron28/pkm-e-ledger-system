@@ -49,6 +49,12 @@ export class IdempotencyConflictError extends DomainError {
   }
 }
 
+export class IdempotencyInProgressError extends DomainError {
+  constructor(message = "Command is already in progress. Retry after it completes.") {
+    super(message);
+  }
+}
+
 export class StorageConsistencyError extends DomainError {
   constructor(message = "Attachment file missing or size mismatch on disk.") {
     super(message);

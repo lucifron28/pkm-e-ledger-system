@@ -16,7 +16,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 4** | `feature/ledger-and-transactions` | Income/expense entry, integer-cent arithmetic, insufficient balance checks, soft deletion, attachments, and Treasurer Logs. | **Completed** |
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Completed** |
 | **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Completed** |
-| **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **In Review** |
+| **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Completed** |
+| **Phase 8** | `fix/business-invariants-concurrency-and-audit` | Post-implementation business-invariant hardening: cash transfer workflow, database invariants, idempotency, optimistic concurrency, crash-recoverable attachment storage, snapshot reads, immutable paginated audit history, and concurrency/recovery tests. | **In Review** |
 
 ---
 
@@ -111,5 +112,20 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   2. `fix(security): apply authorization and route security hardening`
   3. `style(ui): polish responsive layouts and print styling`
   4. `docs(demo): prepare demo scripts and final FRD verification checklist`
+* **Status**: **Completed**
+
+### Phase 8: Business-Invariant Hardening (Post-Implementation)
+* **Branch**: `fix/business-invariants-concurrency-and-audit`
+* **Dependencies**: Phase 7
+* **Goal**: Correct confirmed architectural and business-logic findings: cash transfer workflow, single-active-term database invariant, canonical academic-year format, integer-cent money constraints, typed expense report buckets, idempotent financial commands, optimistic concurrency, SQLite conflict retries, snapshot-consistent reads, selected-term ledger consistency, validated query parsing with month/date intersection, crash-recoverable attachment storage, immutable typed paginated audit history, ledger pagination, and concurrency/recovery regression tests.
+* **Grouped Commits**:
+  1. `refactor(core): establish application services and typed domain errors`
+  2. `feat(finance): add cash transfer workflow and account movements`
+  3. `fix(database): enforce financial and academic term invariants`
+  4. `fix(concurrency): add idempotency locking and transaction retries`
+  5. `fix(storage): make attachment lifecycle crash recoverable`
+  6. `fix(reads): use snapshot queries pagination and validated filters`
+  7. `fix(audit): add immutable typed and paginated audit history`
+  8. `test(hardening): add business concurrency recovery and regression coverage`
 * **Status**: **In Review**
 * **Next Phase**: Final external audit and merge

@@ -43,18 +43,6 @@ export const SCHEDULE_2_BUCKETS = [
 
 export type Schedule2Bucket = (typeof SCHEDULE_2_BUCKETS)[number];
 
-export function getSchedule2BucketKey(categoryName: string): Schedule2Bucket {
-  const lower = categoryName.trim().toLowerCase();
-  if (lower.includes("suppl")) return "Supplies";
-  if (lower.includes("equip")) return "Equipment";
-  if (lower.includes("transport") || lower.includes("fare") || lower.includes("travel")) return "Transportation";
-  if (lower.includes("meal") || lower.includes("food")) return "Meals";
-  if (lower.includes("servic")) return "Service";
-  if (lower.includes("misc")) return "Misc";
-  if (lower.includes("donat")) return "Donation";
-  return "Others";
-}
-
 export function reportBucketToSchedule2Bucket(bucket: ExpenseReportBucket): Schedule2Bucket {
   return EXPENSE_BUCKET_LABELS[bucket] as Schedule2Bucket;
 }
@@ -99,7 +87,9 @@ export interface ExpenseRowItemDto {
 }
 
 export interface AttachmentReferenceDto {
-  transactionId: string;
+  transactionId: string | null;
+  cashTransferId: string | null;
+  entryType: "TRANSACTION" | "CASH_TRANSFER";
   transactionDate: Date;
   documentNumber: string | null;
   description: string;
@@ -116,6 +106,7 @@ export interface ReportPackageDto {
   academicYear: string;
   semester: Semester;
   semesterLabel: string;
+  asOfDate: Date;
 
   openingCashOnHandCents: number;
   openingCashInBankCents: number;
@@ -172,8 +163,6 @@ export interface RawReportInputAttachment {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
-  storedName?: string;
-  storagePath?: string;
 }
 
 export interface RawReportInputTransaction {
@@ -196,12 +185,18 @@ export interface RawReportInputTransaction {
   attachments: RawReportInputAttachment[];
 }
 
-export type RawReportInputTransfer = TransferRow;
+export interface RawReportInputTransfer extends TransferRow {
+  transferDate?: Date;
+  documentNumber?: string | null;
+  description?: string;
+  attachments?: RawReportInputAttachment[];
+}
 
 export function buildReportPackage(
   term: RawReportInputTerm,
   transactions: RawReportInputTransaction[],
-  transfers: RawReportInputTransfer[] = []
+  transfers: RawReportInputTransfer[] = [],
+  asOfDate = new Date()
 ): ReportPackageDto {
   const openingCashOnHandCents = term.openingCashOnHandCents;
   const openingCashInBankCents = term.openingCashInBankCents;
@@ -348,9 +343,26 @@ export function buildReportPackage(
     for (const att of t.attachments) {
       attachments.push({
         transactionId: t.id,
+        cashTransferId: null,
+        entryType: "TRANSACTION",
         transactionDate: t.transactionDate,
         documentNumber: t.documentNumber,
         description: t.description,
+        originalName: att.originalName,
+        mimeType: att.mimeType,
+        sizeBytes: att.sizeBytes,
+      });
+    }
+  }
+  for (const transfer of transfers) {
+    for (const att of transfer.attachments || []) {
+      attachments.push({
+        transactionId: null,
+        cashTransferId: transfer.id || null,
+        entryType: "CASH_TRANSFER",
+        transactionDate: transfer.transferDate || new Date(0),
+        documentNumber: transfer.documentNumber || null,
+        description: transfer.description || "Cash transfer",
         originalName: att.originalName,
         mimeType: att.mimeType,
         sizeBytes: att.sizeBytes,
@@ -366,6 +378,7 @@ export function buildReportPackage(
     academicYear: term.academicYear,
     semester: term.semester,
     semesterLabel: getSemesterLabel(term.semester),
+    asOfDate,
 
     openingCashOnHandCents,
     openingCashInBankCents,

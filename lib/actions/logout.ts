@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { prisma } from "../db/prisma";
 import { getSessionResult, SESSION_COOKIE_NAME } from "../auth/session";
-import { createAuditLog } from "../data/audit-log";
+import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction } from "@prisma/client";
 
 export async function logoutAction(): Promise<never> {
@@ -22,7 +22,7 @@ export async function logoutAction(): Promise<never> {
       data: { revokedAt: new Date() },
     });
 
-    await createAuditLog({
+    await createSystemAuditLog({
       userId: sessionResult.user.id,
       organizationId: sessionResult.user.organizationId,
       role: sessionResult.user.role,

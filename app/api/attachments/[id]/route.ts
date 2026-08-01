@@ -4,7 +4,6 @@ import { getSession, SessionUser } from "@/lib/auth/session";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 
-import { isManagementRole } from "@/lib/auth/rbac";
 import { AttachmentStorageService } from "@/lib/infrastructure/storage/attachment-store";
 
 import { validateRouteAuth } from "@/lib/auth/require-auth";
@@ -40,25 +39,30 @@ export async function handleAttachmentDownloadRequest(
   }
 
   const storageService = new AttachmentStorageService(customUploadsRoot);
-  let storagePath: string;
+  let activePath: string;
   try {
-    storagePath = storageService.resolveActivePath(attachment.storedName);
+    activePath = storageService.resolveActivePath(attachment.storageKey);
   } catch {
     return new NextResponse("File not found on disk", { status: 404 });
   }
 
-  if (!existsSync(storagePath)) {
+  if (!existsSync(activePath)) {
     return new NextResponse("File not found on disk", { status: 404 });
   }
 
   try {
-    const fileBuffer = await readFile(storagePath);
+    const fileBuffer = await readFile(activePath);
+    if (fileBuffer.length !== attachment.sizeBytes) {
+      console.warn(
+        `[AttachmentDownload] Stored size mismatch for attachment ${attachment.id}: metadata=${attachment.sizeBytes}, actual=${fileBuffer.length}`
+      );
+    }
     const safeFileName = attachment.originalName.replace(/["\r\n\\/]/g, "_");
     return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type": attachment.mimeType,
         "Content-Disposition": `inline; filename="${safeFileName}"`,
-        "Content-Length": attachment.sizeBytes.toString(),
+        "Content-Length": fileBuffer.length.toString(),
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },

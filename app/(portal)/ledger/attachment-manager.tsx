@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { deleteAttachmentAction, uploadAttachmentAction } from "@/lib/actions/attachments";
 import type { AttachmentDto } from "@/lib/data/transactions";
 
@@ -12,13 +12,24 @@ function formatSize(bytes: number): string {
 
 export function AttachmentManager({
   transactionId,
+  cashTransferId,
   attachments,
 }: {
-  transactionId: string;
+  transactionId?: string;
+  cashTransferId?: string;
   attachments: AttachmentDto[];
 }) {
   const [uploadState, uploadAction, uploadPending] = useActionState(uploadAttachmentAction, null);
   const [deleteState, deleteAction, deletePending] = useActionState(deleteAttachmentAction, null);
+  const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState(() => crypto.randomUUID());
+  const wasUploadPending = useRef(false);
+
+  useEffect(() => {
+    if (wasUploadPending.current && !uploadPending && !uploadState?.error) {
+      setUploadIdempotencyKey(crypto.randomUUID());
+    }
+    wasUploadPending.current = uploadPending;
+  }, [uploadPending, uploadState?.error]);
 
   return (
     <div className="min-w-[190px] space-y-1">
@@ -38,6 +49,7 @@ export function AttachmentManager({
             </a>
             <form action={deleteAction}>
               <input type="hidden" name="attachmentId" value={attachment.id} />
+              <input type="hidden" name="idempotencyKey" value={`delete-attachment-${attachment.id}`} />
               <button
                 type="submit"
                 disabled={deletePending}
@@ -51,12 +63,15 @@ export function AttachmentManager({
         ))
       )}
       <form action={uploadAction} encType="multipart/form-data" className="pt-1">
-        <input type="hidden" name="transactionId" value={transactionId} />
+        {transactionId && <input type="hidden" name="transactionId" value={transactionId} />}
+        {cashTransferId && <input type="hidden" name="cashTransferId" value={cashTransferId} />}
+        <input type="hidden" name="idempotencyKey" value={uploadIdempotencyKey} />
         <input
           name="file"
           type="file"
           accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
           required
+          onChange={() => setUploadIdempotencyKey(crypto.randomUUID())}
           className="block w-full text-[10px] text-slate-600"
         />
         <button

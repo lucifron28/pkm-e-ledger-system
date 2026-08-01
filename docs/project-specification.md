@@ -80,7 +80,7 @@ The system defines 6 distinct roles across two administrative spheres: Organizat
   * Role-based redirect after successful login (management users to `/dashboard`, OSA to `/osa`, members/officers to transparency view)
   * Session creation in database with secure `HttpOnly` cookies
   * Login audit entry creation in Treasurer Logs
-* **Register Page** (`/register`): User account registration form where users submit name, username, password, organization, and requested role. Enforces authorization checks so privileged roles cannot be self-assigned without approval.
+* Register Page (`/register`): User account registration form where users submit name, username, password, organization, and requested role. Public registration is limited to Officer and Member roles against active organizations; privileged roles (Treasurer, Adviser, Audit, OSA) cannot be self-assigned. Public registrants receive same-organization summary/report visibility immediately; this is an approved MVP policy and institutional membership verification is outside current scope. This is not production identity verification.
 * **Change Password Page** (`/change-password`): Dedicated portal for forced password resets (when `mustChangePassword = true`) or user-initiated updates.
 
 ### Authenticated Navigation Structure
@@ -300,7 +300,7 @@ The end-to-end operational lifecycle of the PKM e-Ledger System follows this com
 * **FR-014: Soft Deletion** — The system must allow management users to soft-delete transactions upon providing a mandatory deletion reason, excluding deleted records from active balances and logging the action.
 * **FR-015: Attachments** — The system must mandate receipt attachment uploads (JPEG, PNG, PDF up to 10 MB) and Reference/Attachment Descriptions for all transactions, serving files via secure authenticated routes.
 * **FR-016: Treasurer Logs** — The system must maintain immutable audit logs capturing Login History, Transaction History, Logged In, Logged Out, Changed Password, Added Income, Added Expense, Edited Transaction, Deleted Transaction, Changed Opening Balance, Uploaded Attachment, Deleted Attachment, User, Role, Organization, Date/Time, and Entity Details.
-* **FR-017: Financial Report Generation** — The system must allow Treasurer, Adviser, and Audit to generate official Summary Reports, Schedule 1 Collections, and Schedule 2 Expenses based on active ledger data.
+* **FR-017: Financial Report Generation** — The system must allow Treasurer, Adviser, and Audit to generate official Summary Reports, Schedule 1 Collections, and Schedule 2 Expenses based on active ledger data. Reports are live generated financial views built from current non-deleted financial data; generated HTML/PDF/XLSX exports are not immutable publications and cannot be reproduced byte-for-byte after ledger edits. `GENERATED_REPORT` audit entries represent export generation, not publication/approval.
 * **FR-018: Print Output** — The system must render reports with print-optimized styling (`@media print`) for physical document generation.
 * **FR-019: PDF Export** — The system must provide explicit PDF export functionality for downloading official report packages.
 * **FR-020: Excel Export** — The system must generate multi-sheet `.xlsx` Excel workbooks via `exceljs` containing Summary, Schedule 1, Schedule 2, and Attachment reference sheets.

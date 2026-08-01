@@ -56,40 +56,53 @@ function demoUserName(role: Role, organizationSlug: string) {
   return `demo_${role.toLowerCase()}_${organizationSlug}`;
 }
 
-async function normalizeExistingTerms() {
+async function normalizeExistingTerms(organizationIds: string[]) {
   // Normalize old non-canonical academic year formats like "A.Y. 2026-2027" -> "2026-2027"
-  const terms = await prisma.academicTerm.findMany();
+  const terms = await prisma.academicTerm.findMany({
+    where: { organizationId: { in: organizationIds } },
+  });
   for (const term of terms) {
     if (term.academicYear.startsWith("A.Y. ")) {
       const canonical = term.academicYear.replace(/^A\.Y\.\s*/, "").trim();
-      try {
-        await prisma.academicTerm.update({
-          where: { id: term.id },
-          data: { academicYear: canonical },
-        });
-      } catch {
-        // If unique constraint conflicts, keep as is
+      const conflict = await prisma.academicTerm.findFirst({
+        where: {
+          organizationId: term.organizationId,
+          academicYear: canonical,
+          semester: term.semester,
+          id: { not: term.id },
+        },
+        select: { id: true },
+      });
+      if (conflict) {
+        throw new Error(`Seed conflict: academic term ${term.id} cannot normalize because ${conflict.id} already owns ${canonical}.`);
       }
+      await prisma.academicTerm.update({
+        where: { id: term.id },
+        data: { academicYear: canonical },
+      });
     }
   }
 }
 
 async function seedOrganizations() {
+  const seeded = [] as Array<{ id: string; name: string; slug: string; active: boolean }>;
   for (const name of organizations) {
     const slug = slugify(name);
     const existing = await prisma.organization.findUnique({ where: { slug } });
     if (!existing) {
-      await prisma.organization.create({
+      const created = await prisma.organization.create({
         data: { name, slug, active: true },
       });
+      seeded.push(created);
     } else {
-      // Do not reactivate an intentionally inactive existing organization
-      await prisma.organization.update({
-        where: { id: existing.id },
-        data: { name },
-      });
+      if (existing.name !== name) {
+        throw new Error(`Seed conflict: organization slug ${slug} is assigned to another name.`);
+      }
+      // Never reactivate or otherwise change existing organization state.
+      seeded.push(existing);
     }
   }
+  return seeded;
 }
 
 async function seedCategories() {
@@ -103,7 +116,6 @@ async function seedCategories() {
       },
       update: {
         reportBucket: ExpenseReportBucket.OTHERS,
-        active: true,
       },
       create: {
         name,
@@ -123,7 +135,6 @@ async function seedCategories() {
       },
       update: {
         reportBucket: cat.bucket,
-        active: true,
       },
       create: {
         name: cat.name,
@@ -134,19 +145,20 @@ async function seedCategories() {
   }
 }
 
-async function seedAcademicTermsAndUsers() {
+async function seedAcademicTermsAndUsers(seededOrganizations: Array<{ id: string; name: string; slug: string; active: boolean }>) {
   const resetPasswords = process.env.RESET_DEMO_PASSWORDS === "true";
   const defaultPasswordHash = await bcrypt.hash("password", 12);
-  const seededOrganizations = await prisma.organization.findMany({
-    orderBy: { name: "asc" },
-  });
 
   const CANONICAL_AY = "2026-2027";
 
   for (const organization of seededOrganizations) {
-    const hasFinancialData = (await prisma.transaction.count({
-      where: { organizationId: organization.id },
-    })) > 0;
+    if (!organization.active) continue;
+
+    const [transactionCount, transferCount] = await Promise.all([
+      prisma.transaction.count({ where: { organizationId: organization.id } }),
+      prisma.cashTransfer.count({ where: { organizationId: organization.id } }),
+    ]);
+    const hasFinancialData = transactionCount + transferCount > 0;
 
     if (!hasFinancialData) {
       await prisma.$transaction(async (tx) => {
@@ -154,17 +166,20 @@ async function seedAcademicTermsAndUsers() {
           where: { organizationId: organization.id, active: true },
         });
 
-        if (!existingActive) {
-          await tx.academicTerm.upsert({
-            where: {
-              organizationId_academicYear_semester: {
-                organizationId: organization.id,
-                academicYear: CANONICAL_AY,
-                semester: Semester.FIRST_SEMESTER,
-              },
+        const existingCanonical = await tx.academicTerm.findUnique({
+          where: {
+            organizationId_academicYear_semester: {
+              organizationId: organization.id,
+              academicYear: CANONICAL_AY,
+              semester: Semester.FIRST_SEMESTER,
             },
-            update: { active: true },
-            create: {
+          },
+          select: { id: true },
+        });
+
+        if (!existingActive && !existingCanonical) {
+          await tx.academicTerm.create({
+            data: {
               organizationId: organization.id,
               academicYear: CANONICAL_AY,
               semester: Semester.FIRST_SEMESTER,
@@ -196,11 +211,16 @@ async function seedAcademicTermsAndUsers() {
             organizationId: organization.id,
           },
         });
-      } else if (resetPasswords) {
+      } else {
+        if (existingUser.role !== role || existingUser.organizationId !== organization.id) {
+          throw new Error(`Seed conflict: demo user ${username} has unexpected role or organization.`);
+        }
+        if (resetPasswords) {
         await prisma.user.update({
           where: { id: existingUser.id },
           data: { passwordHash: defaultPasswordHash },
         });
+        }
       }
     }
   }
@@ -215,19 +235,24 @@ async function seedAcademicTermsAndUsers() {
         role: Role.OSA,
       },
     });
-  } else if (resetPasswords) {
+  } else {
+    if (existingOsa.role !== Role.OSA || existingOsa.organizationId !== null) {
+      throw new Error("Seed conflict: demo_osa has unexpected role or organization.");
+    }
+    if (resetPasswords) {
     await prisma.user.update({
       where: { id: existingOsa.id },
       data: { passwordHash: defaultPasswordHash },
     });
+    }
   }
 }
 
 async function main() {
-  await normalizeExistingTerms();
-  await seedOrganizations();
+  const seededOrganizations = await seedOrganizations();
+  await normalizeExistingTerms(seededOrganizations.map((organization) => organization.id));
   await seedCategories();
-  await seedAcademicTermsAndUsers();
+  await seedAcademicTermsAndUsers(seededOrganizations);
 }
 
 main()

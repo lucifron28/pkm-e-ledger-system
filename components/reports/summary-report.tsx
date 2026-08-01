@@ -22,6 +22,9 @@ export function SummaryReport({ report }: SummaryReportProps) {
         <p className="text-sm text-slate-600 font-medium">
           {report.academicYear} &bull; {report.semesterLabel}
         </p>
+        <p className="text-xs text-slate-500">
+          As of {report.asOfDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+        </p>
       </div>
 
       {/* Financial Table */}

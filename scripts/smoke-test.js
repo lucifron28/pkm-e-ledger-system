@@ -17,6 +17,8 @@ async function runSmokeTest() {
     if (fs.existsSync(tempSmokeDbPath)) {
       try { fs.unlinkSync(tempSmokeDbPath); } catch { /* best effort */ }
     }
+    // Prisma's Windows schema engine requires the SQLite file to exist before deploy.
+    fs.writeFileSync(tempSmokeDbPath, Buffer.alloc(0));
 
     execSync(`npx prisma migrate deploy`, {
       cwd: rootDir,

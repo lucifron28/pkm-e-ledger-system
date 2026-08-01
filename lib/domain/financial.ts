@@ -60,17 +60,23 @@ export function calculateAccountBalances(
       validateMoneyAmount(item.amountCents, false, "Movement amount");
       if (item.kind === "INCOME") {
         totalIncomeCents += item.amountCents;
+        assertNoOverflow(totalIncomeCents, "Total Income");
         if (item.cashAccount === CashAccount.CASH_ON_HAND) {
           cashOnHandCents += item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
         } else {
           cashInBankCents += item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
         }
       } else if (item.kind === "EXPENSE") {
         totalExpenseCents += item.amountCents;
+        assertNoOverflow(totalExpenseCents, "Total Expense");
         if (item.cashAccount === CashAccount.CASH_ON_HAND) {
           cashOnHandCents -= item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
         } else {
           cashInBankCents -= item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
         }
       } else if (item.kind === "TRANSFER") {
         if (item.fromAccount === item.toAccount) {
@@ -78,29 +84,41 @@ export function calculateAccountBalances(
         }
         if (item.fromAccount === CashAccount.CASH_ON_HAND) {
           cashOnHandCents -= item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
           cashInBankCents += item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
           totalTransferInCIBCents += item.amountCents;
+          assertNoOverflow(totalTransferInCIBCents, "Total Transfer in Cash in Bank");
         } else {
           cashInBankCents -= item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
           cashOnHandCents += item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
           totalTransferInCOHCents += item.amountCents;
+          assertNoOverflow(totalTransferInCOHCents, "Total Transfer in Cash on Hand");
         }
       }
     } else {
       validateMoneyAmount(item.amountCents, false, "Transaction amount");
       if (item.type === TransactionType.INCOME) {
         totalIncomeCents += item.amountCents;
+        assertNoOverflow(totalIncomeCents, "Total Income");
         if (item.cashAccount === CashAccount.CASH_ON_HAND) {
           cashOnHandCents += item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
         } else {
           cashInBankCents += item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
         }
       } else {
         totalExpenseCents += item.amountCents;
+        assertNoOverflow(totalExpenseCents, "Total Expense");
         if (item.cashAccount === CashAccount.CASH_ON_HAND) {
           cashOnHandCents -= item.amountCents;
+          assertNoOverflow(cashOnHandCents, "Cash on Hand");
         } else {
           cashInBankCents -= item.amountCents;
+          assertNoOverflow(cashInBankCents, "Cash in Bank");
         }
       }
     }
@@ -110,9 +128,13 @@ export function calculateAccountBalances(
   assertNoOverflow(cashInBankCents, "Cash in Bank");
   assertNoOverflow(totalIncomeCents, "Total Income");
   assertNoOverflow(totalExpenseCents, "Total Expense");
+  assertNoOverflow(totalTransferInCOHCents, "Total Transfer in Cash on Hand");
+  assertNoOverflow(totalTransferInCIBCents, "Total Transfer in Cash in Bank");
 
   const balanceForwarded = openingCashOnHandCents + openingCashInBankCents;
+  assertNoOverflow(balanceForwarded, "Balance Forwarded");
   const remainingCents = balanceForwarded + totalIncomeCents - totalExpenseCents;
+  assertNoOverflow(remainingCents, "Remaining Balance");
 
   if (remainingCents !== cashOnHandCents + cashInBankCents) {
     throw new ValidationError(

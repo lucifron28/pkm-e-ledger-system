@@ -8,7 +8,16 @@ import { createCashTransferService, editCashTransferService, deleteCashTransferS
 import { CashAccount } from "@prisma/client";
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate } from "../domain/query";
+import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { DomainError } from "../domain/errors";
+
+function getAttachmentFile(formData: FormData): File {
+  const file = formData.get("attachment");
+  if (!(file instanceof File) || file.size <= 0) {
+    throw new DomainError("Supporting document attachment file is required for cash transfers.");
+  }
+  return file;
+}
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 const transferSchema = z.object({
@@ -49,10 +58,25 @@ export async function createCashTransferAction(
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
 
+  let amountCents: number;
+  let transferDate: Date;
+  let file: File;
   try {
-    const amountCents = parsePesoToCents(validation.data.amount);
-    const transferDate = parseStrictDate(validation.data.transferDate);
+    amountCents = parsePesoToCents(validation.data.amount);
+    transferDate = parseStrictDate(validation.data.transferDate);
+    file = getAttachmentFile(formData);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    return { error: "Please fix the cash transfer details and attachment." };
+  }
 
+  const fileValidation = await validateAndReadAttachmentFile(file);
+  if (!fileValidation.success) {
+    return { error: fileValidation.error };
+  }
+  const validatedFile = fileValidation.data;
+
+  try {
     await createCashTransferService(user, {
       fromAccount: validation.data.fromAccount,
       toAccount: validation.data.toAccount,
@@ -63,6 +87,12 @@ export async function createCashTransferAction(
       referenceDescription: validation.data.referenceDescription,
       eventActivityName: validation.data.eventActivityName,
       idempotencyKey: validation.data.idempotencyKey,
+      attachment: {
+        originalName: validatedFile.originalName,
+        mimeType: validatedFile.mimeType,
+        sizeBytes: validatedFile.sizeBytes,
+        buffer: validatedFile.buffer,
+      },
     });
   } catch (error) {
     if (error instanceof DomainError) {
@@ -71,7 +101,6 @@ export async function createCashTransferAction(
     console.error("Cash transfer creation error:", error);
     return { error: "Failed to record cash transfer. Please try again." };
   }
-
   revalidatePath("/dashboard");
   revalidatePath("/ledger");
   redirect("/ledger");

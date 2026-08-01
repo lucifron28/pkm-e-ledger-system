@@ -1,13 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CashAccount, Semester, TransactionType } from "@prisma/client";
+import { CashAccount, ExpenseReportBucket, Semester, TransactionType } from "@prisma/client";
+import ExcelJS from "exceljs";
 import {
   SCHEDULE_2_BUCKETS,
-  getSchedule2BucketKey,
+  reportBucketToSchedule2Bucket,
   buildReportPackage,
   RawReportInputTerm,
   RawReportInputTransaction,
+  RawReportInputTransfer,
 } from "../../lib/domain/reports";
+import { buildReportExcelBuffer } from "../../lib/reports/renderers/excel-report-renderer";
+import { buildReportPdfBuffer } from "../../lib/reports/renderers/pdf-report-renderer";
 
 test("Reports Domain: Fixed Schedule 2 Bucket Order and Count", () => {
   assert.equal(SCHEDULE_2_BUCKETS.length, 8);
@@ -24,15 +28,14 @@ test("Reports Domain: Fixed Schedule 2 Bucket Order and Count", () => {
 });
 
 test("Reports Domain: Category mapping to Schedule 2 Buckets", () => {
-  assert.equal(getSchedule2BucketKey("Office Supplies"), "Supplies");
-  assert.equal(getSchedule2BucketKey("IT Equipment"), "Equipment");
-  assert.equal(getSchedule2BucketKey("Travel Fare"), "Transportation");
-  assert.equal(getSchedule2BucketKey("Catering & Meals"), "Meals");
-  assert.equal(getSchedule2BucketKey("Janitorial Service"), "Service");
-  assert.equal(getSchedule2BucketKey("Miscellaneous Expenses"), "Misc");
-  assert.equal(getSchedule2BucketKey("Charity Donation"), "Donation");
-  assert.equal(getSchedule2BucketKey("Events and Seminars"), "Others");
-  assert.equal(getSchedule2BucketKey("Unsupported Category"), "Others");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.SUPPLIES), "Supplies");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.EQUIPMENT), "Equipment");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.TRANSPORTATION), "Transportation");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.MEALS), "Meals");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.SERVICE), "Service");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.MISC), "Misc");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.DONATION), "Donation");
+  assert.equal(reportBucketToSchedule2Bucket(ExpenseReportBucket.OTHERS), "Others");
 });
 
 test("Reports Domain: Real report package builder calculations and DTO invariants", () => {
@@ -44,8 +47,8 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
     openingCashInBankCents: 1000000, // 10,000.00
     organization: {
       id: "org-1",
-      name: "JPCS",
-      slug: "jpcs",
+      name: "Fictional Student Organization",
+      slug: "fictional-student-organization",
     },
   };
 
@@ -68,8 +71,6 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
           originalName: "membership_deposit.pdf",
           mimeType: "application/pdf",
           sizeBytes: 2048576,
-          storedName: "secret-uuid-1.pdf",
-          storagePath: "/var/uploads/secret-uuid-1.pdf",
         },
       ],
     },
@@ -84,7 +85,7 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
       description: "Office Paper",
       referenceDescription: "Receipt #12",
       categoryId: "cat-exp-1",
-      category: { id: "cat-exp-1", name: "Office Supplies", type: TransactionType.EXPENSE },
+      category: { id: "cat-exp-1", name: "Office Supplies", type: TransactionType.EXPENSE, reportBucket: ExpenseReportBucket.SUPPLIES },
       attachments: [],
     },
     {
@@ -98,12 +99,13 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
       description: "Special Project Fee",
       referenceDescription: "Receipt #13",
       categoryId: "cat-exp-2",
-      category: { id: "cat-exp-2", name: "Custom Special Category", type: TransactionType.EXPENSE },
+      category: { id: "cat-exp-2", name: "Custom Special Category", type: TransactionType.EXPENSE, reportBucket: ExpenseReportBucket.OTHERS },
       attachments: [],
     },
   ];
 
-  const report = buildReportPackage(rawTerm, rawTransactions);
+  const asOfDate = new Date("2026-08-31T12:00:00.000Z");
+  const report = buildReportPackage(rawTerm, rawTransactions, [], asOfDate);
 
   // 1. Ledger totals match report totals
   assert.equal(report.balanceForwardedCents, 1500000);
@@ -145,14 +147,67 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
   assert.equal(report.signatories.auditorTitle, "Organization Auditor");
   assert.equal(report.signatories.adviserTitle, "Faculty Adviser");
   assert.equal(report.signatories.presidentOsaTitle, "President / OSA Representative");
+  assert.equal(report.asOfDate, asOfDate);
 
-  // 7. Attachment DTO security: storagePath, storedName, and db id omitted
+  // 7. Attachment DTO security: storage keys and database IDs omitted
   assert.equal(report.attachments.length, 1);
   const attRef = report.attachments[0];
   assert.equal(attRef.originalName, "membership_deposit.pdf");
   assert.equal(attRef.mimeType, "application/pdf");
   assert.equal(attRef.sizeBytes, 2048576);
-  assert.equal("storagePath" in attRef, false, "Report attachment DTO must not include storagePath");
-  assert.equal("storedName" in attRef, false, "Report attachment DTO must not include storedName");
+  assert.equal(attRef.entryType, "TRANSACTION");
+  assert.equal(attRef.cashTransferId, null);
   assert.equal("id" in attRef, false, "Report attachment DTO must not include attachment database ID");
+
+  const transfer: RawReportInputTransfer = {
+    id: "transfer-1",
+    amountCents: 500,
+    fromAccount: CashAccount.CASH_ON_HAND,
+    toAccount: CashAccount.CASH_IN_BANK,
+    transferDate: new Date("2025-08-12"),
+    documentNumber: "TR-1",
+    description: "Cash movement",
+    attachments: [{ originalName: "transfer.pdf", mimeType: "application/pdf", sizeBytes: 512 }],
+  };
+  const transferReport = buildReportPackage(rawTerm, rawTransactions, [transfer], asOfDate);
+  assert.equal(transferReport.attachments.length, 2);
+  assert.equal(transferReport.attachments[1].entryType, "CASH_TRANSFER");
+  assert.equal(transferReport.attachments[1].cashTransferId, "transfer-1");
+});
+
+test("Reports Export: official package sheets, formulas, and PDF output are present", async () => {
+  const report = buildReportPackage(
+    {
+      id: "term-export-1",
+      academicYear: "2025-2026",
+      semester: Semester.FIRST_SEMESTER,
+      openingCashOnHandCents: 10000,
+      openingCashInBankCents: 20000,
+      organization: {
+        id: "org-export-1",
+        name: "Fictional Student Organization",
+        slug: "fictional-student-organization",
+      },
+    },
+    [],
+    [],
+    new Date("2026-08-31T12:00:00.000Z")
+  );
+
+  const workbook = new ExcelJS.Workbook();
+  const excelBuffer = await buildReportExcelBuffer(report);
+  await workbook.xlsx.load(excelBuffer.buffer as unknown as ArrayBuffer);
+  assert.deepEqual(workbook.worksheets.map((sheet) => sheet.name), [
+    "SUMMARY",
+    "SCHEDULE 1 - COLLECTIONS",
+    "SCHEDULE 2 - EXPENSES",
+    "RECEIPTS - ATTACHMENTS",
+  ]);
+  const balanceForwardedFormula = workbook.getWorksheet("SUMMARY")?.getCell("B11").value;
+  const expenseTotalFormula = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")?.getCell("E2").value;
+  assert.ok(balanceForwardedFormula && typeof balanceForwardedFormula === "object" && "formula" in balanceForwardedFormula);
+  assert.ok(expenseTotalFormula && typeof expenseTotalFormula === "object" && "formula" in expenseTotalFormula);
+
+  const pdf = await buildReportPdfBuffer(report);
+  assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
 });

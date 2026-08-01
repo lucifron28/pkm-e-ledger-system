@@ -2,25 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { mkdir, unlink, writeFile } from "fs/promises";
-import path from "path";
-import crypto from "crypto";
 import { z } from "zod";
-import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
-import { createAuditLog } from "../data/audit-log";
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate } from "../domain/query";
-import { validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
-import { AuditAction, CashAccount, TransactionType } from "@prisma/client";
+import { validateAndReadAttachmentFile } from "../domain/attachments";
+import { CashAccount, TransactionType } from "@prisma/client";
 import {
   createTransactionService,
   deleteTransactionService,
   editTransactionService,
 } from "../application/transactions";
 import { DomainError } from "../domain/errors";
-
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 type TxActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 
