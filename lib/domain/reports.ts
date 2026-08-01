@@ -1,18 +1,35 @@
-import { CashAccount, Semester, TransactionType } from "@prisma/client";
-import { calculateAccountBalances } from "./financial";
+import { CashAccount, ExpenseReportBucket, Semester, TransactionType } from "@prisma/client";
+import {
+  calculateAccountBalances,
+  financialRowsToMovements,
+  transferRowsToMovements,
+  TransferRow,
+} from "./financial";
+import { getSemesterLabel } from "./term-labels";
+export { getSemesterLabel };
 
-export function getSemesterLabel(semester: Semester): string {
-  switch (semester) {
-    case Semester.FIRST_SEMESTER:
-      return "1st Semester";
-    case Semester.SECOND_SEMESTER:
-      return "2nd Semester";
-    case Semester.MIDYEAR_SUMMER:
-      return "Midyear / Summer";
-    default:
-      return semester;
-  }
-}
+export const EXPENSE_REPORT_BUCKETS: ExpenseReportBucket[] = [
+  ExpenseReportBucket.SUPPLIES,
+  ExpenseReportBucket.EQUIPMENT,
+  ExpenseReportBucket.TRANSPORTATION,
+  ExpenseReportBucket.MEALS,
+  ExpenseReportBucket.SERVICE,
+  ExpenseReportBucket.MISC,
+  ExpenseReportBucket.DONATION,
+  ExpenseReportBucket.OTHERS,
+];
+
+export const EXPENSE_BUCKET_LABELS: Record<ExpenseReportBucket, string> = {
+  SUPPLIES: "Supplies",
+  EQUIPMENT: "Equipment",
+  TRANSPORTATION: "Transportation",
+  MEALS: "Meals",
+  SERVICE: "Service",
+  MISC: "Misc",
+  DONATION: "Donation",
+  OTHERS: "Others",
+};
+
 export const SCHEDULE_2_BUCKETS = [
   "Supplies",
   "Equipment",
@@ -38,6 +55,10 @@ export function getSchedule2BucketKey(categoryName: string): Schedule2Bucket {
   return "Others";
 }
 
+export function reportBucketToSchedule2Bucket(bucket: ExpenseReportBucket): Schedule2Bucket {
+  return EXPENSE_BUCKET_LABELS[bucket] as Schedule2Bucket;
+}
+
 export interface CollectionItemDto {
   sequenceNumber: number;
   transactionId: string;
@@ -58,7 +79,7 @@ export interface CollectionCategoryGroupDto {
 
 export interface ExpenseBucketSummaryDto {
   bucketKey: Schedule2Bucket;
-  bucketName: Schedule2Bucket;
+  bucketName: string;
   totalCents: number;
 }
 
@@ -107,6 +128,9 @@ export interface ReportPackageDto {
   totalExpenseCents: number;
   totalExpenseCashOnHandCents: number;
   totalExpenseCashInBankCents: number;
+
+  totalTransferInCOHCents: number;
+  totalTransferInCIBCents: number;
 
   totalCashAvailableCents: number;
 
@@ -167,13 +191,17 @@ export interface RawReportInputTransaction {
     id: string;
     name: string;
     type?: TransactionType;
+    reportBucket?: ExpenseReportBucket;
   };
   attachments: RawReportInputAttachment[];
 }
 
+export type RawReportInputTransfer = TransferRow;
+
 export function buildReportPackage(
   term: RawReportInputTerm,
-  transactions: RawReportInputTransaction[]
+  transactions: RawReportInputTransaction[],
+  transfers: RawReportInputTransfer[] = []
 ): ReportPackageDto {
   const openingCashOnHandCents = term.openingCashOnHandCents;
   const openingCashInBankCents = term.openingCashInBankCents;
@@ -210,14 +238,15 @@ export function buildReportPackage(
 
   const totalCashAvailableCents = balanceForwardedCents + totalIncomeCents;
 
+  const movements = [
+    ...financialRowsToMovements(transactions),
+    ...transferRowsToMovements(transfers),
+  ];
+
   const balances = calculateAccountBalances(
     openingCashOnHandCents,
     openingCashInBankCents,
-    transactions.map((t) => ({
-      type: t.type,
-      amountCents: t.amountCents,
-      cashAccount: t.cashAccount,
-    }))
+    movements
   );
 
   const endingCashOnHandCents = balances.cashOnHandCents;
@@ -276,7 +305,7 @@ export function buildReportPackage(
 
   for (const t of expenseTransactions) {
     const catName = t.category.name;
-    const mappedBucket = getSchedule2BucketKey(catName);
+    const mappedBucket = reportBucketToSchedule2Bucket(t.category.reportBucket || ExpenseReportBucket.OTHERS);
 
     const bucketCents: Record<Schedule2Bucket, number> = {
       Supplies: 0,
@@ -349,6 +378,9 @@ export function buildReportPackage(
     totalExpenseCents,
     totalExpenseCashOnHandCents,
     totalExpenseCashInBankCents,
+
+    totalTransferInCOHCents: balances.totalTransferInCOHCents,
+    totalTransferInCIBCents: balances.totalTransferInCIBCents,
 
     totalCashAvailableCents,
 
