@@ -96,13 +96,20 @@ export async function changePasswordAction(
 
     // Update user record, create audit entry, and revoke other sessions atomically
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
+      const updateResult = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          passwordHash: dbUser.passwordHash,
+        },
         data: {
           passwordHash: newPasswordHash,
           mustChangePassword: false,
         },
       });
+
+      if (updateResult.count === 0) {
+        throw new Error("Your password was modified in another session. Please reload and try again.");
+      }
 
       await createAuditLog({
         userId: user.id,
@@ -124,6 +131,9 @@ export async function changePasswordAction(
       });
     });
   } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
     console.error("Change password error:", error);
     return { error: "An unexpected error occurred while updating password. Please try again." };
   }

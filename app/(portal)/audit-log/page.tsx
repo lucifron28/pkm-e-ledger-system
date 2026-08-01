@@ -1,9 +1,27 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
 import { listAuditLogsForCurrentOrganization } from "@/lib/data/audit-log";
+import { parseScalarString, parsePageSize } from "@/lib/domain/query";
 import Link from "next/link";
+import { AuditAction } from "@prisma/client";
 
-export default async function AuditLogPage() {
+export default async function AuditLogPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireManagementUser();
+  const rawParams = await searchParams;
+
+  const actionRaw = parseScalarString(rawParams.action);
+  const action = Object.values(AuditAction).includes(actionRaw as AuditAction)
+    ? (actionRaw as AuditAction)
+    : undefined;
+  const dateFrom = parseScalarString(rawParams.dateFrom);
+  const dateTo = parseScalarString(rawParams.dateTo);
+  const actorUserId = parseScalarString(rawParams.actorUserId);
+  const cursor = parseScalarString(rawParams.cursor);
+  const pageSize = parsePageSize(rawParams.pageSize, 50, 100);
+
   if (!user.organizationId) {
     return (
       <div className="space-y-6">
@@ -15,7 +33,31 @@ export default async function AuditLogPage() {
     );
   }
 
-  const logs = await listAuditLogsForCurrentOrganization();
+  const page = await listAuditLogsForCurrentOrganization({
+    action,
+    dateFrom,
+    dateTo,
+    actorUserId,
+    cursor,
+    pageSize,
+  });
+  const logs = page.logs;
+
+  const buildUrl = (overrides: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    const merged: Record<string, string | undefined> = {
+      action,
+      dateFrom,
+      dateTo,
+      actorUserId,
+      ...overrides,
+    };
+    for (const [key, val] of Object.entries(merged)) {
+      if (val && val.trim().length > 0) params.set(key, val.trim());
+    }
+    const query = params.toString();
+    return `/audit-log${query ? `?${query}` : ""}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -30,6 +72,38 @@ export default async function AuditLogPage() {
           &larr; Back to Dashboard
         </Link>
       </div>
+
+      {/* Filters */}
+      <form method="GET" action="/audit-log" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="action-filter">
+            Action
+          </label>
+          <select id="action-filter" name="action" defaultValue={action || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5">
+            <option value="">All Actions</option>
+            {Object.values(AuditAction).map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-from">
+            Date From
+          </label>
+          <input id="date-from" type="date" name="dateFrom" defaultValue={dateFrom || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-to">
+            Date To
+          </label>
+          <input id="date-to" type="date" name="dateTo" defaultValue={dateTo || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5" />
+        </div>
+        <div className="flex items-end">
+          <button type="submit" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition w-full">
+            Apply Filters
+          </button>
+        </div>
+      </form>
 
       {logs.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
@@ -83,6 +157,16 @@ export default async function AuditLogPage() {
               </tbody>
             </table>
           </div>
+          {page.pagination.hasMore && (
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
+              <Link
+                href={buildUrl({ cursor: page.pagination.nextCursor || undefined })}
+                className="text-sm text-[#004aad] font-bold hover:underline"
+              >
+                Load Next Page →
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>
