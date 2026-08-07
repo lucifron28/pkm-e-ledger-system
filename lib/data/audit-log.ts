@@ -1,4 +1,5 @@
 import "server-only";
+import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { AuditAction, CashAccount, Prisma, Role, Semester, TransactionType } from "@prisma/client";
@@ -344,6 +345,7 @@ export interface AuditLogDto {
   entityType: string | null;
   entityId: string | null;
   metadataJson: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface AuditLogPageDto {
@@ -383,6 +385,7 @@ export function toAuditLogDto(log: AuditLogWithRelations): AuditLogDto {
     entityType: log.entityType,
     entityId: log.entityId,
     metadataJson: log.metadataJson,
+    metadata: meta,
   };
 }
 
@@ -395,12 +398,56 @@ export interface AuditLogFilters {
   pageSize?: number;
 }
 
+export interface AuditCursorPayload {
+  id: string;
+  fingerprint: string;
+}
+
+export function buildAuditLogCursorFingerprint(userOrgId: string, filters: AuditLogFilters): string {
+  const payload = [
+    userOrgId,
+    filters.action || "",
+    filters.actorUserId || "",
+    filters.dateFrom || "",
+    filters.dateTo || "",
+    filters.pageSize || 50,
+  ].join("|");
+  return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 16);
+}
+
+export function encodeAuditCursor(id: string, fingerprint: string): string {
+  return Buffer.from(JSON.stringify({ id, fingerprint }), "utf8").toString("base64url");
+}
+
+export function decodeAuditCursor(value: string | undefined, expectedFingerprint: string): string | null {
+  if (!value || typeof value !== "string" || !value.trim()) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(value.trim(), "base64url").toString("utf8"));
+    if (typeof decoded.id === "string" && decoded.fingerprint === expectedFingerprint) {
+      return decoded.id;
+    }
+  } catch {
+    /* Invalid cursor format */
+  }
+  return null;
+}
+
 export async function listAuditLogsForCurrentOrganization(
   filters: AuditLogFilters = {}
 ): Promise<AuditLogPageDto> {
   const user = await requireManagementUser();
   if (!user.organizationId) {
     return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+  }
+
+  const expectedFingerprint = buildAuditLogCursorFingerprint(user.organizationId, filters);
+  let resolvedCursorId: string | null = null;
+
+  if (filters.cursor) {
+    resolvedCursorId = decodeAuditCursor(filters.cursor, expectedFingerprint);
+    if (!resolvedCursorId) {
+      return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+    }
   }
 
   const pageSize = Math.min(Math.max(filters.pageSize || 50, 1), 100);
@@ -452,15 +499,13 @@ export async function listAuditLogsForCurrentOrganization(
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take,
-    ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
+    ...(resolvedCursorId ? { cursor: { id: resolvedCursorId }, skip: 1 } : {}),
   });
 
   const hasMore = logs.length > pageSize;
   const paginatedLogs = hasMore ? logs.slice(0, pageSize) : logs;
-  const nextCursor =
-    hasMore && paginatedLogs.length > 0
-      ? paginatedLogs[paginatedLogs.length - 1].id
-      : null;
+  const lastId = paginatedLogs.length > 0 ? paginatedLogs[paginatedLogs.length - 1].id : null;
+  const nextCursor = hasMore && lastId ? encodeAuditCursor(lastId, expectedFingerprint) : null;
 
   return {
     logs: paginatedLogs.map(toAuditLogDto),

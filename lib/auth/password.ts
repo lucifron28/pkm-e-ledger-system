@@ -1,6 +1,8 @@
 import "server-only";
 import bcrypt from "bcryptjs";
 
+import { ValidationError } from "../domain/errors";
+
 export const MIN_PASSWORD_CHARS = 8;
 export const MAX_PASSWORD_BYTES = 72;
 
@@ -18,7 +20,7 @@ export function validatePasswordLength(password: string): { valid: boolean; mess
 export async function hashPassword(plain: string): Promise<string> {
   const check = validatePasswordLength(plain);
   if (!check.valid) {
-    throw new Error(check.message);
+    throw new ValidationError(check.message || "Invalid password length.");
   }
   return bcrypt.hash(plain, 12);
 }

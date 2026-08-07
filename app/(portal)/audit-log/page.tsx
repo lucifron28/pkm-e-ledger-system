@@ -89,6 +89,46 @@ export default async function AuditLogPage({
     return `/audit-log${query ? `?${query}` : ""}`;
   };
 
+  function formatHumanReadableSummary(log: (typeof logs)[0]): string {
+    const meta = log.metadata || {};
+    switch (log.action) {
+      case "ADDED_INCOME":
+        return `Recorded Income of ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) from ${meta.counterpartyName || meta.description || "payor"}`;
+      case "ADDED_EXPENSE":
+        return `Recorded Expense of ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) to ${meta.counterpartyName || meta.description || "payee"}`;
+      case "EDITED_TRANSACTION":
+        return `Edited transaction details (Version ${meta.version || 2})`;
+      case "DELETED_TRANSACTION":
+        return `Soft-deleted transaction (Reason: ${meta.deleteReason || "N/A"})`;
+      case "CREATED_CASH_TRANSFER":
+        return `Transferred ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} from ${meta.fromAccount || "account"} to ${meta.toAccount || "account"}`;
+      case "EDITED_CASH_TRANSFER":
+        return `Edited cash transfer details (Version ${meta.version || 2})`;
+      case "DELETED_CASH_TRANSFER":
+        return `Soft-deleted cash transfer (Reason: ${meta.deleteReason || "N/A"})`;
+      case "CHANGED_OPENING_BALANCE":
+        return `Updated Opening Balances (COH: ${meta.openingCashOnHandCents !== undefined ? formatPesoFromCents(Number(meta.openingCashOnHandCents)) : "N/A"}, CIB: ${meta.openingCashInBankCents !== undefined ? formatPesoFromCents(Number(meta.openingCashInBankCents)) : "N/A"})`;
+      case "ACTIVATED_ACADEMIC_TERM":
+        return `Activated Academic Term (${meta.academicYear || ""} ${meta.semester || ""})`;
+      case "UPLOADED_ATTACHMENT":
+        return `Uploaded receipt/supporting file: ${meta.originalName || "attachment"}`;
+      case "DELETED_ATTACHMENT":
+        return `Deleted attachment: ${meta.originalName || "attachment"}`;
+      case "GENERATED_REPORT":
+        return `Generated official financial report package`;
+      case "LOGGED_IN":
+        return `User signed into system`;
+      case "LOGGED_OUT":
+        return `User signed out of system`;
+      case "CHANGED_PASSWORD":
+        return `Updated account password`;
+      case "REGISTERED_USER":
+        return `Registered new user account (${meta.username || "user"})`;
+      default:
+        return AUDIT_ACTION_LABELS[log.action as AuditAction] || log.action;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -196,17 +236,18 @@ export default async function AuditLogPage({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.role || "—"}</td>
                     <td className="px-4 py-3 text-xs text-slate-700">
-                      {log.metadataJson ? (
-                        <details className="cursor-pointer">
-                          <summary className="font-semibold text-slate-900 hover:text-[#004aad] underline decoration-dotted">
-                            View Technical Details ({log.entityType || "Audit"})
+                      <div className="font-semibold text-slate-900 mb-1">
+                        {formatHumanReadableSummary(log)}
+                      </div>
+                      {log.metadataJson && (
+                        <details className="cursor-pointer mt-1">
+                          <summary className="text-[11px] font-medium text-slate-500 hover:text-[#004aad] underline decoration-dotted">
+                            Technical Payload ({log.entityType || "Audit"})
                           </summary>
                           <pre className="mt-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 font-mono text-[11px] text-slate-800 whitespace-pre-wrap max-w-lg">
                             {log.metadataJson}
                           </pre>
                         </details>
-                      ) : (
-                        "—"
                       )}
                     </td>
                   </tr>

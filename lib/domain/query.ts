@@ -1,5 +1,29 @@
 import { CashAccount, Semester, TransactionType } from "@prisma/client";
 import { normalizeAcademicYear } from "./term-labels";
+import { ValidationError } from "./errors";
+import { z } from "zod";
+
+export function parseStrictVersion(value: unknown): number {
+  if (typeof value !== "string" && typeof value !== "number") {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  const str = String(value).trim();
+  if (!/^[1-9]\d*$/.test(str)) {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) || num < 1 || num > 2_147_483_647) {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  return num;
+}
+
+export const strictVersionSchema = z
+  .string()
+  .trim()
+  .min(1, "Version is required.")
+  .regex(/^[1-9]\d*$/, "Version must be a positive integer.")
+  .refine((v) => Number.isSafeInteger(Number(v)) && Number(v) <= 2_147_483_647, "Version must be a positive integer.");
 
 export interface ParsedLedgerQuery {
   academicYear?: string;

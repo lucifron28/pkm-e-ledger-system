@@ -202,8 +202,8 @@ export function buildReportPackage(
     openingCashInBankCents: number;
     organization: { id: string; name: string; slug: string };
   },
-  transactions: any[],
-  transfers: any[] = [],
+  transactions: RawReportInputTransaction[],
+  transfers: RawReportInputTransfer[] = [],
   asOfDate: Date = new Date()
 ): ReportPackageDto {
   const result = buildReportPackageDto(term.organization.name, term, transactions, transfers, asOfDate);
@@ -222,31 +222,8 @@ export function buildReportPackageDto(
     openingCashInBankCents: number;
     organization?: { id: string; name: string; slug: string };
   },
-  transactions: Array<{
-    id: string;
-    type: TransactionType;
-    transactionDate: Date;
-    documentNumber: string | null;
-    counterpartyName: string | null;
-    description: string;
-    referenceDescription: string;
-    amountCents: number;
-    cashAccount: CashAccount;
-    categoryId: string;
-    category: { name: string; reportBucket: ExpenseReportBucket | null };
-    attachments: Array<{ id?: string; originalName: string; sizeBytes: number; mimeType?: string }>;
-  }>,
-  transfers: Array<{
-    id?: string;
-    transferDate?: Date;
-    documentNumber?: string | null;
-    description?: string;
-    referenceDescription?: string;
-    amountCents: number;
-    fromAccount: CashAccount;
-    toAccount: CashAccount;
-    attachments?: Array<{ id?: string; originalName: string; sizeBytes: number; mimeType?: string }>;
-  }>,
+  transactions: RawReportInputTransaction[],
+  transfers: RawReportInputTransfer[] = [],
   asOfDate: Date = new Date()
 ): ReportPackageDto {
   const openingCashOnHandCents = assertNoOverflow(term.openingCashOnHandCents);
