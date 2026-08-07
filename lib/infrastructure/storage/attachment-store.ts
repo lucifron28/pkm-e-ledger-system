@@ -381,10 +381,17 @@ export class AttachmentStorageService {
                 );
             const exactMatch = row && row.storageKey === manifest.originalStorageKey;
 
-            if (manifest.state === "CLEANED") {
-              deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
-            } else if (manifest.state === "DB_DELETED") {
-              deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+            const referencedByDb = dbKeys.has(manifest.originalStorageKey);
+
+            if (manifest.state === "CLEANED" || manifest.state === "DB_DELETED") {
+              if (referencedByDb) {
+                retainedForReview.push({
+                  path: manifestPath,
+                  reason: `Conflict: manifest state is ${manifest.state} but originalStorageKey ${manifest.originalStorageKey} is referenced by database`,
+                });
+              } else {
+                deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+              }
             } else if (!existsSync(trashPath)) {
               if (exactMatch && existsSync(this.resolveActivePath(row!.storageKey))) {
                 deleteManifestOnly.push(manifestPath);
@@ -396,13 +403,17 @@ export class AttachmentStorageService {
             } else if (manifest.state === "PREPARED") {
               if (exactMatch) {
                 restoreTrash.push({ manifestPath, trashKey: manifest.trashKey, storageKey: row!.storageKey });
+              } else if (referencedByDb) {
+                retainedForReview.push({ path: manifestPath, reason: "Conflict: PREPARED trash payload referenced by database with key mismatch" });
               } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
                 deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
               } else {
                 retainedForReview.push({ path: manifestPath, reason: "PREPARED trash payload within stale threshold" });
               }
             } else if (exactMatch) {
-              restoreTrash.push({ manifestPath, trashKey: manifest.trashKey, storageKey: row.storageKey });
+              restoreTrash.push({ manifestPath, trashKey: manifest.trashKey, storageKey: row!.storageKey });
+            } else if (referencedByDb) {
+              retainedForReview.push({ path: manifestPath, reason: "Conflict: trash payload originalStorageKey is referenced by database" });
             } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
               deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
             } else {
@@ -421,7 +432,7 @@ export class AttachmentStorageService {
       try {
         const files = await fs.readdir(this.uploadsRoot);
         for (const file of files) {
-          if (file === "staging" || file === "trash" || file === ".attachment-storage-key-migration.json") continue;
+          if (file === "staging" || file === "trash" || file.startsWith(".")) continue;
           const filePath = path.join(this.uploadsRoot, file);
           try {
             const stat = await fs.stat(filePath);
@@ -501,8 +512,27 @@ export class AttachmentStorageService {
       }
     }
 
+    let currentDbAttachments: StorageAttachmentRecord[] = [];
+    try {
+      currentDbAttachments = await this.database.attachment.findMany({
+        select: { id: true, storageKey: true, transactionId: true, cashTransferId: true },
+      });
+    } catch (error) {
+      console.warn("[AttachmentStorageService] applyReconciliation re-validation failed closed due to database error:", error);
+      return { cleanedStaged, cleanedTrash, cleanedActive, missingDbFiles: plan.missingDbFiles };
+    }
+    const currentDbKeys = new Set(currentDbAttachments.map((a) => a.storageKey));
+
     for (const item of plan.deleteTrash) {
       try {
+        const manifestPath = this.getManifestPath(item.trashKey);
+        if (existsSync(manifestPath)) {
+          const manifest = await this.readManifest(manifestPath);
+          if (currentDbKeys.has(manifest.originalStorageKey)) {
+            console.warn(`[AttachmentStorageService] Skipping deletion of trash ${item.trashKey}: originalStorageKey ${manifest.originalStorageKey} is referenced by database.`);
+            continue;
+          }
+        }
         await this.permanentlyDelete(item.trashKey);
         cleanedTrash++;
       } catch {
@@ -521,6 +551,11 @@ export class AttachmentStorageService {
 
     for (const filePath of plan.deleteActiveOrphans) {
       try {
+        const fileBasename = path.basename(filePath);
+        if (currentDbKeys.has(fileBasename)) {
+          console.warn(`[AttachmentStorageService] Skipping deletion of active orphan ${filePath}: storageKey ${fileBasename} is referenced by database.`);
+          continue;
+        }
         await fs.unlink(filePath);
         cleanedActive++;
       } catch {

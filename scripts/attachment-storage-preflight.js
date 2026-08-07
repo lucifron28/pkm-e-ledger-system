@@ -92,15 +92,29 @@ function sha256Of(filePath) {
 }
 
 function validateSidecar(sidecar, canonicalDb, canonicalRoot, migrationTarget) {
-  if (!sidecar) return;
-  if (sidecar.dbIdentity && canonicalDb && sidecar.dbIdentity !== canonicalDb) {
-    throw new Error(`Database identity mismatch (sidecar=${sidecar.dbIdentity}, current=${canonicalDb}).`);
+  if (!sidecar || typeof sidecar !== "object") {
+    throw new Error("Sidecar validation failed: sidecar object missing or invalid.");
   }
-  if (sidecar.uploadsRoot && sidecar.uploadsRoot !== canonicalRoot) {
-    throw new Error(`Uploads root mismatch (sidecar=${sidecar.uploadsRoot}, current=${canonicalRoot}).`);
+  if (![1, 2, 3].includes(sidecar.version)) {
+    throw new Error(`Sidecar validation failed: unsupported version ${sidecar.version}.`);
   }
-  if (sidecar.migrationTarget && migrationTarget && sidecar.migrationTarget !== migrationTarget) {
-    throw new Error(`Migration target mismatch (sidecar=${sidecar.migrationTarget}, current=${migrationTarget}).`);
+  if (typeof sidecar.runId !== "string" || !sidecar.runId.trim()) {
+    throw new Error("Sidecar validation failed: runId is required.");
+  }
+  if (!sidecar.dbIdentity || (canonicalDb && sidecar.dbIdentity !== canonicalDb)) {
+    throw new Error(`Sidecar validation failed: database identity mismatch (sidecar=${sidecar.dbIdentity}, current=${canonicalDb}).`);
+  }
+  if (!sidecar.uploadsRoot || sidecar.uploadsRoot !== canonicalRoot) {
+    throw new Error(`Sidecar validation failed: uploads root mismatch (sidecar=${sidecar.uploadsRoot}, current=${canonicalRoot}).`);
+  }
+  if (!sidecar.migrationTarget || (migrationTarget && sidecar.migrationTarget !== migrationTarget)) {
+    throw new Error(`Sidecar validation failed: migration target mismatch (sidecar=${sidecar.migrationTarget}, current=${migrationTarget}).`);
+  }
+  if (!["PREPARED", "MIGRATED", "ROLLED_BACK"].includes(sidecar.state)) {
+    throw new Error(`Sidecar validation failed: unrecognized state ${sidecar.state}.`);
+  }
+  if (!Array.isArray(sidecar.mappings)) {
+    throw new Error("Sidecar validation failed: mappings array missing or invalid.");
   }
 }
 
@@ -224,14 +238,41 @@ async function runPreflight(prisma, uploadsRoot, dbUrl) {
     const existingSidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
     validateSidecar(existingSidecar, canonicalDb, canonicalRoot, "20260801000000_storage_keys_and_audit_snapshots");
 
+    let hasStorageKey = false;
+    let hasTable = false;
+    if (prisma) {
+      const tableRows = await prisma.$queryRawUnsafe(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Attachment'`
+      );
+      hasTable = tableRows.length > 0;
+      if (hasTable) {
+        const columns = await prisma.$queryRawUnsafe(`PRAGMA table_info("Attachment")`);
+        const names = new Set(columns.map((c) => c.name));
+        hasStorageKey = names.has("storageKey");
+      }
+    }
+
     if (existingSidecar.state === "MIGRATED") {
+      if (prisma && hasTable && !hasStorageKey) {
+        throw new Error(
+          "Stale sidecar / schema state conflict: sidecar state is MIGRATED but Attachment table is in legacy shape (missing storageKey)."
+        );
+      }
       console.log("[preflight] Sidecar is already MIGRATED; skipping preflight.");
       return;
     }
+
     if (existingSidecar.state === "PREPARED") {
       console.log("[preflight] Found existing PREPARED sidecar for current database; verifying files on disk.");
       for (const mapping of existingSidecar.mappings || []) {
         const destFile = path.join(canonicalRoot, mapping.newStorageKey);
+        const expectedHash = mapping.sourceHash || mapping.hash;
+        const expectedSize = mapping.sizeBytes ?? mapping.sourceSizeBytes;
+
+        if (!expectedHash || expectedSize === undefined || expectedSize === null) {
+          throw new Error(`Preflight resume failed: missing hash or size metadata for ${mapping.newStorageKey}`);
+        }
+
         if (!fs.existsSync(destFile)) {
           let restored = false;
           if (mapping.sourceFile && fs.existsSync(mapping.sourceFile)) {
@@ -247,6 +288,15 @@ async function runPreflight(prisma, uploadsRoot, dbUrl) {
           if (!restored || !fs.existsSync(destFile)) {
             throw new Error(`Preflight resume failed: missing destination file for ${mapping.newStorageKey}`);
           }
+        }
+
+        const actualSize = fs.statSync(destFile).size;
+        if (actualSize !== expectedSize) {
+          throw new Error(`Preflight resume failed: size mismatch for ${mapping.newStorageKey} (expected=${expectedSize}, actual=${actualSize})`);
+        }
+        const actualHash = sha256Of(destFile);
+        if (actualHash !== expectedHash) {
+          throw new Error(`Preflight resume failed: hash mismatch for ${mapping.newStorageKey} (expected=${expectedHash}, actual=${actualHash})`);
         }
       }
       return;

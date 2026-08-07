@@ -103,3 +103,93 @@ test("Storage Reconciliation: fails closed on database query error", async () =>
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+test("Storage Reconciliation: DB_DELETED and CLEANED manifests retain trash when DB row exists", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "reconcile-conflict-"));
+  const trashDir = path.join(tmpDir, "trash");
+  fs.mkdirSync(trashDir, { recursive: true });
+
+  const trashPayload = path.join(trashDir, "trash-dbdel.png");
+  fs.writeFileSync(trashPayload, "trash payload");
+  const manifestPath = path.join(trashDir, "trash-dbdel.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      version: 1,
+      trashKey: "trash-dbdel.png",
+      originalStorageKey: "referenced.png",
+      attachmentId: "att-conflict",
+      state: "DB_DELETED",
+      operationTimestamp: new Date().toISOString(),
+      stateChangedAt: new Date().toISOString(),
+    })
+  );
+
+  // DB contains referenced.png
+  const mockDb: StorageDatabase = {
+    attachment: {
+      findMany: async () => [
+        { id: "att-conflict", storageKey: "referenced.png", transactionId: "tx-1", cashTransferId: null },
+      ],
+    },
+  };
+
+  const service = new AttachmentStorageService(tmpDir, mockDb);
+  const plan = await service.planReconciliation();
+
+  assert.equal(plan.deleteTrash.length, 0, "DB_DELETED manifest must not be deleted when referenced by DB");
+  assert.equal(plan.retainedForReview.length, 1, "Conflict must be retained for review");
+  assert.match(plan.retainedForReview[0].reason, /Conflict/);
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("Storage Reconciliation: applyReconciliation re-validates DB before unlinking trash or orphans", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "reconcile-race-"));
+  const trashDir = path.join(tmpDir, "trash");
+  fs.mkdirSync(trashDir, { recursive: true });
+
+  const orphanPath = path.join(tmpDir, "newly-referenced.png");
+  fs.writeFileSync(orphanPath, "orphan payload");
+  const oldTime = Date.now() - 2 * 60 * 60 * 1000;
+  fs.utimesSync(orphanPath, new Date(oldTime), new Date(oldTime));
+
+  const trashPayload = path.join(trashDir, "trash-race.png");
+  fs.writeFileSync(trashPayload, "trash payload");
+  const manifestPath = path.join(trashDir, "trash-race.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      version: 1,
+      trashKey: "trash-race.png",
+      originalStorageKey: "newly-referenced.png",
+      attachmentId: "att-race",
+      state: "PREPARED",
+      operationTimestamp: new Date().toISOString(),
+      stateChangedAt: new Date(oldTime).toISOString(),
+    })
+  );
+
+  // DB initially has NO rows
+  let dbRows: Array<{ id: string; storageKey: string; transactionId: string | null; cashTransferId: string | null }> = [];
+  const mockDb: StorageDatabase = {
+    attachment: {
+      findMany: async () => dbRows,
+    },
+  };
+
+  const service = new AttachmentStorageService(tmpDir, mockDb);
+  const plan = await service.planReconciliation();
+  assert.equal(plan.deleteTrash.length, 1);
+  assert.equal(plan.deleteActiveOrphans.length, 1);
+
+  // Race condition: BEFORE applyReconciliation runs, DB gets a row referencing newly-referenced.png!
+  dbRows = [{ id: "att-race", storageKey: "newly-referenced.png", transactionId: "tx-2", cashTransferId: null }];
+
+  const result = await service.applyReconciliation(plan);
+  assert.equal(result.cleanedTrash, 0, "Trash deletion must be skipped when DB key becomes referenced");
+  assert.equal(result.cleanedActive, 0, "Active orphan deletion must be skipped when DB key becomes referenced");
+  assert.equal(fs.existsSync(orphanPath), true, "Active file must be preserved");
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});

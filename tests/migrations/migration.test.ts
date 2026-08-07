@@ -652,9 +652,11 @@ test("Migration Preflight: foreign MIGRATED sidecar throws error on DB identity 
   fs.writeFileSync(
     sidecarPath,
     JSON.stringify({
-      version: 1,
+      version: 3,
+      runId: "run-123",
       dbIdentity: "/different/path/to/other.db",
-      uploadsRoot,
+      uploadsRoot: path.resolve(uploadsRoot),
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
       state: "MIGRATED",
       mappings: [],
     })
@@ -663,36 +665,170 @@ test("Migration Preflight: foreign MIGRATED sidecar throws error on DB identity 
   const { runPreflight } = await import("../../scripts/attachment-storage-preflight");
   await assert.rejects(
     () => runPreflight(null, uploadsRoot, "file:./local.db"),
-    /Database identity mismatch/
+    /Sidecar validation failed: database identity mismatch/
   );
 
   fs.rmSync(uploadsRoot, { recursive: true, force: true });
 });
 
-test("Migration Preflight: PREPARED resume with missing destination throws error", async () => {
-  const uploadsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-resume-"));
-  const sidecarPath = path.join(uploadsRoot, ".attachment-storage-key-migration.json");
-  const canonicalDb = path.resolve("./local.db");
-  const canonicalRoot = path.resolve(uploadsRoot);
+test("Migration Preflight: stale MIGRATED sidecar throws conflict error when DB is in legacy shape", async () => {
+  const fixture = await buildLegacyFixture("stale-migrated-sidecar", {
+    "receipt.png": PNG_CONTENT,
+  }, [
+    { id: "att-1", storedName: "receipt.png", storagePath: "/legacy/a/receipt.png" },
+  ]);
+
+  const sidecarPath = path.join(fixture.uploadsRoot, ".attachment-storage-key-migration.json");
+  const canonicalDb = path.resolve(fixture.dbUrl.replace(/^file:/, ""));
+  const canonicalRoot = path.resolve(fixture.uploadsRoot);
 
   fs.writeFileSync(
     sidecarPath,
     JSON.stringify({
-      version: 1,
+      version: 3,
+      runId: "run-stale",
       dbIdentity: canonicalDb,
       uploadsRoot: canonicalRoot,
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
+      state: "MIGRATED",
+      mappings: [],
+    })
+  );
+
+  const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
+  const { runPreflight } = await import("../../scripts/attachment-storage-preflight");
+  try {
+    await assert.rejects(
+      () => runPreflight(prisma, fixture.uploadsRoot, fixture.dbUrl),
+      /Stale sidecar \/ schema state conflict/
+    );
+  } finally {
+    await prisma.$disconnect();
+    cleanupTempDir();
+  }
+});
+
+test("Migration Preflight: rejects invalid version, missing runId, and unrecognized state", async () => {
+  const uploadsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-invalid-fields-"));
+  const sidecarPath = path.join(uploadsRoot, ".attachment-storage-key-migration.json");
+  const canonicalDb = path.resolve("./local.db");
+  const canonicalRoot = path.resolve(uploadsRoot);
+
+  // Missing runId
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 3,
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
+      state: "PREPARED",
+      mappings: [],
+    })
+  );
+  const { runPreflight } = await import("../../scripts/attachment-storage-preflight");
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Sidecar validation failed: runId is required/
+  );
+
+  // Unsupported version
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 99,
+      runId: "run-1",
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
+      state: "PREPARED",
+      mappings: [],
+    })
+  );
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Sidecar validation failed: unsupported version 99/
+  );
+
+  fs.rmSync(uploadsRoot, { recursive: true, force: true });
+});
+
+test("Migration Preflight: PREPARED resume verifies hash and byte length", async () => {
+  const uploadsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-resume-verif-"));
+  const sidecarPath = path.join(uploadsRoot, ".attachment-storage-key-migration.json");
+  const canonicalDb = path.resolve("./local.db");
+  const canonicalRoot = path.resolve(uploadsRoot);
+
+  const correctContent = Buffer.from("CORRECT_CONTENT");
+  const correctHash = crypto.createHash("sha256").update(correctContent).digest("hex");
+  const correctSize = correctContent.length;
+
+  const legacyFile = path.join(uploadsRoot, "receipt.png");
+  fs.writeFileSync(legacyFile, correctContent);
+
+  const destFile = path.join(uploadsRoot, "receipt.png-dup-att-2");
+
+  // Case 1: Missing metadata (no hash/size)
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 3,
+      runId: "run-resume",
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
       state: "PREPARED",
       mappings: [
-        { attachmentId: "att-1", oldStorageKey: "missing.png", newStorageKey: "missing.png-dup-att-1" },
+        { attachmentId: "att-2", oldStorageKey: "receipt.png", newStorageKey: "receipt.png-dup-att-2" },
       ],
     })
   );
 
-  const { runPreflight: runPreflightResume } = await import("../../scripts/attachment-storage-preflight");
+  const { runPreflight } = await import("../../scripts/attachment-storage-preflight");
   await assert.rejects(
-    () => runPreflightResume(null, uploadsRoot, "file:./local.db"),
-    /Preflight resume failed: missing destination file/
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Preflight resume failed: missing hash or size metadata/
   );
+
+  // Case 2: Size mismatch on existing destination
+  fs.writeFileSync(destFile, Buffer.from("SHORT"));
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 3,
+      runId: "run-resume",
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
+      state: "PREPARED",
+      mappings: [
+        {
+          attachmentId: "att-2",
+          oldStorageKey: "receipt.png",
+          newStorageKey: "receipt.png-dup-att-2",
+          sourceHash: correctHash,
+          sizeBytes: correctSize,
+        },
+      ],
+    })
+  );
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Preflight resume failed: size mismatch/
+  );
+
+  // Case 3: Hash mismatch on existing destination
+  fs.writeFileSync(destFile, Buffer.from("CORRECT_LENGTH!")); // same length as "CORRECT_CONTENT" (15 bytes)
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Preflight resume failed: hash mismatch/
+  );
+
+  // Case 4: Reconstructed destination size/hash verification succeeds
+  fs.rmSync(destFile, { force: true });
+  await runPreflight(null, uploadsRoot, "file:./local.db");
+  assert.equal(fs.existsSync(destFile), true);
+  assert.equal(fs.readFileSync(destFile, "utf8"), "CORRECT_CONTENT");
 
   fs.rmSync(uploadsRoot, { recursive: true, force: true });
 });

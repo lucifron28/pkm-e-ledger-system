@@ -1,8 +1,20 @@
+try {
+  const serverOnlyPath = require.resolve("server-only");
+  require.cache[serverOnlyPath] = {
+    id: serverOnlyPath,
+    filename: serverOnlyPath,
+    loaded: true,
+    exports: {},
+  };
+} catch {
+  // Ignore if server-only is not installed
+}
+
 import path from "path";
 import { PrismaClient } from "@prisma/client";
-import { AttachmentStorageService } from "../lib/infrastructure/storage/attachment-store";
 
 async function main() {
+  const { AttachmentStorageService } = await import("../lib/infrastructure/storage/attachment-store");
   const confirm = process.argv.includes("--confirm");
   const dryRun = !confirm;
   const uploadsRoot = path.resolve(
