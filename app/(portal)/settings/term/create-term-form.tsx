@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo } from "react";
 import { createAcademicTermAction } from "@/lib/actions/terms";
 import { SEMESTER_LABELS } from "@/lib/data/term-labels";
 
@@ -13,9 +13,11 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
     createAcademicTermAction,
     null
   );
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {state?.error && !state.fieldErrors && (
         <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">
           {state.error}

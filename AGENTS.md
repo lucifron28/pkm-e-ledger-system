@@ -22,9 +22,21 @@ Do not make current-status claims without inspecting the repository.
 
 ## Current Implementation Status
 
-* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), Reports and exports (`feature/reports-and-exports`), and Transparency portals (`feature/transparency-portals`).
-* **Current / In Review**: Testing, hardening, and demo (`feature/testing-hardening-and-demo`).
+* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), Reports and exports (`feature/reports-and-exports`), Transparency portals (`feature/transparency-portals`), and Testing, hardening, and demo (`feature/testing-hardening-and-demo`).
+* **Current / In Review**: Post-implementation business-invariant hardening (`fix/business-invariants-concurrency-and-audit`).
 * **Next**: Final external audit and merge.
+
+## Business Invariants (Post-Implementation Hardening)
+
+* Exactly one active academic term per organization is enforced by a SQLite partial unique index; application commands deactivate the previous term atomically.
+* Money is integer cents with `MAX_MONEY_CENTS = 2_147_483_647`; amounts must be positive and opening balances non-negative; aggregates are overflow-checked before persistence or report generation.
+* Cash transfers between Cash on Hand and Cash in Bank change account balances but never count as income or expense; they are a separate `CashTransfer` aggregate with soft deletion and mandatory deletion reason.
+* Financial commands (transaction create/edit/delete, transfer create/edit/delete, opening-balance updates) are idempotent per actor + key + payload hash and protected by optimistic `version` fields.
+* Transient SQLite conflicts are retried with bounded exponential backoff; validation, authorization, stale-version, and idempotency errors are never retried.
+* Financial summaries and report packages are snapshot-consistent (single read transaction); OSA overview batches queries to avoid N+1.
+* Audit rows are append-only (database triggers reject UPDATE/DELETE), metadata is recursively redacted, and the Treasurer Log is cursor-paginated.
+* Attachment storage uses a staging -> commit -> trash lifecycle; only relative storage keys are persisted; reconciliation removes stale staged and abandoned trash files.
+* Reports are live generated views of current non-deleted financial data; generated exports are not immutable publications.
 
 ## Source of Truth
 

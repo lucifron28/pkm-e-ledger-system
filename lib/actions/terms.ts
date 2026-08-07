@@ -3,48 +3,36 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { Prisma, Semester, AuditAction } from "@prisma/client";
-import { prisma } from "../db/prisma";
+import { Semester } from "@prisma/client";
 import { requireManagementUser } from "../auth/require-auth";
-import { createAuditLog } from "../data/audit-log";
+import { parsePesoToCents, PesoParseError } from "../domain/money";
+import { validateAcademicYear } from "../domain/term-labels";
 import {
-  parsePesoToCents,
-  PesoParseError,
-  calculateBalanceForwarded,
-} from "../data/money";
-import { hasNegativeAccountBalance, projectMutationBalances } from "../domain/financial";
-import {
-  validateAcademicYear,
-  getActiveTermForCurrentUser,
-  getTermByIdForCurrentUser,
-} from "../data/terms";
-
-function parseBalanceField(value: string, fieldName: string): number {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    throw new ValidationError(`${fieldName} is required.`);
-  }
-  try {
-    return parsePesoToCents(trimmed);
-  } catch (error) {
-    if (error instanceof PesoParseError) {
-      throw new ValidationError(error.message);
-    }
-    throw error;
-  }
-}
-
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ValidationError";
-  }
-}
+  createAcademicTermService,
+  activateAcademicTermService,
+  updateOpeningBalancesService,
+} from "../application/terms";
+import { DomainError } from "../domain/errors";
 
 export type TermActionState = {
   error?: string;
   fieldErrors?: Record<string, string[]>;
 } | null;
+
+function parseBalanceField(value: string, fieldName: string): number {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new DomainError(`${fieldName} is required.`);
+  }
+  try {
+    return parsePesoToCents(trimmed);
+  } catch (error) {
+    if (error instanceof PesoParseError) {
+      throw new DomainError(error.message);
+    }
+    throw error;
+  }
+}
 
 const createTermSchema = z.object({
   academicYear: z.string().min(1, "Academic year is required."),
@@ -52,10 +40,11 @@ const createTermSchema = z.object({
   openingCashOnHand: z.string(),
   openingCashInBank: z.string(),
   activate: z.string().optional(),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 export async function createAcademicTermAction(
-  prevState: TermActionState,
+  _prevState: TermActionState,
   formData: FormData
 ): Promise<TermActionState> {
   const user = await requireManagementUser();
@@ -69,6 +58,7 @@ export async function createAcademicTermAction(
     openingCashOnHand: formData.get("openingCashOnHand")?.toString() || "",
     openingCashInBank: formData.get("openingCashInBank")?.toString() || "",
     activate: formData.get("activate")?.toString() || undefined,
+    idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   };
 
   const validation = createTermSchema.safeParse(rawData);
@@ -79,7 +69,7 @@ export async function createAcademicTermAction(
     };
   }
 
-  const { academicYear, semester, openingCashOnHand, openingCashInBank, activate } =
+  const { academicYear, semester, openingCashOnHand, openingCashInBank, activate, idempotencyKey } =
     validation.data;
 
   const yearError = validateAcademicYear(academicYear);
@@ -90,79 +80,29 @@ export async function createAcademicTermAction(
     };
   }
 
-  const validatedAcademicYear = academicYear.trim();
-
-  let cashOnHandCents: number;
-  let cashInBankCents: number;
+  let openingCashOnHandCents: number;
+  let openingCashInBankCents: number;
   try {
-    cashOnHandCents = parseBalanceField(openingCashOnHand, "Opening Cash on Hand");
-    cashInBankCents = parseBalanceField(openingCashInBank, "Opening Cash in Bank");
+    openingCashOnHandCents = parseBalanceField(openingCashOnHand, "Opening Cash on Hand");
+    openingCashInBankCents = parseBalanceField(openingCashInBank, "Opening Cash in Bank");
   } catch (error) {
-    if (error instanceof ValidationError) {
+    if (error instanceof DomainError) {
       return { error: error.message };
     }
     throw error;
   }
 
-  // Determine if new term should be active
-  const existingActive = await getActiveTermForCurrentUser();
-  let shouldActivate = false;
-  if (!existingActive) {
-    shouldActivate = true;
-  } else if (activate === "true") {
-    shouldActivate = true;
-  }
-
-  const balanceForwarded = calculateBalanceForwarded(cashOnHandCents, cashInBankCents);
-
   try {
-    await prisma.$transaction(async (tx) => {
-      if (shouldActivate) {
-        await tx.academicTerm.updateMany({
-          where: { organizationId: user.organizationId!, active: true },
-          data: { active: false },
-        });
-      }
-
-      const term = await tx.academicTerm.create({
-        data: {
-          organizationId: user.organizationId!,
-          academicYear: validatedAcademicYear,
-          semester,
-          openingCashOnHandCents: cashOnHandCents,
-          openingCashInBankCents: cashInBankCents,
-          active: shouldActivate,
-        },
-      });
-
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.CHANGED_OPENING_BALANCE,
-        entityType: "AcademicTerm",
-        entityId: term.id,
-        metadata: {
-          academicYear: validatedAcademicYear,
-          semester,
-          previousCashOnHandCents: 0,
-          newCashOnHandCents: cashOnHandCents,
-          previousCashInBankCents: 0,
-          newCashInBankCents: cashInBankCents,
-          previousBalanceForwardedCents: 0,
-          newBalanceForwardedCents: balanceForwarded,
-          operation: "CREATE",
-        },
-        tx,
-      });
+    await createAcademicTermService(user, {
+      academicYear,
+      semester,
+      openingCashOnHandCents,
+      openingCashInBankCents,
+      activate: activate === "true",
+      idempotencyKey,
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return {
-        error: "This academic term already exists.",
-        fieldErrors: { academicYear: ["This academic term already exists."] },
-      };
-    }
+    if (error instanceof DomainError) return { error: error.message };
     console.error("Create term error:", error);
     return { error: "Failed to create academic term. Please try again." };
   }
@@ -174,10 +114,11 @@ export async function createAcademicTermAction(
 
 const activateTermSchema = z.object({
   termId: z.string().min(1, "Term ID is required."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 export async function activateAcademicTermAction(
-  prevState: TermActionState,
+  _prevState: TermActionState,
   formData: FormData
 ): Promise<TermActionState> {
   const user = await requireManagementUser();
@@ -187,6 +128,7 @@ export async function activateAcademicTermAction(
 
   const rawData = {
     termId: formData.get("termId")?.toString() || "",
+    idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   };
 
   const validation = activateTermSchema.safeParse(rawData);
@@ -197,26 +139,13 @@ export async function activateAcademicTermAction(
     };
   }
 
-  const { termId } = validation.data;
-
-  const term = await getTermByIdForCurrentUser(termId);
-  if (!term) {
-    return { error: "Academic term not found." };
-  }
-
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.academicTerm.updateMany({
-        where: { organizationId: user.organizationId!, active: true },
-        data: { active: false },
-      });
-
-      await tx.academicTerm.update({
-        where: { id: termId },
-        data: { active: true },
-      });
+    await activateAcademicTermService(user, {
+      termId: validation.data.termId,
+      idempotencyKey: validation.data.idempotencyKey,
     });
   } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
     console.error("Activate term error:", error);
     return { error: "Failed to activate academic term. Please try again." };
   }
@@ -230,10 +159,12 @@ const updateBalancesSchema = z.object({
   termId: z.string().min(1, "Term ID is required."),
   openingCashOnHand: z.string(),
   openingCashInBank: z.string(),
+  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 export async function updateOpeningBalancesAction(
-  prevState: TermActionState,
+  _prevState: TermActionState,
   formData: FormData
 ): Promise<TermActionState> {
   const user = await requireManagementUser();
@@ -241,10 +172,17 @@ export async function updateOpeningBalancesAction(
     return { error: "You are not assigned to an organization." };
   }
 
+  const rawVersion = formData.get("version")?.toString();
+  if (!rawVersion || !rawVersion.trim()) {
+    return { error: "Missing or malformed term version." };
+  }
+
   const rawData = {
     termId: formData.get("termId")?.toString() || "",
     openingCashOnHand: formData.get("openingCashOnHand")?.toString() || "",
     openingCashInBank: formData.get("openingCashInBank")?.toString() || "",
+    version: rawVersion.trim(),
+    idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   };
 
   const validation = updateBalancesSchema.safeParse(rawData);
@@ -255,82 +193,31 @@ export async function updateOpeningBalancesAction(
     };
   }
 
-  const { termId, openingCashOnHand, openingCashInBank } = validation.data;
+  const { termId, openingCashOnHand, openingCashInBank, version, idempotencyKey } = validation.data;
 
-  let cashOnHandCents: number;
-  let cashInBankCents: number;
+  let openingCashOnHandCents: number;
+  let openingCashInBankCents: number;
   try {
-    cashOnHandCents = parseBalanceField(openingCashOnHand, "Opening Cash on Hand");
-    cashInBankCents = parseBalanceField(openingCashInBank, "Opening Cash in Bank");
+    openingCashOnHandCents = parseBalanceField(openingCashOnHand, "Opening Cash on Hand");
+    openingCashInBankCents = parseBalanceField(openingCashInBank, "Opening Cash in Bank");
   } catch (error) {
-    if (error instanceof ValidationError) {
+    if (error instanceof DomainError) {
       return { error: error.message };
     }
     throw error;
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const existing = await tx.academicTerm.findFirst({
-        where: { id: termId, organizationId: user.organizationId! },
-      });
-      if (!existing) throw new ValidationError("Academic term not found.");
-
-      const rows = await tx.transaction.findMany({
-        where: { organizationId: user.organizationId!, termId: existing.id, deletedAt: null },
-        select: { id: true, type: true, amountCents: true, cashAccount: true },
-      });
-      const projected = projectMutationBalances(
-        existing.openingCashOnHandCents,
-        existing.openingCashInBankCents,
-        rows,
-        {
-          type: "SET_OPENING",
-          openingCashOnHandCents: cashOnHandCents,
-          openingCashInBankCents: cashInBankCents,
-        }
-      );
-      if (hasNegativeAccountBalance(projected)) {
-        throw new ValidationError("Opening balance update would create a negative account balance.");
-      }
-
-      await tx.academicTerm.update({
-        where: { id: termId },
-        data: {
-          openingCashOnHandCents: cashOnHandCents,
-          openingCashInBankCents: cashInBankCents,
-        },
-      });
-
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.CHANGED_OPENING_BALANCE,
-        entityType: "AcademicTerm",
-        entityId: termId,
-        metadata: {
-          academicYear: existing.academicYear,
-          semester: existing.semester,
-          previousCashOnHandCents: existing.openingCashOnHandCents,
-          newCashOnHandCents: cashOnHandCents,
-          previousCashInBankCents: existing.openingCashInBankCents,
-          newCashInBankCents: cashInBankCents,
-          previousBalanceForwardedCents: calculateBalanceForwarded(
-            existing.openingCashOnHandCents,
-            existing.openingCashInBankCents
-          ),
-          newBalanceForwardedCents: calculateBalanceForwarded(
-            cashOnHandCents,
-            cashInBankCents
-          ),
-          operation: "UPDATE",
-        },
-        tx,
-      });
+    const expectedVersion = parseInt(version, 10);
+    await updateOpeningBalancesService(user, {
+      termId,
+      expectedVersion,
+      openingCashOnHandCents,
+      openingCashInBankCents,
+      idempotencyKey,
     });
   } catch (error) {
-    if (error instanceof ValidationError) return { error: error.message };
+    if (error instanceof DomainError) return { error: error.message };
     console.error("Update balances error:", error);
     return { error: "Failed to update opening balances. Please try again." };
   }

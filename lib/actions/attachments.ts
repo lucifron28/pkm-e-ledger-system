@@ -1,25 +1,40 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { mkdir, readFile, unlink, writeFile } from "fs/promises";
-import path from "path";
 import crypto from "crypto";
+import { revalidatePath } from "next/cache";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { validateAndReadAttachmentFile, ValidatedAttachment } from "../domain/attachments";
-import { AuditAction } from "@prisma/client";
-
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+import { validateAndReadAttachmentFile } from "../domain/attachments";
+import { AuditAction, Prisma } from "@prisma/client";
+import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import { withTransientRetry } from "../infrastructure/db/retry";
+import {
+  claimCommandReceipt,
+  processIdempotentCommand,
+  releaseCommandReceipt,
+} from "../application/idempotency";
+import { DomainError, ValidationError } from "../domain/errors";
 
 export type AttachmentState = { error?: string } | null;
 
-async function persistUploadedBuffer(validated: ValidatedAttachment) {
-  const storedName = `${crypto.randomUUID()}.${validated.extension}`;
-  const storagePath = path.join(UPLOADS_DIR, storedName);
-  await mkdir(UPLOADS_DIR, { recursive: true });
-  await writeFile(storagePath, validated.buffer);
-  return { storedName, storagePath };
+function getOwnerIds(formData: FormData): { transactionId: string | null; cashTransferId: string | null } {
+  const transactionId = formData.get("transactionId")?.toString().trim() || null;
+  const cashTransferId = formData.get("cashTransferId")?.toString().trim() || null;
+  if ((transactionId ? 1 : 0) + (cashTransferId ? 1 : 0) !== 1) {
+    throw new ValidationError("Attachment must belong to exactly one transaction or cash transfer.");
+  }
+  return { transactionId, cashTransferId };
+}
+
+function getFile(formData: FormData): File {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size <= 0) throw new ValidationError("File is required.");
+  return file;
+}
+
+function getIdempotencyKey(formData: FormData, fallback: string): string {
+  return formData.get("idempotencyKey")?.toString().trim() || fallback;
 }
 
 export async function uploadAttachmentAction(
@@ -29,55 +44,120 @@ export async function uploadAttachmentAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const transactionId = formData.get("transactionId")?.toString();
-  const file = formData.get("file");
-  if (!transactionId) return { error: "Transaction ID is required." };
-  if (!(file instanceof File)) return { error: "File is required." };
+  let owner: { transactionId: string | null; cashTransferId: string | null };
+  let file: File;
+  try {
+    owner = getOwnerIds(formData);
+    file = getFile(formData);
+  } catch (error) {
+    return { error: error instanceof DomainError ? error.message : "Attachment owner and file are required." };
+  }
 
   const validation = await validateAndReadAttachmentFile(file);
-  if (!validation.success) {
-    return { error: validation.error };
-  }
+  if (!validation.success) return { error: validation.error };
   const validated = validation.data;
-  let fileInfo: { storedName: string; storagePath: string } | null = null;
-  try {
-    fileInfo = await persistUploadedBuffer(validated);
-    await prisma.$transaction(async (tx) => {
-      const transaction = await tx.transaction.findFirst({
-        where: { id: transactionId, organizationId: user.organizationId!, deletedAt: null },
-        select: { id: true },
-      });
-      if (!transaction) throw new Error("Transaction not found.");
+  const fileHash = crypto.createHash("sha256").update(validated.buffer).digest("hex");
+  const ownerKey = owner.transactionId || owner.cashTransferId!;
+  const commandType = "UPLOAD_ATTACHMENT";
+  const idempotencyKey = getIdempotencyKey(formData, `upload-${ownerKey}-${fileHash}`);
+  const payload = {
+    ...owner,
+    originalName: validated.originalName,
+    mimeType: validated.mimeType,
+    sizeBytes: validated.sizeBytes,
+    fileHash,
+  };
 
-      const attachment = await tx.attachment.create({
-        data: {
-          transactionId,
-          uploadedById: user.id,
-          originalName: file.name,
-          storedName: fileInfo!.storedName,
-          storagePath: fileInfo!.storagePath,
-          mimeType: file.type,
-          sizeBytes: file.size,
-        },
-      });
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.UPLOADED_ATTACHMENT,
-        entityType: "Attachment",
-        entityId: attachment.id,
-        metadata: { transactionId, originalName: file.name, sizeBytes: file.size },
-        tx,
-      });
-    });
+  let receipt;
+  try {
+    receipt = await claimCommandReceipt<{ id: string }>(
+      user.id,
+      user.organizationId,
+      commandType,
+      idempotencyKey,
+      payload
+    );
   } catch (error) {
-    if (fileInfo) {
-      try { await unlink(fileInfo.storagePath); } catch { /* best effort cleanup */ }
+    return { error: error instanceof DomainError ? error.message : "Could not claim attachment upload." };
+  }
+  if (receipt.status === "COMPLETED") return null;
+
+  const claim = receipt.claim;
+  const storage = defaultAttachmentStorageService;
+  let staged: Awaited<ReturnType<typeof storage.stageUpload>> | null = null;
+  let storageKey: string | null = null;
+  try {
+    staged = await storage.stageUpload(validated.buffer, validated.originalName, validated.mimeType);
+    const committed = await storage.commitUpload(staged.stageId, staged.extension);
+    storageKey = committed.storageKey;
+
+    const outcome = await withTransientRetry(() =>
+      processIdempotentCommand<{ id: string }>(
+        user.id,
+        user.organizationId!,
+        commandType,
+        idempotencyKey,
+        payload,
+        async (tx) => {
+          const transaction = owner.transactionId
+            ? await tx.transaction.findFirst({
+                where: { id: owner.transactionId, organizationId: user.organizationId!, deletedAt: null },
+                select: { id: true },
+              })
+            : null;
+          const transfer = owner.cashTransferId
+            ? await tx.cashTransfer.findFirst({
+                where: { id: owner.cashTransferId, organizationId: user.organizationId!, deletedAt: null },
+                select: { id: true },
+              })
+            : null;
+          if (!transaction && !transfer) throw new ValidationError("Attachment owner not found or access denied.");
+
+          const attachment = await tx.attachment.create({
+            data: {
+              transactionId: transaction?.id || null,
+              cashTransferId: transfer?.id || null,
+              uploadedById: user.id,
+              originalName: validated.originalName,
+              storageKey: storageKey!,
+              mimeType: validated.mimeType,
+              sizeBytes: validated.sizeBytes,
+            },
+          });
+
+          await createAuditLog({
+            userId: user.id,
+            organizationId: user.organizationId,
+            role: user.role,
+            action: AuditAction.UPLOADED_ATTACHMENT,
+            entityType: "Attachment",
+            entityId: attachment.id,
+            metadata: {
+              transactionId: transaction?.id || null,
+              cashTransferId: transfer?.id || null,
+              originalName: validated.originalName,
+              sizeBytes: validated.sizeBytes,
+            },
+            tx,
+          });
+
+          return { result: { id: attachment.id }, resultEntityType: "Attachment", resultEntityId: attachment.id };
+        },
+        { claimToken: claim.claimToken }
+      )
+    );
+
+    if (outcome.disposition === "CACHED" && storageKey) {
+      // Another claimant completed this upload; this caller's committed file
+      // is unreferenced and must be removed. When EXECUTED, retain the file
+      // without a second ownership query. Failures here keep the file for
+      // reconciliation rather than risk deleting a referenced file.
+      await storage.deleteActiveFile(storageKey).catch(() => undefined);
     }
-    if (error instanceof Error && error.message === "Transaction not found.") {
-      return { error: error.message };
-    }
+  } catch (error) {
+    if (staged) await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    if (error instanceof DomainError) return { error: error.message };
     console.error("Upload attachment error:", error);
     return { error: "Failed to upload attachment. Please try again." };
   }
@@ -93,82 +173,119 @@ export async function deleteAttachmentAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const attachmentId = formData.get("attachmentId")?.toString();
+  const attachmentId = formData.get("attachmentId")?.toString().trim();
   if (!attachmentId) return { error: "Attachment ID is required." };
+  const idempotencyKey = getIdempotencyKey(formData, `delete-attachment-${attachmentId}`);
+  const payload = { attachmentId };
 
-  const attachment = await prisma.attachment.findFirst({
-    where: {
-      id: attachmentId,
-      transaction: { organizationId: user.organizationId, deletedAt: null },
-    },
-    select: {
-      id: true,
-      originalName: true,
-      storagePath: true,
-      transactionId: true,
-    },
-  });
-  if (!attachment) return { error: "Attachment not found." };
-
-  // Pre-check attachment count to prevent unlinking final attachment
-  const totalCount = await prisma.attachment.count({
-    where: { transactionId: attachment.transactionId },
-  });
-  if (totalCount <= 1) {
-    return { error: "Cannot delete the final attachment of an active transaction. At least one receipt attachment must remain." };
-  }
-
-  let fileBuffer: Buffer;
+  let receipt;
   try {
-    fileBuffer = await readFile(attachment.storagePath);
-    await unlink(attachment.storagePath);
-  } catch {
-    return { error: "Attachment file is unavailable." };
-  }
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      const scopedAttachment = await tx.attachment.findFirst({
-        where: {
-          id: attachmentId,
-          transaction: { organizationId: user.organizationId!, deletedAt: null },
-        },
-        select: { id: true, transactionId: true },
-      });
-      if (!scopedAttachment) throw new Error("Attachment not found.");
-
-      const remainingCount = await tx.attachment.count({
-        where: { transactionId: scopedAttachment.transactionId },
-      });
-      if (remainingCount <= 1) {
-        throw new Error("Cannot delete the final attachment of an active transaction. At least one receipt attachment must remain.");
-      }
-
-      await tx.attachment.delete({ where: { id: scopedAttachment.id } });
-      await createAuditLog({
-        userId: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        action: AuditAction.DELETED_ATTACHMENT,
-        entityType: "Attachment",
-        entityId: attachmentId,
-        metadata: { transactionId: attachment.transactionId, originalName: attachment.originalName },
-        tx,
-      });
-    });
+    receipt = await claimCommandReceipt<{ id: string }>(
+      user.id,
+      user.organizationId,
+      "DELETE_ATTACHMENT",
+      idempotencyKey,
+      payload
+    );
   } catch (error) {
-    try {
-      await mkdir(UPLOADS_DIR, { recursive: true });
-      await writeFile(attachment.storagePath, fileBuffer);
-    } catch (restoreError) {
-      console.error("Failed to restore attachment after database failure:", restoreError);
+    return { error: error instanceof DomainError ? error.message : "Could not claim attachment deletion." };
+  }
+  if (receipt.status === "COMPLETED") return null;
+  const claim = receipt.claim;
+
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    include: {
+      transaction: { select: { id: true, organizationId: true, deletedAt: true } },
+      cashTransfer: { select: { id: true, organizationId: true, deletedAt: true } },
+    },
+  });
+  const ownerOrgId = attachment?.transaction?.organizationId || attachment?.cashTransfer?.organizationId;
+  if (!attachment || !ownerOrgId || ownerOrgId !== user.organizationId || attachment.transaction?.deletedAt || attachment.cashTransfer?.deletedAt) {
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    return { error: "Attachment not found or access denied." };
+  }
+
+  let trashKey: string | null = null;
+  let databaseDeleted = false;
+  try {
+    trashKey = await defaultAttachmentStorageService.moveToTrash(attachment.storageKey, {
+      attachmentId: attachment.id,
+      transactionId: attachment.transactionId,
+      cashTransferId: attachment.cashTransferId,
+    });
+
+    await withTransientRetry(() =>
+      processIdempotentCommand(
+        user.id,
+        user.organizationId!,
+        "DELETE_ATTACHMENT",
+        idempotencyKey,
+        payload,
+        async (tx) => {
+          const scoped = await tx.attachment.findUnique({
+            where: { id: attachment.id },
+            include: {
+              transaction: { select: { id: true, organizationId: true, deletedAt: true } },
+              cashTransfer: { select: { id: true, organizationId: true, deletedAt: true } },
+            },
+          });
+          if (!scoped) throw new ValidationError("Attachment was already deleted.");
+          if (scoped.transaction?.organizationId !== user.organizationId && scoped.cashTransfer?.organizationId !== user.organizationId) {
+            throw new ValidationError("Access denied.");
+          }
+          if (scoped.transaction?.deletedAt || scoped.cashTransfer?.deletedAt) {
+            throw new ValidationError("Deleted-entry attachments cannot be accessed.");
+          }
+
+          const attachmentCount = scoped.transactionId
+            ? await tx.attachment.count({ where: { transactionId: scoped.transactionId } })
+            : await tx.attachment.count({ where: { cashTransferId: scoped.cashTransferId! } });
+          if (attachmentCount <= 1) {
+            throw new ValidationError("Cannot delete the final supporting attachment.");
+          }
+
+          const ownerCondition = scoped.transactionId
+            ? Prisma.sql`"transactionId" = ${scoped.transactionId}`
+            : Prisma.sql`"cashTransferId" = ${scoped.cashTransferId}`;
+          const deleted = await tx.$executeRaw(
+            Prisma.sql`
+              DELETE FROM "Attachment"
+              WHERE "id" = ${scoped.id}
+                AND ${ownerCondition}
+                AND (SELECT COUNT(*) FROM "Attachment" WHERE ${ownerCondition}) > 1
+            `
+          );
+          if (deleted !== 1) throw new ValidationError("Cannot delete the final supporting attachment.");
+
+          await createAuditLog({
+            userId: user.id,
+            organizationId: user.organizationId,
+            role: user.role,
+            action: AuditAction.DELETED_ATTACHMENT,
+            entityType: "Attachment",
+            entityId: scoped.id,
+            metadata: {
+              transactionId: scoped.transactionId,
+              cashTransferId: scoped.cashTransferId,
+              originalName: scoped.originalName,
+            },
+            tx,
+          });
+
+          return { result: { id: scoped.id }, resultEntityType: "Attachment", resultEntityId: scoped.id };
+        },
+        { claimToken: claim.claimToken }
+      )
+    );
+    databaseDeleted = true;
+    if (trashKey) await defaultAttachmentStorageService.permanentlyDelete(trashKey);
+  } catch (error) {
+    if (!databaseDeleted && trashKey) {
+      await defaultAttachmentStorageService.restoreFromTrash(trashKey, attachment.storageKey).catch(() => undefined);
     }
-    if (error instanceof Error && (
-      error.message === "Attachment not found." ||
-      error.message.includes("final attachment")
-    )) {
-      return { error: error.message };
-    }
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    if (error instanceof DomainError) return { error: error.message };
     console.error("Delete attachment error:", error);
     return { error: "Failed to delete attachment. Please try again." };
   }

@@ -113,3 +113,51 @@ export async function requirePermission(
   }
   return user;
 }
+export interface RouteAuthResult {
+  user: SessionUser;
+  errorResponse?: undefined;
+}
+
+export interface RouteAuthErrorResult {
+  user?: undefined;
+  errorResponse: { message: string; status: number };
+}
+
+export async function validateRouteAuth(
+  allowedRoles?: Role[],
+  targetOrganizationId?: string,
+  sessionUser?: SessionUser | null
+): Promise<RouteAuthResult | RouteAuthErrorResult> {
+  let user: SessionUser | null = null;
+  if (sessionUser !== undefined) {
+    user = sessionUser;
+  } else {
+    try {
+      user = await getSession();
+    } catch {
+      user = null;
+    }
+  }
+
+  if (!user) {
+    return { errorResponse: { message: "Unauthorized", status: 401 } };
+  }
+
+  if (user.active === false) {
+    return { errorResponse: { message: "Access denied. Inactive user.", status: 403 } };
+  }
+
+  if (user.mustChangePassword) {
+    return { errorResponse: { message: "Access denied. Password change required.", status: 403 } };
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return { errorResponse: { message: "Access denied. Insufficient permissions.", status: 403 } };
+  }
+
+  if (targetOrganizationId && user.role !== Role.OSA && user.organizationId !== targetOrganizationId) {
+    return { errorResponse: { message: "Access denied. Organization mismatch.", status: 403 } };
+  }
+
+  return { user };
+}

@@ -32,12 +32,15 @@ enum CashAccount {
   CASH_IN_BANK
 }
 
-enum ReportType {
-  MONTHLY
-  EVENT_BASED
-  ACADEMIC_YEAR
-  SEMESTER
-  ORGANIZATION
+enum ExpenseReportBucket {
+  SUPPLIES
+  EQUIPMENT
+  TRANSPORTATION
+  MEALS
+  SERVICE
+  MISC
+  DONATION
+  OTHERS
 }
 
 enum AuditAction {
@@ -58,6 +61,10 @@ enum AuditAction {
   CREATED_CATEGORY
   UPDATED_CATEGORY
   TOGGLED_CATEGORY_STATUS
+  CREATED_CASH_TRANSFER
+  EDITED_CASH_TRANSFER
+  DELETED_CASH_TRANSFER
+  ACTIVATED_ACADEMIC_TERM
 }
 
 model Organization {
@@ -68,44 +75,48 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users            User[]
-  academicTerms    AcademicTerm[]
-  transactions     Transaction[]
-  reports          Report[]
-  auditLogs        AuditLog[]
+  users           User[]
+  academicTerms   AcademicTerm[]
+  transactions    Transaction[]
+  transfers       CashTransfer[]
+  commandReceipts CommandReceipt[]
+  auditLogs       AuditLog[]
 }
 
 model User {
-  id             String   @id @default(cuid())
-  fullName       String
-  username       String   @unique
-  passwordHash   String
-  role           Role
-  organizationId String?
-  active         Boolean  @default(true)
-  mustChangePassword Boolean @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  fullName           String
+  username           String   @unique
+  passwordHash       String
+  role               Role
+  organizationId     String?
+  active             Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id])
 
-  sessions              Session[]
-  recordedTransactions  Transaction[] @relation("TransactionRecordedBy")
-  updatedTransactions   Transaction[] @relation("TransactionUpdatedBy")
-  deletedTransactions   Transaction[] @relation("TransactionDeletedBy")
-  uploadedAttachments   Attachment[]  @relation("AttachmentUploadedBy")
-  generatedReports      Report[]
-  auditLogs             AuditLog[]
+  sessions             Session[]
+  recordedTransactions Transaction[]  @relation("TransactionRecordedBy")
+  updatedTransactions  Transaction[]  @relation("TransactionUpdatedBy")
+  deletedTransactions  Transaction[]  @relation("TransactionDeletedBy")
+  recordedTransfers    CashTransfer[] @relation("CashTransferRecordedBy")
+  updatedTransfers     CashTransfer[] @relation("CashTransferUpdatedBy")
+  deletedTransfers     CashTransfer[] @relation("CashTransferDeletedBy")
+  uploadedAttachments  Attachment[]   @relation("AttachmentUploadedBy")
+  commandReceipts      CommandReceipt[]
+  auditLogs            AuditLog[]
 }
 
 model Session {
-  id            String    @id @default(cuid())
-  userId        String
-  tokenHash     String    @unique
-  expiresAt     DateTime
-  revokedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  lastUsedAt     DateTime?
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  lastUsedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -114,33 +125,35 @@ model Session {
 }
 
 model AcademicTerm {
-  id                         String   @id @default(cuid())
-  organizationId             String
-  academicYear               String
-  semester                   Semester
-  openingCashOnHandCents     Int      @default(0)
-  openingCashInBankCents     Int      @default(0)
-  active                     Boolean  @default(true)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  organizationId         String
+  academicYear           String
+  semester               Semester
+  openingCashOnHandCents Int      @default(0)
+  openingCashInBankCents Int      @default(0)
+  active                 Boolean  @default(true)
+  version                Int      @default(1)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   transactions Transaction[]
-  reports      Report[]
+  transfers    CashTransfer[]
 
+  @@unique([id, organizationId])
   @@unique([organizationId, academicYear, semester])
   @@index([academicYear, semester])
 }
 
 model TransactionCategory {
-  id           String          @id @default(cuid())
+  id           String              @id @default(cuid())
   name         String
   type         TransactionType
-  reportBucket String
-  active       Boolean         @default(true)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  reportBucket ExpenseReportBucket @default(OTHERS)
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   transactions Transaction[]
 
@@ -149,7 +162,7 @@ model TransactionCategory {
 }
 
 model Transaction {
-  id                   String          @id @default(cuid())
+  id                   String              @id @default(cuid())
   organizationId       String
   termId               String
   type                 TransactionType
@@ -167,11 +180,13 @@ model Transaction {
   deletedByUserId      String?
   deleteReason         String?
   deletedAt            DateTime?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  version              Int                 @default(1)
+  idempotencyKey       String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  term         AcademicTerm        @relation(fields: [termId], references: [id], onDelete: Cascade)
+  term         AcademicTerm        @relation(fields: [termId, organizationId], references: [id, organizationId], onDelete: Cascade)
   category     TransactionCategory @relation(fields: [categoryId], references: [id])
   recordedBy   User                @relation("TransactionRecordedBy", fields: [recordedByUserId], references: [id])
   updatedBy    User?               @relation("TransactionUpdatedBy", fields: [updatedByUserId], references: [id])
@@ -185,42 +200,84 @@ model Transaction {
   @@index([deletedAt])
 }
 
-model Attachment {
-  id            String   @id @default(cuid())
-  transactionId String
-  uploadedById  String
-  originalName  String
-  storedName    String
-  storagePath   String
-  mimeType      String
-  sizeBytes     Int
-  createdAt     DateTime @default(now())
+model CashTransfer {
+  id                   String      @id @default(cuid())
+  organizationId       String
+  termId               String
+  transferDate         DateTime
+  fromAccount          CashAccount
+  toAccount            CashAccount
+  amountCents          Int
+  documentNumber       String?
+  description          String
+  referenceDescription String
+  eventActivityName    String?
+  recordedByUserId     String
+  updatedByUserId      String?
+  deletedByUserId      String?
+  deleteReason         String?
+  deletedAt            DateTime?
+  version              Int         @default(1)
+  idempotencyKey       String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
 
-  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  uploadedBy  User        @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  term         AcademicTerm @relation(fields: [termId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  recordedBy   User         @relation("CashTransferRecordedBy", fields: [recordedByUserId], references: [id])
+  updatedBy    User?        @relation("CashTransferUpdatedBy", fields: [updatedByUserId], references: [id])
+  deletedBy    User?        @relation("CashTransferDeletedBy", fields: [deletedByUserId], references: [id])
+
+  attachments Attachment[]
+
+  @@index([organizationId, termId])
+  @@index([transferDate])
+  @@index([deletedAt])
+}
+
+model Attachment {
+  id             String   @id @default(cuid())
+  transactionId  String?
+  cashTransferId String?
+  uploadedById   String
+  originalName   String
+  storageKey     String   @unique
+  mimeType       String
+  sizeBytes      Int
+  createdAt      DateTime @default(now())
+
+  transaction  Transaction?  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  cashTransfer CashTransfer? @relation(fields: [cashTransferId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([transactionId])
+  @@index([cashTransferId])
   @@index([uploadedById])
 }
 
-model Report {
-  id             String     @id @default(cuid())
-  organizationId String
-  termId         String?
-  generatedById  String
-  type           ReportType
-  title          String
-  filtersJson    String
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+model CommandReceipt {
+  id               String    @id @default(cuid())
+  idempotencyKey   String
+  actorUserId      String
+  organizationId   String
+  commandType      String
+  requestHash      String
+  status           String    @default("PENDING")
+  claimToken       String?
+  leaseExpiresAt   DateTime?
+  resultEntityType String?
+  resultEntityId   String?
+  responseJson     String?
+  createdAt        DateTime  @default(now())
+  completedAt      DateTime?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  term         AcademicTerm? @relation(fields: [termId], references: [id])
-  generatedBy  User          @relation(fields: [generatedById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User         @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId, type])
-  @@index([termId])
-  @@index([generatedById])
+  @@unique([actorUserId, idempotencyKey])
+  @@index([organizationId, commandType])
+  @@index([status, createdAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model AuditLog {
@@ -232,6 +289,10 @@ model AuditLog {
   entityType     String?
   entityId       String?
   metadataJson   String?
+  actorUsernameSnapshot    String?
+  actorFullNameSnapshot    String?
+  actorRoleSnapshot        Role?
+  organizationNameSnapshot String?
   createdAt      DateTime    @default(now())
 
   user         User?         @relation(fields: [userId], references: [id])

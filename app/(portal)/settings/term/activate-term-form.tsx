@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo } from "react";
 import { activateAcademicTermAction } from "@/lib/actions/terms";
 
 interface ActivateTermFormProps {
@@ -12,10 +12,12 @@ export function ActivateTermForm({ termId }: ActivateTermFormProps) {
     activateAcademicTermAction,
     null
   );
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="termId" value={termId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <button
         type="submit"
         disabled={isPending}

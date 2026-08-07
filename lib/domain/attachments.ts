@@ -44,6 +44,28 @@ export function validateFileMagicBytes(buffer: Uint8Array, mimeType: string): bo
   return false;
 }
 
+export function validateAttachmentPayload(
+  originalName: string,
+  mimeType: string,
+  buffer: Uint8Array,
+  sizeBytes: number
+): string | null {
+  if (sizeBytes <= 0 || buffer.length <= 0) return "File is required.";
+  if (sizeBytes !== buffer.length) return "Attachment size metadata does not match file contents.";
+  if (sizeBytes > MAX_ATTACHMENT_SIZE) return "File must be under 10 MB.";
+
+  const allowedExtensions = MIME_EXTENSIONS[mimeType];
+  if (!allowedExtensions) return "Only JPEG, PNG, and PDF files are allowed.";
+  const extension = originalName.split(".").pop()?.toLowerCase();
+  if (!extension || !allowedExtensions.includes(extension)) {
+    return "File extension does not match its MIME type.";
+  }
+  if (!validateFileMagicBytes(buffer, mimeType)) {
+    return "File content signature does not match its declared type.";
+  }
+  return null;
+}
+
 export interface ValidatedAttachment {
   buffer: Uint8Array;
   mimeType: string;

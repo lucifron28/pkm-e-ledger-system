@@ -1,18 +1,35 @@
-import { CashAccount, Semester, TransactionType } from "@prisma/client";
-import { calculateAccountBalances } from "./financial";
+import { CashAccount, ExpenseReportBucket, Semester, TransactionType } from "@prisma/client";
+import {
+  calculateAccountBalances,
+  financialRowsToMovements,
+  transferRowsToMovements,
+  TransferRow,
+} from "./financial";
+import { getSemesterLabel } from "./term-labels";
+export { getSemesterLabel };
 
-export function getSemesterLabel(semester: Semester): string {
-  switch (semester) {
-    case Semester.FIRST_SEMESTER:
-      return "1st Semester";
-    case Semester.SECOND_SEMESTER:
-      return "2nd Semester";
-    case Semester.MIDYEAR_SUMMER:
-      return "Midyear / Summer";
-    default:
-      return semester;
-  }
-}
+export const EXPENSE_REPORT_BUCKETS: ExpenseReportBucket[] = [
+  ExpenseReportBucket.SUPPLIES,
+  ExpenseReportBucket.EQUIPMENT,
+  ExpenseReportBucket.TRANSPORTATION,
+  ExpenseReportBucket.MEALS,
+  ExpenseReportBucket.SERVICE,
+  ExpenseReportBucket.MISC,
+  ExpenseReportBucket.DONATION,
+  ExpenseReportBucket.OTHERS,
+];
+
+export const EXPENSE_BUCKET_LABELS: Record<ExpenseReportBucket, string> = {
+  SUPPLIES: "Supplies",
+  EQUIPMENT: "Equipment",
+  TRANSPORTATION: "Transportation",
+  MEALS: "Meals",
+  SERVICE: "Service",
+  MISC: "Misc",
+  DONATION: "Donation",
+  OTHERS: "Others",
+};
+
 export const SCHEDULE_2_BUCKETS = [
   "Supplies",
   "Equipment",
@@ -26,16 +43,8 @@ export const SCHEDULE_2_BUCKETS = [
 
 export type Schedule2Bucket = (typeof SCHEDULE_2_BUCKETS)[number];
 
-export function getSchedule2BucketKey(categoryName: string): Schedule2Bucket {
-  const lower = categoryName.trim().toLowerCase();
-  if (lower.includes("suppl")) return "Supplies";
-  if (lower.includes("equip")) return "Equipment";
-  if (lower.includes("transport") || lower.includes("fare") || lower.includes("travel")) return "Transportation";
-  if (lower.includes("meal") || lower.includes("food")) return "Meals";
-  if (lower.includes("servic")) return "Service";
-  if (lower.includes("misc")) return "Misc";
-  if (lower.includes("donat")) return "Donation";
-  return "Others";
+export function reportBucketToSchedule2Bucket(bucket: ExpenseReportBucket): Schedule2Bucket {
+  return EXPENSE_BUCKET_LABELS[bucket] as Schedule2Bucket;
 }
 
 export interface CollectionItemDto {
@@ -58,7 +67,7 @@ export interface CollectionCategoryGroupDto {
 
 export interface ExpenseBucketSummaryDto {
   bucketKey: Schedule2Bucket;
-  bucketName: Schedule2Bucket;
+  bucketName: string;
   totalCents: number;
 }
 
@@ -78,7 +87,9 @@ export interface ExpenseRowItemDto {
 }
 
 export interface AttachmentReferenceDto {
-  transactionId: string;
+  transactionId: string | null;
+  cashTransferId: string | null;
+  entryType: "TRANSACTION" | "CASH_TRANSFER";
   transactionDate: Date;
   documentNumber: string | null;
   description: string;
@@ -95,6 +106,7 @@ export interface ReportPackageDto {
   academicYear: string;
   semester: Semester;
   semesterLabel: string;
+  asOfDate: Date;
 
   openingCashOnHandCents: number;
   openingCashInBankCents: number;
@@ -107,6 +119,9 @@ export interface ReportPackageDto {
   totalExpenseCents: number;
   totalExpenseCashOnHandCents: number;
   totalExpenseCashInBankCents: number;
+
+  totalTransferInCOHCents: number;
+  totalTransferInCIBCents: number;
 
   totalCashAvailableCents: number;
 
@@ -148,8 +163,6 @@ export interface RawReportInputAttachment {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
-  storedName?: string;
-  storagePath?: string;
 }
 
 export interface RawReportInputTransaction {
@@ -167,13 +180,23 @@ export interface RawReportInputTransaction {
     id: string;
     name: string;
     type?: TransactionType;
+    reportBucket?: ExpenseReportBucket;
   };
   attachments: RawReportInputAttachment[];
 }
 
+export interface RawReportInputTransfer extends TransferRow {
+  transferDate?: Date;
+  documentNumber?: string | null;
+  description?: string;
+  attachments?: RawReportInputAttachment[];
+}
+
 export function buildReportPackage(
   term: RawReportInputTerm,
-  transactions: RawReportInputTransaction[]
+  transactions: RawReportInputTransaction[],
+  transfers: RawReportInputTransfer[] = [],
+  asOfDate = new Date()
 ): ReportPackageDto {
   const openingCashOnHandCents = term.openingCashOnHandCents;
   const openingCashInBankCents = term.openingCashInBankCents;
@@ -210,14 +233,15 @@ export function buildReportPackage(
 
   const totalCashAvailableCents = balanceForwardedCents + totalIncomeCents;
 
+  const movements = [
+    ...financialRowsToMovements(transactions),
+    ...transferRowsToMovements(transfers),
+  ];
+
   const balances = calculateAccountBalances(
     openingCashOnHandCents,
     openingCashInBankCents,
-    transactions.map((t) => ({
-      type: t.type,
-      amountCents: t.amountCents,
-      cashAccount: t.cashAccount,
-    }))
+    movements
   );
 
   const endingCashOnHandCents = balances.cashOnHandCents;
@@ -276,7 +300,7 @@ export function buildReportPackage(
 
   for (const t of expenseTransactions) {
     const catName = t.category.name;
-    const mappedBucket = getSchedule2BucketKey(catName);
+    const mappedBucket = reportBucketToSchedule2Bucket(t.category.reportBucket || ExpenseReportBucket.OTHERS);
 
     const bucketCents: Record<Schedule2Bucket, number> = {
       Supplies: 0,
@@ -319,9 +343,26 @@ export function buildReportPackage(
     for (const att of t.attachments) {
       attachments.push({
         transactionId: t.id,
+        cashTransferId: null,
+        entryType: "TRANSACTION",
         transactionDate: t.transactionDate,
         documentNumber: t.documentNumber,
         description: t.description,
+        originalName: att.originalName,
+        mimeType: att.mimeType,
+        sizeBytes: att.sizeBytes,
+      });
+    }
+  }
+  for (const transfer of transfers) {
+    for (const att of transfer.attachments || []) {
+      attachments.push({
+        transactionId: null,
+        cashTransferId: transfer.id || null,
+        entryType: "CASH_TRANSFER",
+        transactionDate: transfer.transferDate || new Date(0),
+        documentNumber: transfer.documentNumber || null,
+        description: transfer.description || "Cash transfer",
         originalName: att.originalName,
         mimeType: att.mimeType,
         sizeBytes: att.sizeBytes,
@@ -337,6 +378,7 @@ export function buildReportPackage(
     academicYear: term.academicYear,
     semester: term.semester,
     semesterLabel: getSemesterLabel(term.semester),
+    asOfDate,
 
     openingCashOnHandCents,
     openingCashInBankCents,
@@ -349,6 +391,9 @@ export function buildReportPackage(
     totalExpenseCents,
     totalExpenseCashOnHandCents,
     totalExpenseCashInBankCents,
+
+    totalTransferInCOHCents: balances.totalTransferInCOHCents,
+    totalTransferInCIBCents: balances.totalTransferInCIBCents,
 
     totalCashAvailableCents,
 

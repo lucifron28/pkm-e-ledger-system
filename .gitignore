@@ -64,3 +64,7 @@ tests/**/*.db-journal
 tests/**/*.db-wal
 tests/**/*.db-shm
 
+# local code intelligence and assistant tooling state
+/.codegraph/
+/.gemini/
+

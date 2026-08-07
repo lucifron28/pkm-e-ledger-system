@@ -27,6 +27,8 @@ if (mode === "core") {
   targetFiles = discoverTestFiles(path.join(testsDir, "core"));
 } else if (mode === "integration") {
   targetFiles = discoverTestFiles(path.join(testsDir, "integration"));
+} else if (mode === "migrations") {
+  targetFiles = discoverTestFiles(path.join(testsDir, "migrations"));
 } else {
   targetFiles = discoverTestFiles(testsDir);
 }

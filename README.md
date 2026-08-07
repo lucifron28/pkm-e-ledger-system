@@ -35,7 +35,10 @@ The repository foundation and database foundation are completed. Feature develop
 * **Phase 4**: Ledger & Transactions (`feature/ledger-and-transactions`) — **Completed**
 * **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **Completed**
 * **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **Completed**
-* **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **In Review**
+* **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **Completed**
+* **Phase 8**: Post-implementation Business-Invariant Hardening (`fix/business-invariants-concurrency-and-audit`) — **In Review**
+
+Phase 8 adds cash transfer workflows, database-level financial invariants, idempotent financial commands, optimistic concurrency, crash-recoverable attachment storage, snapshot-consistent reads, immutable audit history, and cursor pagination. Reports are live generated views (HTML/PDF/XLSX) built from current non-deleted financial data — exports are not immutable publications.
 
 ---
 
@@ -51,8 +54,13 @@ The repository foundation and database foundation are completed. Feature develop
    # Generate Prisma Client
    npm run db:generate
 
-   # Run migrations
+   # Run migrations through the safe orchestrator (attachment storage-key
+   # preflight runs automatically for legacy databases, with automatic
+   # rollback of preflight-copied files if the migration fails)
    npm run db:migrate
+
+   # Production/CI: apply pending migrations through the same orchestrator
+   npm run db:migrate:deploy
 
    # Seed database with fictional demo accounts
    npm run db:seed
@@ -60,6 +68,10 @@ The repository foundation and database foundation are completed. Feature develop
    # Run database smoke test
    npm run test:db
    ```
+   > **Note**: Never run `prisma migrate dev` or `prisma migrate deploy` directly.
+   > Always use `npm run db:migrate` / `npm run db:migrate:deploy` so the
+   > attachment storage-key preflight (`scripts/attachment-storage-preflight.js`)
+   > is never bypassed.
 
 3. **Run development server**:
    ```bash

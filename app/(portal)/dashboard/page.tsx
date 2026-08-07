@@ -3,10 +3,11 @@ import { isManagementRole } from "@/lib/auth/rbac";
 import { getSemesterLabel, listTermsForCurrentUser } from "@/lib/data/terms";
 import { getDashboardBalancesForUser } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
-import { Role, Semester } from "@prisma/client";
+import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { DashboardTermSelector } from "@/components/dashboard/dashboard-term-selector";
+import { parseTermSelectionParams } from "@/lib/domain/query";
 
 export default async function DashboardPage({
   searchParams,
@@ -20,23 +21,21 @@ export default async function DashboardPage({
   }
 
   const params = await searchParams;
-
-  let ayRaw: string | undefined = undefined;
-  if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
-    ayRaw = params.academicYear.trim();
-  }
-
-  let semRaw: Semester | undefined = undefined;
-  if (
-    typeof params.semester === "string" &&
-    Object.values(Semester).includes(params.semester.trim() as Semester)
-  ) {
-    semRaw = params.semester.trim() as Semester;
-  }
+  const termQuery = parseTermSelectionParams(params);
 
   const isManagement = isManagementRole(user.role);
   const terms = await listTermsForCurrentUser();
-  const dashboardData = await getDashboardBalancesForUser(ayRaw, semRaw);
+  if (termQuery.invalidTermSelection) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-extrabold text-slate-900">Dashboard</h1>
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
+          <p className="font-semibold text-amber-800">Invalid academic term parameter. Choose a complete, valid term.</p>
+        </div>
+      </div>
+    );
+  }
+  const dashboardData = await getDashboardBalancesForUser(user, termQuery.academicYear, termQuery.semester);
 
   const activeTerm = dashboardData?.term;
   const balances = dashboardData?.balances;

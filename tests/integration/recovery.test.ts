@@ -35,6 +35,7 @@ test.before(() => {
   }
   fs.mkdirSync(sandboxDir, { recursive: true });
   fs.mkdirSync(sandboxUploads, { recursive: true });
+  fs.writeFileSync(sandboxDb, Buffer.alloc(0));
 
   execSync(`npx prisma db push --skip-generate`, {
     cwd: path.join(__dirname, "../.."),

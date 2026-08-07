@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { getSessionResult } from "../auth/session";
-import { createAuditLog } from "../data/audit-log";
+import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
 
 const passwordSchema = z.object({
@@ -96,15 +96,22 @@ export async function changePasswordAction(
 
     // Update user record, create audit entry, and revoke other sessions atomically
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
+      const updateResult = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          passwordHash: dbUser.passwordHash,
+        },
         data: {
           passwordHash: newPasswordHash,
           mustChangePassword: false,
         },
       });
 
-      await createAuditLog({
+      if (updateResult.count === 0) {
+        throw new Error("Your password was modified in another session. Please reload and try again.");
+      }
+
+      await createSystemAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,
@@ -124,6 +131,9 @@ export async function changePasswordAction(
       });
     });
   } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
     console.error("Change password error:", error);
     return { error: "An unexpected error occurred while updating password. Please try again." };
   }

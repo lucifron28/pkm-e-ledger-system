@@ -1,12 +1,11 @@
 import "server-only";
 import { prisma } from "../db/prisma";
 import { requireOrgPortalUser, requireOsaUser, SessionUser } from "../auth/require-auth";
-import { Role, Semester } from "@prisma/client";
+import { Prisma, Role, Semester } from "@prisma/client";
 import { isOrganizationPortalRole } from "../auth/rbac";
 import {
   SCHEDULE_2_BUCKETS,
   Schedule2Bucket,
-  getSchedule2BucketKey,
   buildReportPackage,
   CollectionItemDto,
   CollectionCategoryGroupDto,
@@ -18,7 +17,6 @@ import {
 
 export {
   SCHEDULE_2_BUCKETS,
-  getSchedule2BucketKey,
 };
 export type {
   Schedule2Bucket,
@@ -32,33 +30,65 @@ export type {
 
 
 
-async function _getReportPackageForTermInternal(
+async function loadReportPackageInSnapshot(
+  tx: Prisma.TransactionClient,
   organizationId: string,
-  termId: string
+  termWhere: Prisma.AcademicTermWhereInput
 ): Promise<ReportPackageDto | null> {
-  const term = await prisma.academicTerm.findFirst({
-    where: { id: termId, organizationId },
+  const snapshotAt = new Date();
+  const term = await tx.academicTerm.findFirst({
+    where: { ...termWhere, organizationId },
     include: { organization: { select: { id: true, name: true, slug: true } } },
   });
   if (!term) return null;
 
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      organizationId,
-      termId: term.id,
-      deletedAt: null,
-    },
-    include: {
-      category: { select: { id: true, name: true, type: true } },
-      attachments: {
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
-        orderBy: { createdAt: "asc" },
+  const transactions = await tx.transaction.findMany({
+      where: {
+        organizationId,
+        termId: term.id,
+        deletedAt: null,
       },
-    },
-    orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
+      include: {
+        category: { select: { id: true, name: true, type: true, reportBucket: true } },
+        attachments: {
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
   });
 
-  return buildReportPackage(term, transactions);
+  const transfers = await tx.cashTransfer.findMany({
+      where: {
+        organizationId,
+        termId: term.id,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        amountCents: true,
+        fromAccount: true,
+        toAccount: true,
+        transferDate: true,
+        documentNumber: true,
+        description: true,
+        attachments: {
+          select: { originalName: true, mimeType: true, sizeBytes: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+  });
+
+  return buildReportPackage(term, transactions, transfers, snapshotAt);
+}
+
+async function _getReportPackageForTermInternal(
+  organizationId: string,
+  termId: string
+): Promise<ReportPackageDto | null> {
+  return prisma.$transaction((tx) =>
+    loadReportPackageInSnapshot(tx, organizationId, { id: termId })
+  );
 }
 
 export async function getReportPackageForUser(
@@ -83,21 +113,15 @@ export async function getReportPackageForCurrentUser(
 ): Promise<ReportPackageDto | null> {
   const user = await requireOrgPortalUser();
 
-  let term;
-  if (academicYear && semester) {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: user.organizationId, academicYear, semester },
-      select: { id: true },
-    });
-  } else {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: user.organizationId, active: true },
-      select: { id: true },
-    });
-  }
-
-  if (!term) return null;
-  return _getReportPackageForTermInternal(user.organizationId, term.id);
+  return prisma.$transaction((tx) =>
+    loadReportPackageInSnapshot(
+      tx,
+      user.organizationId!,
+      academicYear && semester
+        ? { academicYear, semester }
+        : { active: true }
+    )
+  );
 }
 
 export async function getReportPackageForOsa(
@@ -107,28 +131,22 @@ export async function getReportPackageForOsa(
 ): Promise<ReportPackageDto | null> {
   await requireOsaUser();
 
-  const organization = await prisma.organization.findFirst({
-    where: {
-      active: true,
-      OR: [{ id: orgSlugOrId }, { slug: orgSlugOrId }],
-    },
-    select: { id: true },
+  return prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.findFirst({
+      where: {
+        active: true,
+        OR: [{ id: orgSlugOrId }, { slug: orgSlugOrId }],
+      },
+      select: { id: true },
+    });
+    if (!organization) return null;
+
+    return loadReportPackageInSnapshot(
+      tx,
+      organization.id,
+      academicYear && semester
+        ? { academicYear, semester }
+        : { active: true }
+    );
   });
-  if (!organization) return null;
-
-  let term;
-  if (academicYear && semester) {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: organization.id, academicYear, semester },
-      select: { id: true },
-    });
-  } else {
-    term = await prisma.academicTerm.findFirst({
-      where: { organizationId: organization.id, active: true },
-      select: { id: true },
-    });
-  }
-
-  if (!term) return null;
-  return _getReportPackageForTermInternal(organization.id, term.id);
 }

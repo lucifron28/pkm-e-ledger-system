@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Role } from "@prisma/client";
+import { computeRequestHash } from "../../lib/application/idempotency";
+import { withTransientRetry } from "../../lib/infrastructure/db/retry";
+import { ConcurrentModificationError } from "../../lib/domain/errors";
 import {
   MANAGEMENT_ROLES,
   TRANSPARENCY_ROLES,
@@ -71,4 +74,36 @@ test("RBAC: Test every permission function for all six roles", () => {
     // Multi-organization oversight (OSA only)
     assert.equal(canViewCrossOrganization(role), isMon, `${role} canViewCrossOrganization`);
   }
+});
+
+test("Infrastructure: computeRequestHash produces deterministic hashes and detects payload changes", () => {
+  const hash1 = computeRequestHash("CREATE_TRANSACTION", { amountCents: 5000, type: "INCOME" });
+  const hash2 = computeRequestHash("CREATE_TRANSACTION", { amountCents: 5000, type: "INCOME" });
+  const hash3 = computeRequestHash("CREATE_TRANSACTION", { amountCents: 9000, type: "INCOME" });
+
+  assert.equal(hash1, hash2, "Identical request payload must produce identical hash");
+  assert.notEqual(hash1, hash3, "Different request payload must produce different hash");
+});
+
+test("Infrastructure: withTransientRetry retries transient errors and re-throws non-retryable domain errors", async () => {
+  let attempts = 0;
+  const successVal = await withTransientRetry(async () => {
+    attempts++;
+    if (attempts < 2) {
+      const err = new Error("database is locked");
+      throw err;
+    }
+    return "SUCCESS";
+  });
+  assert.equal(successVal, "SUCCESS");
+  assert.equal(attempts, 2);
+
+  await assert.rejects(
+    async () => {
+      await withTransientRetry(async () => {
+        throw new ConcurrentModificationError();
+      });
+    },
+    (err: unknown) => err instanceof ConcurrentModificationError
+  );
 });

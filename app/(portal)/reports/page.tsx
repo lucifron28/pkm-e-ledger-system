@@ -10,6 +10,7 @@ import {
   validateOsaOrganization,
 } from "@/lib/data/osa";
 import { Role, Semester } from "@prisma/client";
+import { parseOrganizationParam, parseTermSelectionParams } from "@/lib/domain/query";
 import { SummaryReport } from "@/components/reports/summary-report";
 import { Schedule1Collections } from "@/components/reports/schedule-1-collections";
 import { Schedule2Expenses } from "@/components/reports/schedule-2-expenses";
@@ -24,24 +25,10 @@ export default async function ReportsPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
-
-  let ayRaw: string | undefined = undefined;
-  if (typeof params.academicYear === "string" && params.academicYear.trim().length > 0) {
-    ayRaw = params.academicYear.trim();
-  }
-
-  let semRaw: Semester | undefined = undefined;
-  if (
-    typeof params.semester === "string" &&
-    Object.values(Semester).includes(params.semester.trim() as Semester)
-  ) {
-    semRaw = params.semester.trim() as Semester;
-  }
-
-  let orgRaw: string | undefined = undefined;
-  if (typeof params.org === "string" && params.org.trim().length > 0) {
-    orgRaw = params.org.trim();
-  }
+  const termQuery = parseTermSelectionParams(params);
+  const organizationQuery = parseOrganizationParam(params);
+  const ayRaw = termQuery.academicYear;
+  const semRaw = termQuery.semester;
 
   const isManagement = isManagementRole(user.role);
   const isOsa = user.role === Role.OSA;
@@ -50,6 +37,21 @@ export default async function ReportsPage({
   let terms: { id: string; academicYear: string; semester: Semester; active: boolean }[] = [];
 
   if (isOsa) {
+    if (termQuery.invalidTermSelection || organizationQuery.invalidOrganization) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
+          <div className="bg-amber-50 border-2 border-dashed border-amber-300 p-8 rounded-xl text-center space-y-3">
+            <h2 className="text-lg font-bold text-amber-900">Invalid Report Filter</h2>
+            <p className="text-sm text-amber-700">Check organization and academic term parameters, then try again.</p>
+            <Link href="/osa" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+              Go to OSA Overview
+            </Link>
+          </div>
+        </div>
+      );
+    }
+    const orgRaw = organizationQuery.org;
     if (!orgRaw) {
       return (
         <div className="space-y-6">
@@ -86,6 +88,16 @@ export default async function ReportsPage({
     report = await getReportPackageForOsa(validatedOrg.slug, ayRaw, semRaw);
     terms = await listTermsForOsaOrganization(validatedOrg.slug);
   } else {
+    if (termQuery.invalidTermSelection) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-extrabold text-slate-900">Financial Reports</h1>
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
+            <p className="font-semibold text-amber-800">Invalid academic term parameter. Choose a complete, valid term.</p>
+          </div>
+        </div>
+      );
+    }
     if (!user.organizationId) {
       return (
         <div className="space-y-6">

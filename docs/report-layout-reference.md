@@ -94,7 +94,7 @@ Excel export should generate equivalent workbook sheets:
 - `SUMMARY`
 - `SCHEDULE 1 - COLLECTIONS`
 - `SCHEDULE 2 - EXPENSES`
-- `RECEIPTS / ATTACHMENTS`
+- `RECEIPTS - ATTACHMENTS` (Excel-safe equivalent of the official Receipts / Attachments label; `/` is not permitted in worksheet names)
 
 Use spreadsheet formulas for totals where practical.
 

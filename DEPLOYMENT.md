@@ -49,11 +49,19 @@ If setting up the system for the first time, initialize the database and tables:
 1. **Ensure the database storage folder exists**:
    If you set `DATABASE_URL="file:C:/pkm-eledger-data/production.db"`, create the `C:\pkm-eledger-data` directory.
 
-2. **Run Prisma Migrations**:
+2. **Run Migrations through the Safe Orchestrator**:
    This applies the tables, schemas, indexes, and triggers to the SQLite database.
+   The orchestrator inspects the `Attachment` table shape, runs the attachment
+   storage-key preflight automatically for legacy databases (copying duplicated
+   physical files to their deterministic migration keys, refusing to overwrite
+   conflicting pre-existing files), applies the Prisma migration, and rolls back
+   preflight-copied files if the migration fails.
    ```bash
-   npx prisma migrate deploy
+   npm run db:migrate:deploy
    ```
+   > **Important**: Never run `npx prisma migrate deploy` directly. The
+   > orchestrator (`scripts/migrate.js`) is the only supported migration entry
+   > point so the storage-key preflight can never be bypassed.
 
 3. **Seed Initial Data**:
    This seeds the default organizations, system transaction categories, and initial admin/OSA users:

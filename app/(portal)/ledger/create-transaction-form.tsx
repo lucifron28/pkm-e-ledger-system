@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useMemo } from "react";
 import { createTransactionAction } from "@/lib/actions/transactions";
 import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
@@ -17,13 +17,14 @@ export function CreateTransactionForm({
   const [state, formAction, isPending] = useActionState(createTransactionAction, null);
   const [txType, setTxType] = useState<TransactionType>(TransactionType.INCOME);
   const categories = txType === TransactionType.INCOME ? incomeCategories : expenseCategories;
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
     <form action={formAction} encType="multipart/form-data" className="space-y-4">
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {state?.error && !state.fieldErrors && (
         <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
       )}
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>

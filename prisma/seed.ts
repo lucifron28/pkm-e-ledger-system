@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Semester, TransactionType } from "@prisma/client";
+import { ExpenseReportBucket, PrismaClient, Role, Semester, TransactionType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -31,17 +31,17 @@ const incomeCategories = [
   "Others",
 ];
 
-const expenseCategories = [
-  "Supplies",
-  "Equipment",
-  "Transportation",
-  "Meals",
-  "Service",
-  "Miscellaneous",
-  "Donation",
-  "Events",
-  "Activities",
-  "Others",
+const expenseCategories: Array<{ name: string; bucket: ExpenseReportBucket }> = [
+  { name: "Supplies", bucket: ExpenseReportBucket.SUPPLIES },
+  { name: "Equipment", bucket: ExpenseReportBucket.EQUIPMENT },
+  { name: "Transportation", bucket: ExpenseReportBucket.TRANSPORTATION },
+  { name: "Meals", bucket: ExpenseReportBucket.MEALS },
+  { name: "Service", bucket: ExpenseReportBucket.SERVICE },
+  { name: "Miscellaneous", bucket: ExpenseReportBucket.MISC },
+  { name: "Donation", bucket: ExpenseReportBucket.DONATION },
+  { name: "Events", bucket: ExpenseReportBucket.OTHERS },
+  { name: "Activities", bucket: ExpenseReportBucket.OTHERS },
+  { name: "Others", bucket: ExpenseReportBucket.OTHERS },
 ];
 
 function slugify(value: string) {
@@ -56,17 +56,53 @@ function demoUserName(role: Role, organizationSlug: string) {
   return `demo_${role.toLowerCase()}_${organizationSlug}`;
 }
 
-async function seedOrganizations() {
-  for (const name of organizations) {
-    await prisma.organization.upsert({
-      where: { slug: slugify(name) },
-      update: { name, active: true },
-      create: {
-        name,
-        slug: slugify(name),
-      },
-    });
+async function normalizeExistingTerms(organizationIds: string[]) {
+  // Normalize old non-canonical academic year formats like "A.Y. 2026-2027" -> "2026-2027"
+  const terms = await prisma.academicTerm.findMany({
+    where: { organizationId: { in: organizationIds } },
+  });
+  for (const term of terms) {
+    if (term.academicYear.startsWith("A.Y. ")) {
+      const canonical = term.academicYear.replace(/^A\.Y\.\s*/, "").trim();
+      const conflict = await prisma.academicTerm.findFirst({
+        where: {
+          organizationId: term.organizationId,
+          academicYear: canonical,
+          semester: term.semester,
+          id: { not: term.id },
+        },
+        select: { id: true },
+      });
+      if (conflict) {
+        throw new Error(`Seed conflict: academic term ${term.id} cannot normalize because ${conflict.id} already owns ${canonical}.`);
+      }
+      await prisma.academicTerm.update({
+        where: { id: term.id },
+        data: { academicYear: canonical },
+      });
+    }
   }
+}
+
+async function seedOrganizations() {
+  const seeded = [] as Array<{ id: string; name: string; slug: string; active: boolean }>;
+  for (const name of organizations) {
+    const slug = slugify(name);
+    const existing = await prisma.organization.findUnique({ where: { slug } });
+    if (!existing) {
+      const created = await prisma.organization.create({
+        data: { name, slug, active: true },
+      });
+      seeded.push(created);
+    } else {
+      if (existing.name !== name) {
+        throw new Error(`Seed conflict: organization slug ${slug} is assigned to another name.`);
+      }
+      // Never reactivate or otherwise change existing organization state.
+      seeded.push(existing);
+    }
+  }
+  return seeded;
 }
 
 async function seedCategories() {
@@ -79,65 +115,82 @@ async function seedCategories() {
         },
       },
       update: {
-        reportBucket: name,
-        active: true,
+        reportBucket: ExpenseReportBucket.OTHERS,
       },
       create: {
         name,
         type: TransactionType.INCOME,
-        reportBucket: name,
+        reportBucket: ExpenseReportBucket.OTHERS,
       },
     });
   }
 
-  for (const name of expenseCategories) {
+  for (const cat of expenseCategories) {
     await prisma.transactionCategory.upsert({
       where: {
         name_type: {
-          name,
+          name: cat.name,
           type: TransactionType.EXPENSE,
         },
       },
       update: {
-        reportBucket: name,
-        active: true,
+        reportBucket: cat.bucket,
       },
       create: {
-        name,
+        name: cat.name,
         type: TransactionType.EXPENSE,
-        reportBucket: name,
+        reportBucket: cat.bucket,
       },
     });
   }
 }
 
-async function seedAcademicTermsAndUsers() {
-  const passwordHash = await bcrypt.hash("password", 12);
-  const seededOrganizations = await prisma.organization.findMany({
-    orderBy: { name: "asc" },
-  });
+async function seedAcademicTermsAndUsers(seededOrganizations: Array<{ id: string; name: string; slug: string; active: boolean }>) {
+  const resetPasswords = process.env.RESET_DEMO_PASSWORDS === "true";
+  const defaultPasswordHash = await bcrypt.hash("password", 12);
+
+  const CANONICAL_AY = "2026-2027";
 
   for (const organization of seededOrganizations) {
-    await prisma.academicTerm.upsert({
-      where: {
-        organizationId_academicYear_semester: {
-          organizationId: organization.id,
-          academicYear: "A.Y. 2026-2027",
-          semester: Semester.FIRST_SEMESTER,
-        },
-      },
-      update: {
-        active: true,
-      },
-      create: {
-        organizationId: organization.id,
-        academicYear: "A.Y. 2026-2027",
-        semester: Semester.FIRST_SEMESTER,
-        openingCashOnHandCents: 0,
-        openingCashInBankCents: 0,
-      },
-    });
+    if (!organization.active) continue;
 
+    const [transactionCount, transferCount] = await Promise.all([
+      prisma.transaction.count({ where: { organizationId: organization.id } }),
+      prisma.cashTransfer.count({ where: { organizationId: organization.id } }),
+    ]);
+    const hasFinancialData = transactionCount + transferCount > 0;
+
+    if (!hasFinancialData) {
+      await prisma.$transaction(async (tx) => {
+        const existingActive = await tx.academicTerm.findFirst({
+          where: { organizationId: organization.id, active: true },
+        });
+
+        const existingCanonical = await tx.academicTerm.findUnique({
+          where: {
+            organizationId_academicYear_semester: {
+              organizationId: organization.id,
+              academicYear: CANONICAL_AY,
+              semester: Semester.FIRST_SEMESTER,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (!existingActive && !existingCanonical) {
+          await tx.academicTerm.create({
+            data: {
+              organizationId: organization.id,
+              academicYear: CANONICAL_AY,
+              semester: Semester.FIRST_SEMESTER,
+              openingCashOnHandCents: 0,
+              openingCashInBankCents: 0,
+              active: true,
+            },
+          });
+        }
+      });
+    }
     for (const role of [
       Role.TREASURER,
       Role.ADVISER,
@@ -145,48 +198,61 @@ async function seedAcademicTermsAndUsers() {
       Role.OFFICER,
       Role.MEMBER,
     ]) {
-      await prisma.user.upsert({
-        where: { username: demoUserName(role, organization.slug) },
-        update: {
-          fullName: `Demo ${role} User`,
-          role,
-          organizationId: organization.id,
-          passwordHash,
-          active: true,
-        },
-        create: {
-          fullName: `Demo ${role} User`,
-          username: demoUserName(role, organization.slug),
-          passwordHash,
-          role,
-          organizationId: organization.id,
-        },
-      });
+      const username = demoUserName(role, organization.slug);
+      const existingUser = await prisma.user.findUnique({ where: { username } });
+
+      if (!existingUser) {
+        await prisma.user.create({
+          data: {
+            fullName: `Demo ${role} User`,
+            username,
+            passwordHash: defaultPasswordHash,
+            role,
+            organizationId: organization.id,
+          },
+        });
+      } else {
+        if (existingUser.role !== role || existingUser.organizationId !== organization.id) {
+          throw new Error(`Seed conflict: demo user ${username} has unexpected role or organization.`);
+        }
+        if (resetPasswords) {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { passwordHash: defaultPasswordHash },
+        });
+        }
+      }
     }
   }
 
-  await prisma.user.upsert({
-    where: { username: "demo_osa" },
-    update: {
-      fullName: "Demo OSA User",
-      role: Role.OSA,
-      organizationId: null,
-      passwordHash,
-      active: true,
-    },
-    create: {
-      fullName: "Demo OSA User",
-      username: "demo_osa",
-      passwordHash,
-      role: Role.OSA,
-    },
-  });
+  const existingOsa = await prisma.user.findUnique({ where: { username: "demo_osa" } });
+  if (!existingOsa) {
+    await prisma.user.create({
+      data: {
+        fullName: "Demo OSA User",
+        username: "demo_osa",
+        passwordHash: defaultPasswordHash,
+        role: Role.OSA,
+      },
+    });
+  } else {
+    if (existingOsa.role !== Role.OSA || existingOsa.organizationId !== null) {
+      throw new Error("Seed conflict: demo_osa has unexpected role or organization.");
+    }
+    if (resetPasswords) {
+    await prisma.user.update({
+      where: { id: existingOsa.id },
+      data: { passwordHash: defaultPasswordHash },
+    });
+    }
+  }
 }
 
 async function main() {
-  await seedOrganizations();
+  const seededOrganizations = await seedOrganizations();
+  await normalizeExistingTerms(seededOrganizations.map((organization) => organization.id));
   await seedCategories();
-  await seedAcademicTermsAndUsers();
+  await seedAcademicTermsAndUsers(seededOrganizations);
 }
 
 main()
