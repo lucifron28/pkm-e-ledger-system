@@ -9,7 +9,7 @@
 | Security | Atomic org active check in registration | Medium | `lib/actions/register.ts` | `tests/integration/security-routes.test.ts` | Remediated |
 | Reports | Schedule 2 "Misc" mapping & PDF row wrapping/headers | High | `lib/domain/reports.ts`, `lib/reports/renderers/pdf-report-renderer.ts` | `tests/core/reports.test.ts` | Remediated |
 | Storage & Attachments | Deterministic physical file rollback & non-disclosure 404 | High | `lib/application/transactions.ts`, `lib/actions/attachments.ts`, `app/api/attachments/[id]/route.ts` | `tests/core/attachments.test.ts` | Remediated |
-| Storage | Storage reconciliation CLI tool | Medium | `scripts/reconcile-storage.js`, `package.json` | `tests/core/attachments.test.ts` | Remediated |
+| Storage | Storage reconciliation CLI tool | Medium | `scripts/reconcile-storage.ts`, `package.json` | `tests/core/storage-reconciliation.test.ts` | Remediated |
 | Digital Ledger | Category reset on type change & inactive category support | Medium | `app/(portal)/ledger/create-transaction-form.tsx`, `app/(portal)/ledger/edit-transaction-form.tsx`, `lib/application/transactions.ts` | `tests/core/financial.test.ts` | Remediated |
 | Digital Ledger | Direct income/expense creation routes | Low | `app/(portal)/ledger/income/new/page.tsx`, `app/(portal)/ledger/expense/new/page.tsx` | UI verification | Remediated |
 | Navigation | Role-derived navigation matrix & OSA query preservation | Medium | `components/layout/portal-layout.tsx`, `components/layout/sidebar-nav.tsx` | UI verification | Remediated |

@@ -46,7 +46,7 @@ The audit systematically evaluated:
 
 ### 1.7 Attachment Failure Semantics & Storage Reconciliation
 - **Issue**: Failed uploads could leave unreferenced physical files; non-disclosure status codes differed.
-- **Fix**: Deterministic physical file rollback on DB failure in `createTransactionService`, `createCashTransferService`, and `uploadAttachmentAction`. Created `scripts/reconcile-storage.js` (`npm run storage:reconcile`). Updated attachment route handler to return 404 for cross-organization or deleted entry attachments.
+- **Fix**: Deterministic physical file rollback on DB failure in `createTransactionService`, `createCashTransferService`, and `uploadAttachmentAction`. Created `scripts/reconcile-storage.ts` (`npm run storage:reconcile`). Updated attachment route handler to return 404 for cross-organization or deleted entry attachments.
 
 ### 1.8 Transaction Category Switching & Inactive Categories
 - **Issue**: Switching transaction type retained stale category or forced first option; editing historical entry with inactive category failed.
