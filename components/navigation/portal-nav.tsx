@@ -46,6 +46,8 @@ export function PortalNav({ role, userName, userOrgName }: PortalNavProps) {
         { href: "/dashboard", label: "Dashboard" },
         { href: "/settings/term", label: "Term Settings" },
         { href: "/ledger", label: "Digital Ledger" },
+        { href: "/ledger/income/new", label: "New Income" },
+        { href: "/ledger/expense/new", label: "New Expense" },
         { href: "/reports", label: "Financial Reports" },
         { href: "/audit-log", label: "Treasurer Log" },
         { href: "/account", label: "Account" },

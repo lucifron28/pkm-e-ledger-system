@@ -451,6 +451,7 @@ const LEDGER_URL_PARAM_KEYS = [
   "pageSize",
   "org",
   "cursor",
+  "prevCursor",
 ] as const;
 
 /**
@@ -476,7 +477,7 @@ export function buildLedgerFilterUrl(
     | "org"
     | "cursor"
     | "pageSize"
-  >,
+  > & { prevCursor?: string },
   overrides: Record<string, string | undefined>
 ): string {
   const merged: Record<string, string | undefined> = {
@@ -494,12 +495,16 @@ export function buildLedgerFilterUrl(
     pageSize: filters.pageSize && filters.pageSize !== 50 ? String(filters.pageSize) : undefined,
     org: filters.org,
     cursor: filters.cursor,
+    prevCursor: filters.prevCursor,
     ...overrides,
   };
 
-  const hasFilterOrPageSizeOverride = Object.keys(overrides).some((key) => key !== "cursor");
-  if (hasFilterOrPageSizeOverride && !("cursor" in overrides)) {
-    merged.cursor = undefined;
+  const hasFilterOrPageSizeOverride = Object.keys(overrides).some(
+    (key) => key !== "cursor" && key !== "prevCursor"
+  );
+  if (hasFilterOrPageSizeOverride) {
+    if (!("cursor" in overrides)) merged.cursor = undefined;
+    if (!("prevCursor" in overrides)) merged.prevCursor = undefined;
   }
 
   const params = new URLSearchParams();

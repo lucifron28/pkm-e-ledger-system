@@ -1,23 +1,18 @@
 "use client";
 
-import { useActionState, useState, useMemo, useRef, useEffect } from "react";
+import { useActionState, useState, useMemo } from "react";
 import { softDeleteTransactionAction } from "@/lib/actions/transactions";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 
 export function DeleteTransactionForm({ id, version }: { id: string; version: number }) {
   const [state, formAction, isPending] = useActionState(softDeleteTransactionAction, null);
   const [isOpen, setIsOpen] = useState(false);
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      closeButtonRef.current?.focus();
-    } else if (triggerRef.current) {
-      triggerRef.current.focus();
-    }
-  }, [isOpen]);
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+    isOpen,
+    onClose: () => setIsOpen(false),
+  });
 
   return (
     <div className="inline">
@@ -32,11 +27,10 @@ export function DeleteTransactionForm({ id, version }: { id: string; version: nu
 
       {isOpen && (
         <div
+          ref={containerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left"
           tabIndex={-1}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setIsOpen(false);
-          }}
+          onKeyDown={handleKeyDown}
         >
           <div
             role="dialog"
@@ -49,7 +43,7 @@ export function DeleteTransactionForm({ id, version }: { id: string; version: nu
                 Delete Transaction
               </h3>
               <button
-                ref={closeButtonRef}
+                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label="Close dialog"

@@ -572,8 +572,12 @@ export function formatHumanReadableSummary(log: {
         if (before.amountCents !== after.amountCents) changes.push(`amount: ${formatPesoFromCents(Number(before.amountCents))} -> ${formatPesoFromCents(Number(after.amountCents))}`);
         if (before.cashAccount !== after.cashAccount) changes.push(`account: ${before.cashAccount} -> ${after.cashAccount}`);
         if (before.transactionDate !== after.transactionDate) changes.push(`date: ${before.transactionDate} -> ${after.transactionDate}`);
-        if (before.description !== after.description) changes.push(`description updated`);
-        if (before.counterpartyName !== after.counterpartyName) changes.push(`payor/payee updated`);
+        if (before.categoryId !== after.categoryId || before.categoryName !== after.categoryName) changes.push("category updated");
+        if (before.documentNumber !== after.documentNumber) changes.push("document number updated");
+        if (before.description !== after.description) changes.push("description updated");
+        if (before.referenceDescription !== after.referenceDescription) changes.push("reference updated");
+        if (before.counterpartyName !== after.counterpartyName) changes.push("payor/payee updated");
+        if (before.eventActivityName !== after.eventActivityName) changes.push("event/activity updated");
         if (changes.length > 0) {
           return `Edited transaction (${changes.join(", ")})`;
         }
@@ -595,7 +599,10 @@ export function formatHumanReadableSummary(log: {
           changes.push(`accounts: ${before.fromAccount}->${before.toAccount} to ${after.fromAccount}->${after.toAccount}`);
         }
         if (before.transferDate !== after.transferDate) changes.push(`date: ${before.transferDate} -> ${after.transferDate}`);
-        if (before.description !== after.description) changes.push(`description updated`);
+        if (before.documentNumber !== after.documentNumber) changes.push("document number updated");
+        if (before.description !== after.description) changes.push("description updated");
+        if (before.referenceDescription !== after.referenceDescription) changes.push("reference updated");
+        if (before.eventActivityName !== after.eventActivityName) changes.push("event/activity updated");
         if (changes.length > 0) {
           return `Edited cash transfer (${changes.join(", ")})`;
         }
@@ -645,9 +652,13 @@ export function formatHumanReadableSummary(log: {
       return `Updated account password`;
 
     case AuditAction.REGISTERED_USER: {
-      const roleStr = meta.requestedRole || meta.role ? ` (Role: ${meta.requestedRole || meta.role})` : "";
-      const userStr = meta.registeredUsername || meta.username || meta.registeredFullName || meta.fullName || "user";
-      return `Registered new user account ${userStr}${roleStr}`;
+      const name = (meta.actorFullName || meta.registeredFullName || meta.fullName) as string | undefined;
+      const username = (meta.actorUsername || meta.registeredUsername || meta.username) as string | undefined;
+      const role = (meta.requestedRole || meta.role) as string | undefined;
+
+      const userDisplay = name && username ? `${name} (${username})` : username || name || "User";
+      const roleDisplay = role ? ` as ${role}` : "";
+      return `Registered new user account ${userDisplay}${roleDisplay}`;
     }
 
     case AuditAction.CREATED_ORGANIZATION:

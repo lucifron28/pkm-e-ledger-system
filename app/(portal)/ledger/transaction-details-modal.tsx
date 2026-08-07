@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 
 export function TransactionDetailsModal({
   transaction,
@@ -10,16 +11,10 @@ export function TransactionDetailsModal({
   transaction: Extract<LedgerEntry, { kind: "TRANSACTION" }>;
 }) {
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      closeButtonRef.current?.focus();
-    } else if (triggerRef.current) {
-      triggerRef.current.focus();
-    }
-  }, [open]);
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
 
   const accountLabel = transaction.cashAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank";
   const isIncome = transaction.type === "INCOME";
@@ -37,11 +32,10 @@ export function TransactionDetailsModal({
 
       {open && (
         <div
+          ref={containerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           tabIndex={-1}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
+          onKeyDown={handleKeyDown}
         >
           <div
             role="dialog"
@@ -54,7 +48,7 @@ export function TransactionDetailsModal({
                 Transaction Details
               </h3>
               <button
-                ref={closeButtonRef}
+                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close details dialog"
@@ -98,8 +92,14 @@ export function TransactionDetailsModal({
                 <span className="font-medium text-slate-900">{transaction.documentNumber || "-"}</span>
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">{isIncome ? "Payor" : "Payee"}</span>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {transaction.type === "INCOME" ? "Payor Name" : "Payee Name"}
+                </span>
                 <span className="font-medium text-slate-900">{transaction.counterpartyName || "-"}</span>
+              </div>
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Event / Activity</span>
+                <span className="font-medium text-slate-900">{transaction.eventActivityName || "-"}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Recorded By</span>
@@ -107,58 +107,40 @@ export function TransactionDetailsModal({
               </div>
             </div>
 
-            <div className="space-y-3 pt-2 border-t border-slate-100 text-sm">
-              <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Description / Particulars</span>
-                <p className="mt-0.5 text-slate-800 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-sm">
-                  {transaction.description}
-                </p>
-              </div>
-
-              <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Reference Description</span>
-                <p className="mt-0.5 text-slate-800 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-sm">
-                  {transaction.referenceDescription}
-                </p>
-              </div>
-
-              <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Event / Activity</span>
-                <p className="mt-0.5 text-slate-800 font-medium">{transaction.eventActivityName || "-"}</p>
-              </div>
-
-              <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Attachments</span>
-                {transaction.attachments.length === 0 ? (
-                  <span className="text-xs text-slate-400">No attachment uploaded</span>
-                ) : (
-                  <ul className="space-y-1">
-                    {transaction.attachments.map((att) => (
-                      <li key={att.id}>
-                        <a
-                          href={`/api/attachments/${att.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#004aad] font-semibold hover:underline text-xs flex items-center gap-1"
-                        >
-                          <span>📎</span> {att.originalName} ({Math.ceil(att.sizeBytes / 1024)} KB)
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+            <div>
+              <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Particulars / Description</span>
+              <p className="mt-1 text-sm text-slate-800 bg-slate-50 p-2.5 rounded border border-slate-200 font-medium">
+                {transaction.description}
+              </p>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition"
-              >
-                Close
-              </button>
+            <div>
+              <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Reference / Attachment Description</span>
+              <p className="mt-1 text-sm text-slate-800 bg-slate-50 p-2.5 rounded border border-slate-200">
+                {transaction.referenceDescription}
+              </p>
             </div>
+
+            {transaction.attachments && transaction.attachments.length > 0 && (
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Attachments</span>
+                <div className="space-y-1.5">
+                  {transaction.attachments.map((att) => (
+                    <div key={att.id} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded text-xs border border-slate-200">
+                      <span className="truncate max-w-[240px] font-medium text-slate-700">{att.originalName}</span>
+                      <a
+                        href={`/api/attachments/${att.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#004aad] hover:underline font-bold"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

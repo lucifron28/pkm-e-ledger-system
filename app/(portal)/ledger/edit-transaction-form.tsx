@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState, useMemo, useRef, useEffect } from "react";
+import { useActionState, useState, useMemo } from "react";
 import { editTransactionAction } from "@/lib/actions/transactions";
 import type { TransactionDto, CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 import { formatPesoInputFromCents } from "@/lib/data/money";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 
 interface EditTransactionFormProps {
   transaction: TransactionDto;
@@ -25,16 +26,10 @@ export function EditTransactionForm({
   const dateStr = transaction.transactionDate.toISOString().split("T")[0];
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      closeButtonRef.current?.focus();
-    } else if (triggerRef.current) {
-      triggerRef.current.focus();
-    }
-  }, [isOpen]);
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+    isOpen,
+    onClose: () => setIsOpen(false),
+  });
 
   const isCurrentCategoryInList = categories.some((c) => c.id === transaction.categoryId);
 
@@ -60,11 +55,10 @@ export function EditTransactionForm({
 
       {isOpen && (
         <div
+          ref={containerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left"
           tabIndex={-1}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setIsOpen(false);
-          }}
+          onKeyDown={handleKeyDown}
         >
           <div
             role="dialog"
@@ -77,7 +71,7 @@ export function EditTransactionForm({
                 Edit Transaction
               </h3>
               <button
-                ref={closeButtonRef}
+                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label="Close dialog"

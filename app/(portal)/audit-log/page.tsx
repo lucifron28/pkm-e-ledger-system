@@ -71,6 +71,10 @@ export default async function AuditLogPage({
   }
   const logs = page.logs;
 
+  const prevCursor = parseScalarString(rawParams.prevCursor);
+  const currentCursor = cursor;
+  const hasCursor = Boolean(currentCursor);
+
   const buildUrl = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     const merged: Record<string, string | undefined> = {
@@ -79,14 +83,39 @@ export default async function AuditLogPage({
       dateTo,
       actorUserId,
       pageSize: pageSize !== 50 ? String(pageSize) : undefined,
+      cursor,
+      prevCursor,
       ...overrides,
     };
+    const hasFilterOverride = Object.keys(overrides).some(
+      (key) => key !== "cursor" && key !== "prevCursor"
+    );
+    if (hasFilterOverride) {
+      if (!("cursor" in overrides)) merged.cursor = undefined;
+      if (!("prevCursor" in overrides)) merged.prevCursor = undefined;
+    }
+
     for (const [key, val] of Object.entries(merged)) {
       if (val && val.trim().length > 0) params.set(key, val.trim());
     }
     const query = params.toString();
     return `/audit-log${query ? `?${query}` : ""}`;
   };
+
+  const firstPageUrl = buildUrl({ cursor: undefined, prevCursor: undefined });
+  const prevPageUrl = hasCursor
+    ? buildUrl({
+        cursor: prevCursor && prevCursor.length > 0 ? prevCursor : undefined,
+        prevCursor: undefined,
+      })
+    : null;
+  const nextPageUrl =
+    page.pagination.hasMore && page.pagination.nextCursor
+      ? buildUrl({
+          cursor: page.pagination.nextCursor,
+          prevCursor: currentCursor || "",
+        })
+      : null;
 
   return (
     <div className="space-y-6">
@@ -156,10 +185,15 @@ export default async function AuditLogPage({
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-slate-900 text-sm">Audit Log Entries — showing {logs.length} entries on this page</h2>
-            <div className="flex items-center gap-3 text-xs">
-              <Link href="/audit-log" className="text-[#004aad] font-bold hover:underline">First Page</Link>
-              {page.pagination.hasMore && (
-                <Link href={buildUrl({ cursor: page.pagination.nextCursor || undefined })} className="text-[#004aad] font-bold hover:underline">Next Page &rarr;</Link>
+            <div className="flex items-center gap-3 text-xs font-bold">
+              {hasCursor && (
+                <Link href={firstPageUrl} className="text-[#004aad] hover:underline">&laquo; First Page</Link>
+              )}
+              {prevPageUrl && (
+                <Link href={prevPageUrl} className="text-[#004aad] hover:underline">&lsaquo; Previous Page</Link>
+              )}
+              {nextPageUrl && (
+                <Link href={nextPageUrl} className="text-[#004aad] hover:underline">Next Page &rsaquo;</Link>
               )}
             </div>
           </div>

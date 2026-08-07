@@ -318,13 +318,14 @@ test("Audit Log: formatHumanReadableSummary computes detailed summaries for edit
   assert.match(balanceSummary, /COH: ₱1,000.00 -> ₱1,500.00/);
   assert.match(balanceSummary, /CIB: ₱2,000.00 -> ₱2,500.00/);
 
-  // REGISTERED_USER with requestedRole and username
+  // REGISTERED_USER with production metadata shape (actorFullName, actorUsername, requestedRole)
   const regSummary = formatHumanReadableSummary({
     action: AuditAction.REGISTERED_USER,
     metadata: {
-      registeredUsername: "treasurer1",
-      requestedRole: "TREASURER",
+      actorFullName: "Fictional User",
+      actorUsername: "fictional_user",
+      requestedRole: "OFFICER",
     },
   });
-  assert.match(regSummary, /Registered new user account treasurer1 \(Role: TREASURER\)/);
+  assert.equal(regSummary, "Registered new user account Fictional User (fictional_user) as OFFICER");
 });

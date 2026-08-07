@@ -16,7 +16,7 @@ import { CashTransferDetailsModal } from "./cash-transfer-details-modal";
 import { AttachmentManager } from "./attachment-manager";
 import { LedgerFilters } from "./ledger-filters";
 import { OsaLedgerSummaryView, OsaOrganizationSelectView } from "@/components/ledger/osa-ledger-summary";
-import { parseLedgerQueryParams } from "@/lib/domain/query";
+import { buildLedgerFilterUrl, parseLedgerQueryParams, parseScalarString } from "@/lib/domain/query";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -78,20 +78,25 @@ export default async function LedgerPage({
 
   const balances = snapshot.balances;
 
-  // Build Pagination URLs
-  const firstPageParams = new URLSearchParams();
-  const nextParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(rawParams)) {
-    if (typeof value === "string" && key !== "cursor") {
-      firstPageParams.set(key, value);
-      nextParams.set(key, value);
-    }
-  }
-  const firstPageUrl = `/ledger${firstPageParams.toString() ? `?${firstPageParams.toString()}` : ""}`;
+  const prevCursor = parseScalarString(rawParams.prevCursor);
+  const currentCursor = parsedQuery.cursor;
+  const hasCursor = Boolean(currentCursor);
 
-  if (snapshot.pagination.nextCursor) nextParams.set("cursor", snapshot.pagination.nextCursor);
-  const nextPageUrl = snapshot.pagination.nextCursor ? `/ledger?${nextParams.toString()}` : null;
-  const hasCursor = Boolean(parsedQuery.cursor);
+  const firstPageUrl = buildLedgerFilterUrl(parsedQuery, { cursor: undefined, prevCursor: undefined });
+
+  const prevPageUrl = hasCursor
+    ? buildLedgerFilterUrl(parsedQuery, {
+        cursor: prevCursor && prevCursor.length > 0 ? prevCursor : undefined,
+        prevCursor: undefined,
+      })
+    : null;
+
+  const nextPageUrl = snapshot.pagination.nextCursor
+    ? buildLedgerFilterUrl(parsedQuery, {
+        cursor: snapshot.pagination.nextCursor,
+        prevCursor: currentCursor || "",
+      })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -138,9 +143,14 @@ export default async function LedgerPage({
                 &laquo; First Page
               </Link>
             )}
+            {prevPageUrl && (
+              <Link href={prevPageUrl} className="text-[#004aad] hover:underline">
+                &lsaquo; Previous Page
+              </Link>
+            )}
             {nextPageUrl && (
               <Link href={nextPageUrl} className="text-[#004aad] hover:underline">
-                Next Page &raquo;
+                Next Page &rsaquo;
               </Link>
             )}
           </div>
@@ -155,7 +165,9 @@ export default async function LedgerPage({
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
                   <tr>
-                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-left">Transaction Date</th>
+                    <th className="px-4 py-3 text-left">Academic Year</th>
+                    <th className="px-4 py-3 text-left">Semester</th>
                     <th className="px-4 py-3 text-left">Type</th>
                     <th className="px-4 py-3 text-left">Category / Movement</th>
                     <th className="px-4 py-3 text-left">Payor / Payee</th>
@@ -166,6 +178,7 @@ export default async function LedgerPage({
                     <th className="px-4 py-3 text-right">Amount</th>
                     <th className="px-4 py-3 text-left">Attachment</th>
                     <th className="px-4 py-3 text-left">Recorded By</th>
+                    <th className="px-4 py-3 text-left">Date Recorded</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -174,6 +187,8 @@ export default async function LedgerPage({
                     <LedgerRow
                       key={`${entry.kind}-${entry.id}`}
                       entry={entry}
+                      academicYear={activeTerm.academicYear}
+                      semesterLabel={getSemesterLabel(activeTerm.semester)}
                       incomeCategories={incomeCategories}
                       expenseCategories={expenseCategories}
                     />
@@ -232,11 +247,27 @@ function BalanceCard({ label, value, tone }: { label: string; value: string; ton
   return <div className={`rounded-lg p-3 border ${classes}`}><div className="text-xs font-bold uppercase tracking-wider mb-1 text-slate-500">{label}</div><div className="text-lg font-extrabold font-mono">{value}</div></div>;
 }
 
-function LedgerRow({ entry, incomeCategories, expenseCategories }: { entry: LedgerEntry; incomeCategories: CategoryDto[]; expenseCategories: CategoryDto[] }) {
+function LedgerRow({
+  entry,
+  academicYear,
+  semesterLabel,
+  incomeCategories,
+  expenseCategories,
+}: {
+  entry: LedgerEntry;
+  academicYear: string;
+  semesterLabel: string;
+  incomeCategories: CategoryDto[];
+  expenseCategories: CategoryDto[];
+}) {
+  const dateRecorded = entry.createdAt ? new Date(entry.createdAt).toLocaleDateString("en-PH") : "-";
+
   if (entry.kind === "TRANSACTION") {
     return (
       <tr className="hover:bg-slate-50 align-top">
         <td className="px-4 py-3 whitespace-nowrap">{entry.transactionDate.toLocaleDateString("en-PH")}</td>
+        <td className="px-4 py-3 whitespace-nowrap">{academicYear}</td>
+        <td className="px-4 py-3 whitespace-nowrap">{semesterLabel}</td>
         <td className="px-4 py-3 whitespace-nowrap font-bold">{entry.type === "INCOME" ? "Income" : "Expense"}</td>
         <td className="px-4 py-3 whitespace-nowrap">{entry.categoryName}</td>
         <td className="px-4 py-3 whitespace-nowrap">{entry.counterpartyName || "-"}</td>
@@ -247,6 +278,7 @@ function LedgerRow({ entry, incomeCategories, expenseCategories }: { entry: Ledg
         <td className="px-4 py-3 text-right whitespace-nowrap font-mono font-bold">{formatPesoFromCents(entry.amountCents)}</td>
         <td className="px-4 py-3"><AttachmentManager transactionId={entry.id} attachments={entry.attachments} /></td>
         <td className="px-4 py-3 whitespace-nowrap">{entry.recordedByName}</td>
+        <td className="px-4 py-3 whitespace-nowrap text-slate-500">{dateRecorded}</td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
           <div className="flex items-center justify-end gap-1.5">
             <TransactionDetailsModal transaction={entry} />
@@ -260,6 +292,8 @@ function LedgerRow({ entry, incomeCategories, expenseCategories }: { entry: Ledg
   return (
     <tr className="hover:bg-slate-50 align-top">
       <td className="px-4 py-3 whitespace-nowrap">{entry.transferDate.toLocaleDateString("en-PH")}</td>
+      <td className="px-4 py-3 whitespace-nowrap">{academicYear}</td>
+      <td className="px-4 py-3 whitespace-nowrap">{semesterLabel}</td>
       <td className="px-4 py-3 whitespace-nowrap font-bold">Transfer</td>
       <td className="px-4 py-3 whitespace-nowrap">{entry.fromAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank"} -&gt; {entry.toAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank"}</td>
       <td className="px-4 py-3 whitespace-nowrap">-</td>
@@ -270,6 +304,7 @@ function LedgerRow({ entry, incomeCategories, expenseCategories }: { entry: Ledg
       <td className="px-4 py-3 text-right whitespace-nowrap font-mono font-bold">{formatPesoFromCents(entry.amountCents)}</td>
       <td className="px-4 py-3"><AttachmentManager cashTransferId={entry.id} attachments={entry.attachments} /></td>
       <td className="px-4 py-3 whitespace-nowrap">{entry.recordedByName}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-slate-500">{dateRecorded}</td>
       <td className="px-4 py-3 text-right whitespace-nowrap">
         <div className="flex items-center justify-end gap-1.5">
           <CashTransferDetailsModal transfer={entry} />

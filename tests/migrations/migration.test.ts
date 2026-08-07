@@ -832,3 +832,56 @@ test("Migration Preflight: PREPARED resume verifies hash and byte length", async
 
   fs.rmSync(uploadsRoot, { recursive: true, force: true });
 });
+
+test("Migration Preflight: schema-aware runPreflight handles fresh DB, migrated DB, and malformed schemas", async () => {
+  cleanupTempDir();
+  fs.mkdirSync(TEMP_MIGRATION_DIR, { recursive: true });
+
+  const uploadsRoot = path.join(TEMP_MIGRATION_DIR, "uploads_schema_test");
+  fs.mkdirSync(uploadsRoot, { recursive: true });
+
+  // 1. Fresh DB (no Attachment table) -> clean no-op
+  const freshDbPath = path.join(TEMP_MIGRATION_DIR, "fresh.db");
+  fs.writeFileSync(freshDbPath, Buffer.alloc(0));
+  const freshPrisma = new PrismaClient({ datasources: { db: { url: `file:${freshDbPath}` } } });
+  try {
+    await freshPrisma.$executeRawUnsafe(
+      `CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "username" TEXT NOT NULL)`
+    );
+    await runPreflight(`file:${freshDbPath}`, uploadsRoot);
+  } finally {
+    await freshPrisma.$disconnect();
+  }
+
+  // 2. Already migrated DB WITHOUT sidecar (storageKey, no legacy columns) -> clean no-op
+  const migratedDbPath = path.join(TEMP_MIGRATION_DIR, "migrated.db");
+  fs.writeFileSync(migratedDbPath, Buffer.alloc(0));
+  const migratedPrisma = new PrismaClient({ datasources: { db: { url: `file:${migratedDbPath}` } } });
+  try {
+    await migratedPrisma.$executeRawUnsafe(
+      `CREATE TABLE "Attachment" ("id" TEXT PRIMARY KEY, "storageKey" TEXT NOT NULL, "mimeType" TEXT NOT NULL, "sizeBytes" INTEGER NOT NULL)`
+    );
+    await runPreflight(`file:${migratedDbPath}`, uploadsRoot);
+  } finally {
+    await migratedPrisma.$disconnect();
+  }
+
+  // 3. Malformed partial Attachment schema (has storedName, missing storagePath and storageKey) -> fails clearly
+  const malformedDbPath = path.join(TEMP_MIGRATION_DIR, "malformed.db");
+  fs.writeFileSync(malformedDbPath, Buffer.alloc(0));
+  const malformedPrisma = new PrismaClient({ datasources: { db: { url: `file:${malformedDbPath}` } } });
+  try {
+    await malformedPrisma.$executeRawUnsafe(
+      `CREATE TABLE "Attachment" ("id" TEXT PRIMARY KEY, "storedName" TEXT NOT NULL)`
+    );
+    await assert.rejects(
+      async () => runPreflight(`file:${malformedDbPath}`, uploadsRoot),
+      /Malformed or unrecognized Attachment table schema/
+    );
+  } finally {
+    await malformedPrisma.$disconnect();
+  }
+
+  fs.rmSync(uploadsRoot, { recursive: true, force: true });
+});
+

@@ -11,8 +11,8 @@
 | Storage & Attachments | Deterministic physical file rollback & non-disclosure 404 | High | `lib/application/transactions.ts`, `lib/actions/attachments.ts`, `app/api/attachments/[id]/route.ts` | `tests/core/attachments.test.ts` | Remediated |
 | Storage | Storage reconciliation CLI tool | Medium | `scripts/reconcile-storage.ts`, `package.json` | `tests/core/storage-reconciliation.test.ts` | Remediated |
 | Digital Ledger | Category reset on type change & inactive category support | Medium | `app/(portal)/ledger/create-transaction-form.tsx`, `app/(portal)/ledger/edit-transaction-form.tsx`, `lib/application/transactions.ts` | `tests/core/financial.test.ts` | Remediated |
-| Digital Ledger | Direct income/expense creation routes | Low | `app/(portal)/ledger/income/new/page.tsx`, `app/(portal)/ledger/expense/new/page.tsx` | UI verification | Remediated |
-| Navigation | Role-derived navigation matrix & OSA query preservation | Medium | `components/layout/portal-layout.tsx`, `components/layout/sidebar-nav.tsx` | UI verification | Remediated |
-| Audit Log | Human-readable summaries & actor user filter | Low | `lib/data/audit-log.ts`, `app/(portal)/audit-log/page.tsx` | UI verification | Remediated |
-| Dashboard | Specification-aligned card ordering & terminology | Low | `app/(portal)/dashboard/page.tsx` | UI verification | Remediated |
-| Accessibility | Accessible dialogs, ARIA attributes & Escape key handling | Medium | `app/(portal)/ledger/*.tsx` | UI verification | Remediated |
+| Digital Ledger | Direct income/expense creation routes | Low | `app/(portal)/ledger/income/new/page.tsx`, `app/(portal)/ledger/expense/new/page.tsx` | `tests/core/financial.test.ts` | Remediated |
+| Navigation | Role-derived navigation matrix & OSA query preservation | Medium | `components/navigation/portal-nav.tsx`, `components/layout/portal-header.tsx` | `tests/core/rbac.test.ts` | Remediated |
+| Audit Log | Human-readable summaries & actor user filter | Low | `lib/data/audit-log.ts`, `app/(portal)/audit-log/page.tsx` | `tests/core/audit.test.ts` | Remediated |
+| Dashboard | Specification-aligned card ordering & terminology | Low | `app/(portal)/dashboard/page.tsx` | Manual UI inspection | Remediated |
+| Accessibility | Accessible modal focus management, ARIA attributes & Escape key handling | Medium | `lib/hooks/use-modal-focus.ts`, `app/(portal)/ledger/*.tsx` | `tests/core/modal-focus.test.ts` | Remediated |

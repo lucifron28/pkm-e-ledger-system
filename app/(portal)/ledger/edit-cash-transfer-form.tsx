@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useMemo, useState, useRef, useEffect } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { editCashTransferAction } from "@/lib/actions/transfers";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoInputFromCents } from "@/lib/data/money";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 
 export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEntry, { kind: "TRANSFER" }> }) {
   const [state, formAction, isPending] = useActionState(editCashTransferAction, null);
@@ -13,16 +14,10 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
   const date = transfer.transferDate.toISOString().slice(0, 10);
 
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      closeButtonRef.current?.focus();
-    } else if (triggerRef.current) {
-      triggerRef.current.focus();
-    }
-  }, [open]);
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
 
   return (
     <div className="inline">
@@ -37,11 +32,10 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
 
       {open && (
         <div
+          ref={containerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left"
           tabIndex={-1}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
+          onKeyDown={handleKeyDown}
         >
           <div
             role="dialog"
@@ -54,7 +48,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                 Edit Cash Transfer
               </h3>
               <button
-                ref={closeButtonRef}
+                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close modal"

@@ -311,6 +311,24 @@ async function runPreflight(prisma, uploadsRoot, dbUrl) {
     return;
   }
 
+  const columns = await prisma.$queryRawUnsafe(`PRAGMA table_info("Attachment")`);
+  const colNames = new Set(columns.map((c) => c.name));
+
+  const hasStoredName = colNames.has("storedName");
+  const hasStoragePath = colNames.has("storagePath");
+  const hasStorageKey = colNames.has("storageKey");
+
+  if (!hasStoredName && !hasStoragePath && hasStorageKey) {
+    console.log("[preflight] Attachment table is already in current storageKey shape; clean no-op.");
+    return;
+  }
+
+  if (!(hasStoredName && hasStoragePath)) {
+    throw new Error(
+      `Malformed or unrecognized Attachment table schema (columns: ${Array.from(colNames).join(", ")}). Preflight aborted.`
+    );
+  }
+
   const rows = await prisma.$queryRawUnsafe(
     `SELECT id, storedName, storagePath, createdAt FROM "Attachment"`
   );

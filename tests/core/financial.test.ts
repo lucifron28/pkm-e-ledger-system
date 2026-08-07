@@ -412,3 +412,41 @@ test("Query Domain: decodeLedgerCursor strictly enforces fingerprint matching", 
   const sizeFp = buildLedgerCursorFingerprint({ ...baseCtx, pageSize: 25 });
   assert.equal(decodeLedgerCursor(cursorWithFp, sizeFp), null, "Cursor used after page-size change must be rejected");
 });
+
+test("Financial Domain: buildLedgerFilterUrl pagination navigation and filter reset", () => {
+  const baseFilters = {
+    academicYear: "2026-2027",
+    semester: "FIRST_SEMESTER" as const,
+    type: undefined,
+    entryType: undefined,
+    categoryId: undefined,
+    cashAccount: undefined,
+    month: undefined,
+    eventActivityName: undefined,
+    dateFrom: undefined,
+    dateTo: undefined,
+    search: undefined,
+    org: undefined,
+    cursor: "C2",
+    pageSize: 50,
+    prevCursor: "C1",
+  };
+
+  // 1. URL preserves cursor and prevCursor when no filter override is passed
+  const normalUrl = buildLedgerFilterUrl(baseFilters, {});
+  assert.match(normalUrl, /cursor=C2/);
+  assert.match(normalUrl, /prevCursor=C1/);
+
+  // 2. Filter override (e.g. type=INCOME) clears both cursor and prevCursor
+  const filterUrl = buildLedgerFilterUrl(baseFilters, { type: "INCOME" });
+  assert.match(filterUrl, /type=INCOME/);
+  assert.equal(filterUrl.includes("cursor="), false);
+  assert.equal(filterUrl.includes("prevCursor="), false);
+
+  // 3. Page size change clears both cursor and prevCursor
+  const pageSizeUrl = buildLedgerFilterUrl(baseFilters, { pageSize: "25" });
+  assert.match(pageSizeUrl, /pageSize=25/);
+  assert.equal(pageSizeUrl.includes("cursor="), false);
+  assert.equal(pageSizeUrl.includes("prevCursor="), false);
+});
+

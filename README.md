@@ -9,9 +9,6 @@
 * **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
 * **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
 * **Database & ORM**: SQLite via Prisma ORM 6
-* **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
-* **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
-* **Database & ORM**: SQLite via Prisma ORM 6
 * **Key Architecture**: Server Actions for mutations, Route Handlers for file downloads and PDF/Excel exports (`pdfkit`, `exceljs`), and database-backed sessions with `bcryptjs` password hashing.
 
 ---

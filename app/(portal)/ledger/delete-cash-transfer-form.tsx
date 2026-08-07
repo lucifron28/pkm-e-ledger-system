@@ -1,23 +1,18 @@
 "use client";
 
-import { useActionState, useMemo, useState, useRef, useEffect } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { softDeleteCashTransferAction } from "@/lib/actions/transfers";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 
 export function DeleteCashTransferForm({ id, version }: { id: string; version: number }) {
   const [state, formAction, isPending] = useActionState(softDeleteCashTransferAction, null);
   const [open, setOpen] = useState(false);
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      closeButtonRef.current?.focus();
-    } else if (triggerRef.current) {
-      triggerRef.current.focus();
-    }
-  }, [open]);
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
 
   return (
     <div className="inline">
@@ -32,11 +27,10 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
 
       {open && (
         <div
+          ref={containerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left"
           tabIndex={-1}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
+          onKeyDown={handleKeyDown}
         >
           <div
             role="dialog"
@@ -49,7 +43,7 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
                 Delete Cash Transfer
               </h3>
               <button
-                ref={closeButtonRef}
+                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close dialog"
