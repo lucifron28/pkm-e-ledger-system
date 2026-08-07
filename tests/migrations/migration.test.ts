@@ -622,7 +622,8 @@ test("Migration Orchestrator: failed migration rolls back CREATED_BY_RUN and ret
     assert.equal(fs.existsSync(path.join(fixture.uploadsRoot, "shared.png-dup-att-3")), false, "CREATED_BY_RUN file must be rolled back");
     assert.equal(fs.existsSync(preexistingFile), true, "PREEXISTING file must be retained");
     assert.deepEqual(fs.readFileSync(preexistingFile), PNG_CONTENT, "PREEXISTING file content must be untouched");
-    assert.equal(fs.existsSync(path.join(fixture.uploadsRoot, ".attachment-storage-key-migration.json")), false, "Sidecar must be removed after rollback");
+    const sidecarContent = JSON.parse(fs.readFileSync(path.join(fixture.uploadsRoot, ".attachment-storage-key-migration.json"), "utf8"));
+    assert.equal(sidecarContent.state, "ROLLED_BACK", "Sidecar must be updated to ROLLED_BACK state after rollback");
 
     const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
     try {

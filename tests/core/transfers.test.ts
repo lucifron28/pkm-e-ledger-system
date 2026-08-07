@@ -8,6 +8,9 @@ import {
 } from "../../lib/domain/financial";
 import { buildReportPackage, RawReportInputTerm, RawReportInputTransaction, RawReportInputTransfer } from "../../lib/domain/reports";
 import { ValidationError } from "../../lib/domain/errors";
+import { editTransactionSchema } from "../../lib/actions/transactions";
+import { editTransferSchema } from "../../lib/actions/transfers";
+import { parseStrictVersion, strictVersionSchema } from "../../lib/domain/query";
 
 test("CashTransfer Domain: COH to CIB transfer updates account balances while keeping remaining balance, income, expense unchanged", () => {
   const openingCOH = 100000; // ₱1,000.00
@@ -126,4 +129,48 @@ test("CashTransfer Domain: Report package excludes transfers from Schedule 1 & 2
   assert.equal(report.endingCashOnHandCents, 120000); // 100000 opening + 50000 income - 30000 transfer = 120000
   assert.equal(report.endingCashInBankCents, 230000); // 200000 opening + 30000 transfer = 230000
   assert.equal(report.endingBalanceCents, 350000); // 120000 + 230000 = 350000
+});
+
+test("Validation: edit schemas succeed without termId and enforce strict versioning", () => {
+  const validTxEdit = editTransactionSchema.safeParse({
+    id: "tx-123",
+    version: "1",
+    type: "INCOME",
+    transactionDate: "2025-08-01",
+    amount: "100.00",
+    cashAccount: "CASH_ON_HAND",
+    categoryId: "cat-1",
+    counterpartyName: "Payor A",
+    description: "Valid edit",
+    referenceDescription: "Ref 123",
+    eventActivityName: "Event A",
+    idempotencyKey: "key-123",
+  });
+  assert.equal(validTxEdit.success, true);
+
+  const validTrEdit = editTransferSchema.safeParse({
+    id: "tr-123",
+    version: "1",
+    fromAccount: "CASH_ON_HAND",
+    toAccount: "CASH_IN_BANK",
+    transferDate: "2025-08-01",
+    amount: "50.00",
+    description: "Valid transfer edit",
+    referenceDescription: "Ref 456",
+    idempotencyKey: "key-456",
+  });
+  assert.equal(validTrEdit.success, true);
+
+  // Strict version validation checks
+  assert.throws(() => parseStrictVersion("1.0"), /Version must be a positive integer/);
+  assert.throws(() => parseStrictVersion("1e0"), /Version must be a positive integer/);
+  assert.throws(() => parseStrictVersion("01"), /Version must be a positive integer/);
+  assert.throws(() => parseStrictVersion("+1"), /Version must be a positive integer/);
+  assert.equal(parseStrictVersion("5"), 5);
+
+  assert.equal(strictVersionSchema.safeParse("1.0").success, false);
+  assert.equal(strictVersionSchema.safeParse("1e0").success, false);
+  assert.equal(strictVersionSchema.safeParse("01").success, false);
+  assert.equal(strictVersionSchema.safeParse("+1").success, false);
+  assert.equal(strictVersionSchema.safeParse("1").success, true);
 });

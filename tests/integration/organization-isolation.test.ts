@@ -527,7 +527,7 @@ test("Organization Isolation Integration: Historical term safety in transaction 
           originalName: "test.png",
           mimeType: "image/png",
           sizeBytes: 8,
-          buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          buffer: Buffer.from(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
         },
       }, { storageService: storage });
     },
@@ -549,7 +549,7 @@ test("Organization Isolation Integration: Historical term safety in transaction 
           originalName: "test.png",
           mimeType: "image/png",
           sizeBytes: 8,
-          buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          buffer: Buffer.from(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
         },
       }, { storageService: storage });
     },
