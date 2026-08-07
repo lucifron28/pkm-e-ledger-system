@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { AttachmentStorageService } from "../../lib/infrastructure/storage/attachment-store";
+import { AttachmentStorageService, StorageDatabase } from "../../lib/infrastructure/storage/attachment-store";
 
 function snapshotDir(dir: string): Record<string, string> {
   const snapshot: Record<string, string> = {};
@@ -56,7 +56,7 @@ test("Storage Reconciliation: planReconciliation dry-run performs zero mutation"
     })
   );
 
-  const mockDb = {
+  const mockDb: StorageDatabase = {
     attachment: {
       findMany: async () => [
         { id: "att-1", storageKey: "active-1.png", transactionId: "tx-1", cashTransferId: null },
@@ -64,7 +64,7 @@ test("Storage Reconciliation: planReconciliation dry-run performs zero mutation"
     },
   };
 
-  const service = new AttachmentStorageService(tmpDir, mockDb as any);
+  const service = new AttachmentStorageService(tmpDir, mockDb);
   const snapshotBefore = snapshotDir(tmpDir);
 
   const plan = await service.planReconciliation(60 * 60 * 1000);
@@ -82,7 +82,7 @@ test("Storage Reconciliation: planReconciliation dry-run performs zero mutation"
 
 test("Storage Reconciliation: fails closed on database query error", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "reconcile-dberr-"));
-  const mockDb = {
+  const mockDb: StorageDatabase = {
     attachment: {
       findMany: async () => {
         throw new Error("Database unavailable");
@@ -90,7 +90,7 @@ test("Storage Reconciliation: fails closed on database query error", async () =>
     },
   };
 
-  const service = new AttachmentStorageService(tmpDir, mockDb as any);
+  const service = new AttachmentStorageService(tmpDir, mockDb);
   const plan = await service.planReconciliation();
   assert.equal(plan.dbError, true);
   assert.equal(plan.deleteStaging.length, 0);

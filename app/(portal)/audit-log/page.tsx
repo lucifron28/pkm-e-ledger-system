@@ -92,38 +92,48 @@ export default async function AuditLogPage({
   function formatHumanReadableSummary(log: (typeof logs)[0]): string {
     const meta = log.metadata || {};
     switch (log.action) {
-      case "ADDED_INCOME":
+      case AuditAction.ADDED_INCOME:
         return `Recorded Income of ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) from ${meta.counterpartyName || meta.description || "payor"}`;
-      case "ADDED_EXPENSE":
+      case AuditAction.ADDED_EXPENSE:
         return `Recorded Expense of ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) to ${meta.counterpartyName || meta.description || "payee"}`;
-      case "EDITED_TRANSACTION":
+      case AuditAction.EDITED_TRANSACTION:
         return `Edited transaction details (Version ${meta.version || 2})`;
-      case "DELETED_TRANSACTION":
+      case AuditAction.DELETED_TRANSACTION:
         return `Soft-deleted transaction (Reason: ${meta.deleteReason || "N/A"})`;
-      case "CREATED_CASH_TRANSFER":
+      case AuditAction.CREATED_CASH_TRANSFER:
         return `Transferred ${meta.amountCents ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} from ${meta.fromAccount || "account"} to ${meta.toAccount || "account"}`;
-      case "EDITED_CASH_TRANSFER":
+      case AuditAction.EDITED_CASH_TRANSFER:
         return `Edited cash transfer details (Version ${meta.version || 2})`;
-      case "DELETED_CASH_TRANSFER":
+      case AuditAction.DELETED_CASH_TRANSFER:
         return `Soft-deleted cash transfer (Reason: ${meta.deleteReason || "N/A"})`;
-      case "CHANGED_OPENING_BALANCE":
+      case AuditAction.CHANGED_OPENING_BALANCE:
         return `Updated Opening Balances (COH: ${meta.openingCashOnHandCents !== undefined ? formatPesoFromCents(Number(meta.openingCashOnHandCents)) : "N/A"}, CIB: ${meta.openingCashInBankCents !== undefined ? formatPesoFromCents(Number(meta.openingCashInBankCents)) : "N/A"})`;
-      case "ACTIVATED_ACADEMIC_TERM":
+      case AuditAction.ACTIVATED_ACADEMIC_TERM:
         return `Activated Academic Term (${meta.academicYear || ""} ${meta.semester || ""})`;
-      case "UPLOADED_ATTACHMENT":
+      case AuditAction.UPLOADED_ATTACHMENT:
         return `Uploaded receipt/supporting file: ${meta.originalName || "attachment"}`;
-      case "DELETED_ATTACHMENT":
+      case AuditAction.DELETED_ATTACHMENT:
         return `Deleted attachment: ${meta.originalName || "attachment"}`;
-      case "GENERATED_REPORT":
+      case AuditAction.GENERATED_REPORT:
         return `Generated official financial report package`;
-      case "LOGGED_IN":
+      case AuditAction.LOGGED_IN:
         return `User signed into system`;
-      case "LOGGED_OUT":
+      case AuditAction.LOGGED_OUT:
         return `User signed out of system`;
-      case "CHANGED_PASSWORD":
+      case AuditAction.CHANGED_PASSWORD:
         return `Updated account password`;
-      case "REGISTERED_USER":
+      case AuditAction.REGISTERED_USER:
         return `Registered new user account (${meta.username || "user"})`;
+      case AuditAction.CREATED_ORGANIZATION:
+        return `Created organization (${meta.name || "organization"})`;
+      case AuditAction.TOGGLED_ORGANIZATION_STATUS:
+        return `Toggled organization status`;
+      case AuditAction.CREATED_CATEGORY:
+        return `Created category (${meta.name || "category"})`;
+      case AuditAction.UPDATED_CATEGORY:
+        return `Updated category (${meta.name || "category"})`;
+      case AuditAction.TOGGLED_CATEGORY_STATUS:
+        return `Toggled category status`;
       default:
         return AUDIT_ACTION_LABELS[log.action as AuditAction] || log.action;
     }

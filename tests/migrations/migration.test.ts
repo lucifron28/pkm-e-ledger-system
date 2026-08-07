@@ -660,7 +660,7 @@ test("Migration Preflight: foreign MIGRATED sidecar throws error on DB identity 
     })
   );
 
-  const { runPreflight } = require("../../scripts/attachment-storage-preflight");
+  const { runPreflight } = await import("../../scripts/attachment-storage-preflight");
   await assert.rejects(
     () => runPreflight(null, uploadsRoot, "file:./local.db"),
     /Database identity mismatch/
@@ -688,9 +688,9 @@ test("Migration Preflight: PREPARED resume with missing destination throws error
     })
   );
 
-  const { runPreflight } = require("../../scripts/attachment-storage-preflight");
+  const { runPreflight: runPreflightResume } = await import("../../scripts/attachment-storage-preflight");
   await assert.rejects(
-    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    () => runPreflightResume(null, uploadsRoot, "file:./local.db"),
     /Preflight resume failed: missing destination file/
   );
 
