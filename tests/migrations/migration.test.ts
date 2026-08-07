@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { PrismaClient } from "@prisma/client";
@@ -643,4 +644,55 @@ test("Migration Orchestrator: failed migration rolls back CREATED_BY_RUN and ret
   } finally {
     cleanupTempDir();
   }
+});
+
+test("Migration Preflight: foreign MIGRATED sidecar throws error on DB identity mismatch", async () => {
+  const uploadsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-foreign-"));
+  const sidecarPath = path.join(uploadsRoot, ".attachment-storage-key-migration.json");
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 1,
+      dbIdentity: "/different/path/to/other.db",
+      uploadsRoot,
+      state: "MIGRATED",
+      mappings: [],
+    })
+  );
+
+  const { runPreflight } = require("../../scripts/attachment-storage-preflight");
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Database identity mismatch/
+  );
+
+  fs.rmSync(uploadsRoot, { recursive: true, force: true });
+});
+
+test("Migration Preflight: PREPARED resume with missing destination throws error", async () => {
+  const uploadsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-resume-"));
+  const sidecarPath = path.join(uploadsRoot, ".attachment-storage-key-migration.json");
+  const canonicalDb = path.resolve("./local.db");
+  const canonicalRoot = path.resolve(uploadsRoot);
+
+  fs.writeFileSync(
+    sidecarPath,
+    JSON.stringify({
+      version: 1,
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      state: "PREPARED",
+      mappings: [
+        { attachmentId: "att-1", oldStorageKey: "missing.png", newStorageKey: "missing.png-dup-att-1" },
+      ],
+    })
+  );
+
+  const { runPreflight } = require("../../scripts/attachment-storage-preflight");
+  await assert.rejects(
+    () => runPreflight(null, uploadsRoot, "file:./local.db"),
+    /Preflight resume failed: missing destination file/
+  );
+
+  fs.rmSync(uploadsRoot, { recursive: true, force: true });
 });

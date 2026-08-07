@@ -354,6 +354,7 @@ export interface AuditLogPageDto {
     hasMore: boolean;
     nextCursor: string | null;
   };
+  invalidCursor?: boolean;
 }
 
 type AuditLogWithRelations = Prisma.AuditLogGetPayload<{
@@ -403,16 +404,17 @@ export interface AuditCursorPayload {
   fingerprint: string;
 }
 
-export function buildAuditLogCursorFingerprint(userOrgId: string, filters: AuditLogFilters): string {
-  const payload = [
-    userOrgId,
+export function buildAuditLogCursorFingerprint(organizationId: string, filters: AuditLogFilters): string {
+  const parts = [
+    "v1",
+    organizationId,
     filters.action || "",
     filters.actorUserId || "",
     filters.dateFrom || "",
     filters.dateTo || "",
-    filters.pageSize || 50,
-  ].join("|");
-  return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 16);
+    String(filters.pageSize || 50),
+  ];
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
 }
 
 export function encodeAuditCursor(id: string, fingerprint: string): string {
@@ -446,7 +448,7 @@ export async function listAuditLogsForCurrentOrganization(
   if (filters.cursor) {
     resolvedCursorId = decodeAuditCursor(filters.cursor, expectedFingerprint);
     if (!resolvedCursorId) {
-      return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+      return { logs: [], pagination: { hasMore: false, nextCursor: null }, invalidCursor: true };
     }
   }
 

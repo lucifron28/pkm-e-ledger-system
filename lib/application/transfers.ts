@@ -276,11 +276,18 @@ export async function createCashTransferService(
       await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
     if (committedName) {
-      const isReferenced = await prisma.attachment.findFirst({
-        where: { storageKey: committedName },
-        select: { id: true },
-      }).catch(() => null);
-      if (!isReferenced) {
+      let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
+      try {
+        const ref = await prisma.attachment.findFirst({
+          where: { storageKey: committedName },
+          select: { id: true },
+        });
+        lookupState = ref ? "LOOKUP_SUCCEEDED_REFERENCED" : "LOOKUP_SUCCEEDED_UNREFERENCED";
+      } catch (lookupErr) {
+        console.warn("[CashTransfer] Attachment ownership lookup failed; retaining active file for reconciliation:", lookupErr);
+        lookupState = "LOOKUP_FAILED";
+      }
+      if (lookupState === "LOOKUP_SUCCEEDED_UNREFERENCED") {
         await storageService.deleteActiveFile(committedName).catch(() => undefined);
       }
     }

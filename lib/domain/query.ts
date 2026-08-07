@@ -124,18 +124,55 @@ export function parsePageSize(value: unknown, defaultSize = 50, maxSize = 100): 
   return Math.min(parsed, maxSize);
 }
 
+import crypto from "crypto";
+
+export interface LedgerCursorContext {
+  organizationId?: string;
+  termId?: string;
+  type?: string;
+  entryType?: string;
+  categoryId?: string;
+  cashAccount?: string;
+  month?: string;
+  eventActivityName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  pageSize: number;
+}
+
+export function buildLedgerCursorFingerprint(ctx: LedgerCursorContext): string {
+  const parts = [
+    "v1",
+    ctx.organizationId || "",
+    ctx.termId || "",
+    ctx.type || "",
+    ctx.entryType || "",
+    ctx.categoryId || "",
+    ctx.cashAccount || "",
+    ctx.month || "",
+    ctx.eventActivityName || "",
+    ctx.dateFrom || "",
+    ctx.dateTo || "",
+    ctx.search || "",
+    String(ctx.pageSize || 50),
+  ];
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
+}
+
 export interface LedgerCursor {
   financialDate: string;
   createdAt: string;
   kind: "TRANSACTION" | "TRANSFER";
   id: string;
+  fingerprint?: string;
 }
 
 export function encodeLedgerCursor(cursor: LedgerCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-export function decodeLedgerCursor(value: unknown): LedgerCursor | null {
+export function decodeLedgerCursor(value: unknown, expectedFingerprint?: string): LedgerCursor | null {
   const scalar = parseScalarString(value);
   if (!scalar || !/^[A-Za-z0-9_-]+$/.test(scalar)) return null;
   try {
@@ -148,6 +185,11 @@ export function decodeLedgerCursor(value: unknown): LedgerCursor | null {
       Number.isNaN(Date.parse(decoded.financialDate)) ||
       Number.isNaN(Date.parse(decoded.createdAt))
     ) return null;
+
+    if (expectedFingerprint && decoded.fingerprint && decoded.fingerprint !== expectedFingerprint) {
+      return null;
+    }
+
     return decoded as LedgerCursor;
   } catch {
     return null;

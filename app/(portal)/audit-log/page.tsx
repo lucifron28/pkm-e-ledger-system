@@ -48,17 +48,6 @@ export default async function AuditLogPage({
     );
   }
 
-  if (invalidQuery) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">Invalid audit-log filter. Check action, dates, actor, cursor, or page size.</p>
-        </div>
-      </div>
-    );
-  }
-
   const [page, orgUsers] = await Promise.all([
     listAuditLogsForCurrentOrganization({
       action,
@@ -70,6 +59,17 @@ export default async function AuditLogPage({
     }),
     listOrganizationUsers(user.organizationId),
   ]);
+
+  if (invalidQuery || page.invalidCursor) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
+          <p className="font-semibold text-amber-800">Invalid audit-log filter or expired pagination cursor. Check action, dates, actor, cursor, or page size.</p>
+        </div>
+      </div>
+    );
+  }
   const logs = page.logs;
 
   const buildUrl = (overrides: Record<string, string | undefined>) => {

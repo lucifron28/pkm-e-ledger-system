@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireManagementUser } from "../auth/require-auth";
 import { parsePesoToCents } from "../domain/money";
-import { parseStrictDate } from "../domain/query";
+import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { CashAccount, TransactionType } from "@prisma/client";
 import {
@@ -45,7 +45,7 @@ const createTransactionSchema = transactionBaseSchema.extend({
 
 export const editTransactionSchema = transactionBaseSchema.extend({
   id: z.string().trim().min(1, "Transaction ID is required."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -149,13 +149,13 @@ export async function editTransactionAction(
 
   const validation = editTransactionSchema.safeParse(rawFields);
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
     const amountCents = parsePesoToCents(validation.data.amount);
     const transactionDate = parseStrictDate(validation.data.transactionDate);
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
 
     await editTransactionService(user, {
       id: validation.data.id,
@@ -186,7 +186,7 @@ export async function editTransactionAction(
 const deleteTransactionSchema = z.object({
   id: z.string().trim().min(1, "Transaction ID is required."),
   deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -209,11 +209,11 @@ export async function softDeleteTransactionAction(
     idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   });
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
     await deleteTransactionService(user, {
       id: validation.data.id,
       expectedVersion,

@@ -10,6 +10,7 @@ import {
   type AccountBalances,
 } from "../domain/financial";
 import {
+  buildLedgerCursorFingerprint,
   calculateEffectiveDateRange,
   decodeLedgerCursor,
   encodeLedgerCursor,
@@ -466,7 +467,27 @@ export async function getLedgerPageSnapshot(
     }
 
     const dateRange = calculateEffectiveDateRange(query.month, query.dateFrom, query.dateTo);
-    const cursor = decodeLedgerCursor(query.cursor);
+    const fingerprint = buildLedgerCursorFingerprint({
+      organizationId: user.organizationId!,
+      termId: selectedTerm.id,
+      type: query.type,
+      entryType: query.entryType,
+      categoryId: query.categoryId,
+      cashAccount: query.cashAccount,
+      month: query.month,
+      eventActivityName: query.eventActivityName,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      search: query.search,
+      pageSize: query.pageSize,
+    });
+    const cursor = decodeLedgerCursor(query.cursor, fingerprint);
+    if (query.cursor && !cursor) {
+      const invalid = emptySnapshot({ ...query, invalidCursor: true });
+      invalid.terms = terms;
+      invalid.categories = categories;
+      return invalid;
+    }
     const balanceTransactionWhere: Prisma.TransactionWhereInput = {
       organizationId: user.organizationId!,
       termId: selectedTerm.id,
@@ -583,6 +604,7 @@ export async function getLedgerPageSnapshot(
           createdAt: last.createdAt.toISOString(),
           kind: last.kind,
           id: last.id,
+          fingerprint,
         })
       : null;
 

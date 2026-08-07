@@ -159,11 +159,18 @@ export async function uploadAttachmentAction(
       await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
     if (storageKey) {
-      const isReferenced = await prisma.attachment.findFirst({
-        where: { storageKey },
-        select: { id: true },
-      }).catch(() => null);
-      if (!isReferenced) {
+      let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
+      try {
+        const ref = await prisma.attachment.findFirst({
+          where: { storageKey },
+          select: { id: true },
+        });
+        lookupState = ref ? "LOOKUP_SUCCEEDED_REFERENCED" : "LOOKUP_SUCCEEDED_UNREFERENCED";
+      } catch (lookupErr) {
+        console.warn("[AttachmentAction] Ownership lookup failed; retaining active file for reconciliation:", lookupErr);
+        lookupState = "LOOKUP_FAILED";
+      }
+      if (lookupState === "LOOKUP_SUCCEEDED_UNREFERENCED") {
         await storage.deleteActiveFile(storageKey).catch(() => undefined);
       }
     }

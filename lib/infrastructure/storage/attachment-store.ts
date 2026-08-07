@@ -300,13 +300,25 @@ export class AttachmentStorageService {
     }
   }
 
-  public async reconcile(
+  public async planReconciliation(
     maxStaleAgeMs = 60 * 60 * 1000
-  ): Promise<{ cleanedStaged: number; cleanedTrash: number; cleanedActive: number; missingDbFiles: string[] }> {
-    let cleanedStaged = 0;
-    let cleanedTrash = 0;
-    let cleanedActive = 0;
+  ): Promise<{
+    deleteStaging: string[];
+    restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }>;
+    deleteTrash: Array<{ manifestPath: string; trashKey: string }>;
+    deleteManifestOnly: string[];
+    deleteActiveOrphans: string[];
+    missingDbFiles: string[];
+    retainedForReview: Array<{ path: string; reason: string }>;
+    dbError?: boolean;
+  }> {
+    const deleteStaging: string[] = [];
+    const restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }> = [];
+    const deleteTrash: Array<{ manifestPath: string; trashKey: string }> = [];
+    const deleteManifestOnly: string[] = [];
+    const deleteActiveOrphans: string[] = [];
     const missingDbFiles: string[] = [];
+    const retainedForReview: Array<{ path: string; reason: string }> = [];
 
     let dbAttachments: StorageAttachmentRecord[];
     try {
@@ -315,7 +327,16 @@ export class AttachmentStorageService {
       });
     } catch (error) {
       console.warn("[AttachmentStorageService] Reconciliation failed closed due to database error:", error);
-      return { cleanedStaged: 0, cleanedTrash: 0, cleanedActive: 0, missingDbFiles: [] };
+      return {
+        deleteStaging: [],
+        restoreTrash: [],
+        deleteTrash: [],
+        deleteManifestOnly: [],
+        deleteActiveOrphans: [],
+        missingDbFiles: [],
+        retainedForReview: [],
+        dbError: true,
+      };
     }
 
     const now = Date.now();
@@ -324,86 +345,96 @@ export class AttachmentStorageService {
 
     const stagingDir = this.getStagingDir();
     if (existsSync(stagingDir)) {
-      for (const file of await fs.readdir(stagingDir)) {
-        const filePath = path.join(stagingDir, file);
-        try {
-          const stat = await fs.stat(filePath);
-          if (now - stat.mtimeMs > maxStaleAgeMs) {
-            await fs.unlink(filePath);
-            cleanedStaged++;
+      try {
+        const files = await fs.readdir(stagingDir);
+        for (const file of files) {
+          const filePath = path.join(stagingDir, file);
+          try {
+            const stat = await fs.stat(filePath);
+            if (now - stat.mtimeMs > maxStaleAgeMs) {
+              deleteStaging.push(filePath);
+            }
+          } catch {
+            retainedForReview.push({ path: filePath, reason: "Staging stat failure" });
           }
-        } catch {
-          /* ignore individual cleanup failures */
         }
+      } catch {
+        /* ignore readdir failure */
       }
     }
 
     const trashDir = this.getTrashDir();
     if (existsSync(trashDir)) {
-      const files = await fs.readdir(trashDir);
-      for (const manifestFile of files.filter((file) => file.endsWith(".json"))) {
-        const manifestPath = path.join(trashDir, manifestFile);
-        try {
-          const manifest = await this.readManifest(manifestPath);
-          const trashPath = this.resolveTrashPath(manifest.trashKey);
-          const row = manifest.attachmentId
-            ? dbById.get(manifest.attachmentId)
-            : dbAttachments.find((attachment) =>
-                attachment.storageKey === manifest.originalStorageKey &&
-                ((manifest.transactionId && attachment.transactionId === manifest.transactionId) ||
-                  (manifest.cashTransferId && attachment.cashTransferId === manifest.cashTransferId))
-              );
-          const exactMatch = row && row.storageKey === manifest.originalStorageKey;
+      try {
+        const files = await fs.readdir(trashDir);
+        for (const manifestFile of files.filter((file) => file.endsWith(".json"))) {
+          const manifestPath = path.join(trashDir, manifestFile);
+          try {
+            const manifest = await this.readManifest(manifestPath);
+            const trashPath = this.resolveTrashPath(manifest.trashKey);
+            const row = manifest.attachmentId
+              ? dbById.get(manifest.attachmentId)
+              : dbAttachments.find((attachment) =>
+                  attachment.storageKey === manifest.originalStorageKey &&
+                  ((manifest.transactionId && attachment.transactionId === manifest.transactionId) ||
+                    (manifest.cashTransferId && attachment.cashTransferId === manifest.cashTransferId))
+                );
+            const exactMatch = row && row.storageKey === manifest.originalStorageKey;
 
-          if (manifest.state === "CLEANED") {
-            if (existsSync(trashPath)) await fs.unlink(trashPath);
-            await fs.unlink(manifestPath);
-            cleanedTrash++;
-          } else if (manifest.state === "DB_DELETED") {
-            await this.permanentlyDelete(manifest.trashKey);
-            cleanedTrash++;
-          } else if (!existsSync(trashPath)) {
-            if (exactMatch && existsSync(this.resolveActivePath(row!.storageKey))) {
-              await fs.unlink(manifestPath);
-              cleanedTrash++;
+            if (manifest.state === "CLEANED") {
+              deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+            } else if (manifest.state === "DB_DELETED") {
+              deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+            } else if (!existsSync(trashPath)) {
+              if (exactMatch && existsSync(this.resolveActivePath(row!.storageKey))) {
+                deleteManifestOnly.push(manifestPath);
+              } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
+                deleteManifestOnly.push(manifestPath);
+              } else {
+                retainedForReview.push({ path: manifestPath, reason: "Missing trash payload within stale threshold" });
+              }
+            } else if (manifest.state === "PREPARED") {
+              if (exactMatch) {
+                restoreTrash.push({ manifestPath, trashKey: manifest.trashKey, storageKey: row!.storageKey });
+              } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
+                deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+              } else {
+                retainedForReview.push({ path: manifestPath, reason: "PREPARED trash payload within stale threshold" });
+              }
+            } else if (exactMatch) {
+              restoreTrash.push({ manifestPath, trashKey: manifest.trashKey, storageKey: row.storageKey });
             } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
-              await fs.unlink(manifestPath);
-              cleanedTrash++;
+              deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+            } else {
+              retainedForReview.push({ path: manifestPath, reason: "Unmapped trash payload within stale threshold" });
             }
-          } else if (manifest.state === "PREPARED") {
-            await this.updateTrashState(manifest.trashKey, "MOVED");
-            if (exactMatch) {
-              await this.restoreFromTrash(manifest.trashKey, row!.storageKey);
-            } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
-              await this.permanentlyDelete(manifest.trashKey);
-              cleanedTrash++;
-            }
-          } else if (exactMatch) {
-            await this.restoreFromTrash(manifest.trashKey, row.storageKey);
-          } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
-            await this.permanentlyDelete(manifest.trashKey);
-            cleanedTrash++;
+          } catch {
+            retainedForReview.push({ path: manifestPath, reason: "Malformed or unreadable trash manifest" });
           }
-        } catch {
-          /* Leave malformed or unmapped trash in place for manual inspection. */
         }
+      } catch {
+        /* ignore readdir failure */
       }
     }
 
     if (existsSync(this.uploadsRoot)) {
-      for (const file of await fs.readdir(this.uploadsRoot)) {
-        if (file === "staging" || file === "trash") continue;
-        const filePath = path.join(this.uploadsRoot, file);
-        try {
-          const stat = await fs.stat(filePath);
-          if (!stat.isFile()) continue;
-          if (!dbKeys.has(file) && now - stat.mtimeMs > maxStaleAgeMs) {
-            await fs.unlink(filePath);
-            cleanedActive++;
+      try {
+        const files = await fs.readdir(this.uploadsRoot);
+        for (const file of files) {
+          if (file === "staging" || file === "trash" || file === ".attachment-storage-key-migration.json") continue;
+          const filePath = path.join(this.uploadsRoot, file);
+          try {
+            const stat = await fs.stat(filePath);
+            if (!stat.isFile()) continue;
+            if (!dbKeys.has(file) && now - stat.mtimeMs > maxStaleAgeMs) {
+              deleteActiveOrphans.push(filePath);
+            }
+          } catch {
+            retainedForReview.push({ path: filePath, reason: "Active orphan stat failure" });
           }
-        } catch {
-          /* ignore individual cleanup failures */
         }
+      } catch {
+        /* ignore readdir failure */
       }
 
       for (const attachment of dbAttachments) {
@@ -425,7 +456,91 @@ export class AttachmentStorageService {
       console.warn(`[AttachmentStorageService] Database records missing on disk: ${missingDbFiles.join(", ")}`);
     }
 
-    return { cleanedStaged, cleanedTrash, cleanedActive, missingDbFiles };
+    return {
+      deleteStaging,
+      restoreTrash,
+      deleteTrash,
+      deleteManifestOnly,
+      deleteActiveOrphans,
+      missingDbFiles,
+      retainedForReview,
+    };
+  }
+
+  public async applyReconciliation(plan: {
+    deleteStaging: string[];
+    restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }>;
+    deleteTrash: Array<{ manifestPath: string; trashKey: string }>;
+    deleteManifestOnly: string[];
+    deleteActiveOrphans: string[];
+    missingDbFiles: string[];
+    dbError?: boolean;
+  }): Promise<{ cleanedStaged: number; cleanedTrash: number; cleanedActive: number; missingDbFiles: string[] }> {
+    if (plan.dbError) {
+      return { cleanedStaged: 0, cleanedTrash: 0, cleanedActive: 0, missingDbFiles: [] };
+    }
+
+    let cleanedStaged = 0;
+    let cleanedTrash = 0;
+    let cleanedActive = 0;
+
+    for (const filePath of plan.deleteStaging) {
+      try {
+        await fs.unlink(filePath);
+        cleanedStaged++;
+      } catch {
+        /* ignore cleanup failure */
+      }
+    }
+
+    for (const item of plan.restoreTrash) {
+      try {
+        await this.restoreFromTrash(item.trashKey, item.storageKey);
+      } catch {
+        /* ignore restore failure */
+      }
+    }
+
+    for (const item of plan.deleteTrash) {
+      try {
+        await this.permanentlyDelete(item.trashKey);
+        cleanedTrash++;
+      } catch {
+        /* ignore permanent deletion failure */
+      }
+    }
+
+    for (const manifestPath of plan.deleteManifestOnly) {
+      try {
+        await fs.unlink(manifestPath);
+        cleanedTrash++;
+      } catch {
+        /* ignore unlink failure */
+      }
+    }
+
+    for (const filePath of plan.deleteActiveOrphans) {
+      try {
+        await fs.unlink(filePath);
+        cleanedActive++;
+      } catch {
+        /* ignore orphan cleanup failure */
+      }
+    }
+
+    return {
+      cleanedStaged,
+      cleanedTrash,
+      cleanedActive,
+      missingDbFiles: plan.missingDbFiles,
+    };
+  }
+
+  public async reconcile(
+    maxStaleAgeMs = 60 * 60 * 1000
+  ): Promise<{ cleanedStaged: number; cleanedTrash: number; cleanedActive: number; missingDbFiles: string[] }> {
+    const plan = await this.planReconciliation(maxStaleAgeMs);
+    return this.applyReconciliation(plan);
   }
 }
 
