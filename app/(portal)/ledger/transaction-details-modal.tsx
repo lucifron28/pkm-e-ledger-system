@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
 
-export function CashTransferDetailsModal({ transfer }: { transfer: Extract<LedgerEntry, { kind: "TRANSFER" }> }) {
+export function TransactionDetailsModal({
+  transaction,
+}: {
+  transaction: Extract<LedgerEntry, { kind: "TRANSACTION" }>;
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -17,8 +21,8 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
     }
   }, [open]);
 
-  const fromLabel = transfer.fromAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank";
-  const toLabel = transfer.toAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank";
+  const accountLabel = transaction.cashAccount === "CASH_ON_HAND" ? "Cash on Hand" : "Cash in Bank";
+  const isIncome = transaction.type === "INCOME";
 
   return (
     <div className="inline">
@@ -42,12 +46,12 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby={`ct-details-title-${transfer.id}`}
+            aria-labelledby={`tx-details-title-${transaction.id}`}
             className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 space-y-4 text-left max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 id={`ct-details-title-${transfer.id}`} className="font-bold text-slate-900 text-lg">
-                Cash Transfer Details
+              <h3 id={`tx-details-title-${transaction.id}`} className="font-bold text-slate-900 text-lg">
+                Transaction Details
               </h3>
               <button
                 ref={closeButtonRef}
@@ -62,34 +66,44 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
 
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Transfer Date</span>
-                <span className="font-medium text-slate-900">{transfer.transferDate.toLocaleDateString("en-PH")}</span>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Financial Date</span>
+                <span className="font-medium text-slate-900">{transaction.transactionDate.toLocaleDateString("en-PH")}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Date Recorded</span>
-                <span className="font-medium text-slate-900">{transfer.createdAt ? new Date(transfer.createdAt).toLocaleString("en-PH") : "-"}</span>
+                <span className="font-medium text-slate-900">{transaction.createdAt ? new Date(transaction.createdAt).toLocaleString("en-PH") : "-"}</span>
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Amount</span>
-                <span className="font-mono font-extrabold text-[#004aad] text-base">
-                  {formatPesoFromCents(transfer.amountCents)}
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Type</span>
+                <span className={`inline-block text-xs font-extrabold px-2 py-0.5 rounded ${isIncome ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                  {transaction.type}
                 </span>
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">From Account</span>
-                <span className="font-medium text-slate-900">{fromLabel}</span>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Amount</span>
+                <span className={`font-mono font-extrabold text-base ${isIncome ? "text-emerald-700" : "text-slate-900"}`}>
+                  {formatPesoFromCents(transaction.amountCents)}
+                </span>
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">To Account</span>
-                <span className="font-medium text-slate-900">{toLabel}</span>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Category</span>
+                <span className="font-medium text-slate-900">{transaction.categoryName || "-"}</span>
+              </div>
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Cash Account</span>
+                <span className="font-medium text-slate-900">{accountLabel}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Document Number</span>
-                <span className="font-medium text-slate-900">{transfer.documentNumber || "-"}</span>
+                <span className="font-medium text-slate-900">{transaction.documentNumber || "-"}</span>
+              </div>
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">{isIncome ? "Payor" : "Payee"}</span>
+                <span className="font-medium text-slate-900">{transaction.counterpartyName || "-"}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Recorded By</span>
-                <span className="font-medium text-slate-900">{transfer.recordedByName}</span>
+                <span className="font-medium text-slate-900">{transaction.recordedByName}</span>
               </div>
             </div>
 
@@ -97,29 +111,29 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Description / Particulars</span>
                 <p className="mt-0.5 text-slate-800 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-sm">
-                  {transfer.description}
+                  {transaction.description}
                 </p>
               </div>
 
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Reference Description</span>
                 <p className="mt-0.5 text-slate-800 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-sm">
-                  {transfer.referenceDescription}
+                  {transaction.referenceDescription}
                 </p>
               </div>
 
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Event / Activity</span>
-                <p className="mt-0.5 text-slate-800 font-medium">{transfer.eventActivityName || "-"}</p>
+                <p className="mt-0.5 text-slate-800 font-medium">{transaction.eventActivityName || "-"}</p>
               </div>
 
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Attachments</span>
-                {transfer.attachments.length === 0 ? (
+                {transaction.attachments.length === 0 ? (
                   <span className="text-xs text-slate-400">No attachment uploaded</span>
                 ) : (
                   <ul className="space-y-1">
-                    {transfer.attachments.map((att) => (
+                    {transaction.attachments.map((att) => (
                       <li key={att.id}>
                         <a
                           href={`/api/attachments/${att.id}`}
