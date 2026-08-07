@@ -174,3 +174,26 @@ test("Validation: edit schemas succeed without termId and enforce strict version
   assert.equal(strictVersionSchema.safeParse("+1").success, false);
   assert.equal(strictVersionSchema.safeParse("1").success, true);
 });
+
+test("Validation: term opening-balance version schema rejects non-canonical versions and overflow bounds", () => {
+  const invalidVersions = [
+    "0",
+    "00",
+    "01",
+    "1.0",
+    "1e2",
+    "+1",
+    "-1",
+    "9007199254740993",
+    "2147483648",
+  ];
+
+  for (const ver of invalidVersions) {
+    assert.equal(strictVersionSchema.safeParse(ver).success, false, `Version '${ver}' must be rejected`);
+    assert.throws(() => parseStrictVersion(ver), /Version must be a positive integer|outside safe integer range|exceeds/, `parseStrictVersion('${ver}') must throw`);
+  }
+
+  assert.equal(strictVersionSchema.safeParse("1").success, true);
+  assert.equal(parseStrictVersion("1"), 1);
+  assert.equal(parseStrictVersion("2147483647"), 2147483647);
+});

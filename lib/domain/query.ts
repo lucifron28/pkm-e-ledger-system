@@ -186,7 +186,7 @@ export function decodeLedgerCursor(value: unknown, expectedFingerprint?: string)
       Number.isNaN(Date.parse(decoded.createdAt))
     ) return null;
 
-    if (expectedFingerprint && decoded.fingerprint && decoded.fingerprint !== expectedFingerprint) {
+    if (expectedFingerprint && decoded.fingerprint !== expectedFingerprint) {
       return null;
     }
 
@@ -411,7 +411,6 @@ export function calculateEffectiveDateRange(
     }
   }
 
-  // Intersect month range and explicit date range (latest of starts, earliest of ends)
   let finalGte: Date | undefined = undefined;
   if (monthGte && explicitGte) {
     finalGte = monthGte > explicitGte ? monthGte : explicitGte;
@@ -457,9 +456,8 @@ const LEDGER_URL_PARAM_KEYS = [
 /**
  * Builds a /ledger URL from the current query plus filter overrides.
  *
- * Changing any filter or the selected term invalidates the cursor so the
- * result set restarts from the first matching entry; changing only the
- * page size preserves the cursor so the user stays on the same page window.
+ * Changing any filter, page size, or selected term invalidates the cursor so
+ * the result set restarts from the first matching entry.
  */
 export function buildLedgerFilterUrl(
   filters: Pick<
@@ -499,8 +497,8 @@ export function buildLedgerFilterUrl(
     ...overrides,
   };
 
-  const filterChanged = Object.keys(overrides).some((key) => key !== "pageSize");
-  if (filterChanged) {
+  const hasFilterOrPageSizeOverride = Object.keys(overrides).some((key) => key !== "cursor");
+  if (hasFilterOrPageSizeOverride && !("cursor" in overrides)) {
     merged.cursor = undefined;
   }
 

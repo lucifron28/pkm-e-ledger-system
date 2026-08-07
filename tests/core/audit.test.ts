@@ -276,3 +276,55 @@ test("Audit Log: recursive redaction of sensitive keys in nested objects and arr
   assert.equal(afterMetadataSecond.secret, "[REDACTED]");
   assert.equal(afterMetadataSecond.ordinary, "ok");
 });
+
+test("Audit Log: formatHumanReadableSummary computes detailed summaries for edits, balance updates, and registration", async () => {
+  const { formatHumanReadableSummary } = await import("../../lib/data/audit-log");
+  const { AuditAction } = await import("@prisma/client");
+
+  // EDITED_TRANSACTION with before/after
+  const txEditSummary = formatHumanReadableSummary({
+    action: AuditAction.EDITED_TRANSACTION,
+    metadata: {
+      before: { type: "INCOME", amountCents: 5000, cashAccount: "CASH_ON_HAND", transactionDate: "2026-08-01", description: "Old", counterpartyName: "Payor A" },
+      after: { type: "EXPENSE", amountCents: 8000, cashAccount: "CASH_IN_BANK", transactionDate: "2026-08-02", description: "New", counterpartyName: "Payee B" },
+    },
+  });
+  assert.match(txEditSummary, /Edited transaction/);
+  assert.match(txEditSummary, /type: INCOME -> EXPENSE/);
+  assert.match(txEditSummary, /amount: ₱50.00 -> ₱80.00/);
+
+  // EDITED_CASH_TRANSFER with before/after
+  const transferEditSummary = formatHumanReadableSummary({
+    action: AuditAction.EDITED_CASH_TRANSFER,
+    metadata: {
+      before: { amountCents: 10000, fromAccount: "CASH_ON_HAND", toAccount: "CASH_IN_BANK", transferDate: "2026-08-01", description: "Transfer Old" },
+      after: { amountCents: 15000, fromAccount: "CASH_ON_HAND", toAccount: "CASH_IN_BANK", transferDate: "2026-08-02", description: "Transfer New" },
+    },
+  });
+  assert.match(transferEditSummary, /Edited cash transfer/);
+  assert.match(transferEditSummary, /amount: ₱100.00 -> ₱150.00/);
+
+  // CHANGED_OPENING_BALANCE with before/after
+  const balanceSummary = formatHumanReadableSummary({
+    action: AuditAction.CHANGED_OPENING_BALANCE,
+    metadata: {
+      previousCashOnHandCents: 100000,
+      newCashOnHandCents: 150000,
+      previousCashInBankCents: 200000,
+      newCashInBankCents: 250000,
+    },
+  });
+  assert.match(balanceSummary, /Updated Opening Balances/);
+  assert.match(balanceSummary, /COH: ₱1,000.00 -> ₱1,500.00/);
+  assert.match(balanceSummary, /CIB: ₱2,000.00 -> ₱2,500.00/);
+
+  // REGISTERED_USER with requestedRole and username
+  const regSummary = formatHumanReadableSummary({
+    action: AuditAction.REGISTERED_USER,
+    metadata: {
+      registeredUsername: "treasurer1",
+      requestedRole: "TREASURER",
+    },
+  });
+  assert.match(regSummary, /Registered new user account treasurer1 \(Role: TREASURER\)/);
+});

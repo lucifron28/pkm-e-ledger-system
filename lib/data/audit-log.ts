@@ -4,6 +4,7 @@ import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { AuditAction, CashAccount, Prisma, Role, Semester, TransactionType } from "@prisma/client";
 import { parseStrictDate } from "../domain/query";
+import { formatPesoFromCents } from "./money";
 
 export interface TransactionSnapshot {
   id: string;
@@ -548,3 +549,123 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   UPDATED_CATEGORY: "Updated Category",
   TOGGLED_CATEGORY_STATUS: "Toggled Category Status",
 };
+
+export function formatHumanReadableSummary(log: {
+  action: AuditAction | string;
+  metadata?: Record<string, unknown> | null;
+}): string {
+  const meta = (log.metadata || {}) as Record<string, unknown>;
+  const before = meta.before as Record<string, unknown> | undefined;
+  const after = meta.after as Record<string, unknown> | undefined;
+
+  switch (log.action) {
+    case AuditAction.ADDED_INCOME:
+      return `Recorded Income of ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) from ${meta.counterpartyName || meta.description || "payor"}`;
+
+    case AuditAction.ADDED_EXPENSE:
+      return `Recorded Expense of ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) to ${meta.counterpartyName || meta.description || "payee"}`;
+
+    case AuditAction.EDITED_TRANSACTION: {
+      if (before && after) {
+        const changes: string[] = [];
+        if (before.type !== after.type) changes.push(`type: ${before.type} -> ${after.type}`);
+        if (before.amountCents !== after.amountCents) changes.push(`amount: ${formatPesoFromCents(Number(before.amountCents))} -> ${formatPesoFromCents(Number(after.amountCents))}`);
+        if (before.cashAccount !== after.cashAccount) changes.push(`account: ${before.cashAccount} -> ${after.cashAccount}`);
+        if (before.transactionDate !== after.transactionDate) changes.push(`date: ${before.transactionDate} -> ${after.transactionDate}`);
+        if (before.description !== after.description) changes.push(`description updated`);
+        if (before.counterpartyName !== after.counterpartyName) changes.push(`payor/payee updated`);
+        if (changes.length > 0) {
+          return `Edited transaction (${changes.join(", ")})`;
+        }
+      }
+      return `Edited transaction details`;
+    }
+
+    case AuditAction.DELETED_TRANSACTION:
+      return `Soft-deleted transaction (Reason: ${meta.deleteReason || "N/A"})`;
+
+    case AuditAction.CREATED_CASH_TRANSFER:
+      return `Transferred ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} from ${meta.fromAccount || "account"} to ${meta.toAccount || "account"}`;
+
+    case AuditAction.EDITED_CASH_TRANSFER: {
+      if (before && after) {
+        const changes: string[] = [];
+        if (before.amountCents !== after.amountCents) changes.push(`amount: ${formatPesoFromCents(Number(before.amountCents))} -> ${formatPesoFromCents(Number(after.amountCents))}`);
+        if (before.fromAccount !== after.fromAccount || before.toAccount !== after.toAccount) {
+          changes.push(`accounts: ${before.fromAccount}->${before.toAccount} to ${after.fromAccount}->${after.toAccount}`);
+        }
+        if (before.transferDate !== after.transferDate) changes.push(`date: ${before.transferDate} -> ${after.transferDate}`);
+        if (before.description !== after.description) changes.push(`description updated`);
+        if (changes.length > 0) {
+          return `Edited cash transfer (${changes.join(", ")})`;
+        }
+      }
+      return `Edited cash transfer details`;
+    }
+
+    case AuditAction.DELETED_CASH_TRANSFER:
+      return `Soft-deleted cash transfer (Reason: ${meta.deleteReason || "N/A"})`;
+
+    case AuditAction.CHANGED_OPENING_BALANCE: {
+      const cohPrev = meta.previousCashOnHandCents ?? meta.openingCashOnHandCents;
+      const cohNew = meta.newCashOnHandCents ?? meta.openingCashOnHandCents;
+      const cibPrev = meta.previousCashInBankCents ?? meta.openingCashInBankCents;
+      const cibNew = meta.newCashInBankCents ?? meta.openingCashInBankCents;
+
+      const cohStr = cohPrev !== undefined && cohNew !== undefined && cohPrev !== cohNew
+        ? `COH: ${formatPesoFromCents(Number(cohPrev))} -> ${formatPesoFromCents(Number(cohNew))}`
+        : `COH: ${cohNew !== undefined ? formatPesoFromCents(Number(cohNew)) : "N/A"}`;
+
+      const cibStr = cibPrev !== undefined && cibNew !== undefined && cibPrev !== cibNew
+        ? `CIB: ${formatPesoFromCents(Number(cibPrev))} -> ${formatPesoFromCents(Number(cibNew))}`
+        : `CIB: ${cibNew !== undefined ? formatPesoFromCents(Number(cibNew)) : "N/A"}`;
+
+      return `Updated Opening Balances (${cohStr}, ${cibStr})`;
+    }
+
+    case AuditAction.ACTIVATED_ACADEMIC_TERM:
+      return `Activated Academic Term (${meta.academicYear || ""} ${meta.semester || ""})`;
+
+    case AuditAction.UPLOADED_ATTACHMENT:
+      return `Uploaded receipt/supporting file: ${meta.originalName || "attachment"}`;
+
+    case AuditAction.DELETED_ATTACHMENT:
+      return `Deleted attachment: ${meta.originalName || "attachment"}`;
+
+    case AuditAction.GENERATED_REPORT:
+      return `Generated official financial report package`;
+
+    case AuditAction.LOGGED_IN:
+      return `User signed into system`;
+
+    case AuditAction.LOGGED_OUT:
+      return `User signed out of system`;
+
+    case AuditAction.CHANGED_PASSWORD:
+      return `Updated account password`;
+
+    case AuditAction.REGISTERED_USER: {
+      const roleStr = meta.requestedRole || meta.role ? ` (Role: ${meta.requestedRole || meta.role})` : "";
+      const userStr = meta.registeredUsername || meta.username || meta.registeredFullName || meta.fullName || "user";
+      return `Registered new user account ${userStr}${roleStr}`;
+    }
+
+    case AuditAction.CREATED_ORGANIZATION:
+      return `Created organization (${meta.name || "organization"})`;
+
+    case AuditAction.TOGGLED_ORGANIZATION_STATUS:
+      return `Toggled organization status`;
+
+    case AuditAction.CREATED_CATEGORY:
+      return `Created category (${meta.name || "category"})`;
+
+    case AuditAction.UPDATED_CATEGORY:
+      return `Updated category (${meta.name || "category"})`;
+
+    case AuditAction.TOGGLED_CATEGORY_STATUS:
+      return `Toggled category status`;
+
+    default:
+      return AUDIT_ACTION_LABELS[log.action as AuditAction] || String(log.action);
+  }
+}

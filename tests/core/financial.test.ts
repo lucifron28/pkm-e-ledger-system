@@ -7,7 +7,7 @@ import {
 } from "../../lib/domain/financial";
 import { MAX_MONEY_CENTS, parsePesoToCents, validateMoneyAmount } from "../../lib/domain/money";
 import { normalizeAcademicYear, validateAcademicYear } from "../../lib/domain/term-labels";
-import { calculateEffectiveDateRange, buildLedgerFilterUrl, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
+import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
 import { CashAccount, ExpenseReportBucket, TransactionType } from "@prisma/client";
 import { reportBucketToSchedule2Bucket } from "../../lib/domain/reports";
 
@@ -345,9 +345,9 @@ test("Query Domain: changing filters from page 2 drops the cursor and restarts f
   assert.ok(clearedUrl.includes("academicYear=2026-2027"), "Clear Filters keeps the selected term");
   assert.ok(clearedUrl.includes("semester=FIRST_SEMESTER"), "Clear Filters keeps the selected term");
 
-  // A pageSize-only change keeps the cursor.
+  // A pageSize change clears the cursor because pageSize is part of the fingerprint.
   const pageSizeOnlyUrl = buildLedgerFilterUrl(pageTwoQuery, { pageSize: "50" });
-  assert.ok(pageSizeOnlyUrl.includes("cursor="), "Page-size-only change preserves the cursor");
+  assert.ok(!pageSizeOnlyUrl.includes("cursor="), "Page-size change must clear the cursor");
   assert.ok(pageSizeOnlyUrl.includes("pageSize=50"));
 
   // Term change also drops the cursor.
@@ -358,4 +358,57 @@ test("Query Domain: changing filters from page 2 drops the cursor and restarts f
   assert.ok(!termChangedUrl.includes("cursor="), "Term change must remove the cursor");
   assert.ok(termChangedUrl.includes("academicYear=2025-2026"));
   assert.ok(termChangedUrl.includes("semester=SECOND_SEMESTER"));
+});
+
+test("Query Domain: decodeLedgerCursor strictly enforces fingerprint matching", () => {
+  const baseCtx = {
+    organizationId: "org-1",
+    termId: "term-1",
+    type: "EXPENSE",
+    entryType: "ALL",
+    pageSize: 50,
+  };
+  const validFp = buildLedgerCursorFingerprint(baseCtx);
+
+  const cursorWithFp = encodeLedgerCursor({
+    financialDate: "2026-08-01T00:00:00.000Z",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    kind: "TRANSACTION",
+    id: "tx-100",
+    fingerprint: validFp,
+  });
+
+  const cursorWithoutFp = encodeLedgerCursor({
+    financialDate: "2026-08-01T00:00:00.000Z",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    kind: "TRANSACTION",
+    id: "tx-100",
+  });
+
+  // 1. Correct fingerprint succeeds
+  const decoded = decodeLedgerCursor(cursorWithFp, validFp);
+  assert.ok(decoded);
+  assert.equal(decoded.id, "tx-100");
+
+  // 2. Missing fingerprint is REJECTED when expectedFingerprint is supplied
+  assert.equal(decodeLedgerCursor(cursorWithoutFp, validFp), null, "Missing fingerprint must be rejected");
+
+  // 3. Wrong fingerprint is REJECTED
+  assert.equal(decodeLedgerCursor(cursorWithFp, "wrong-fingerprint"), null, "Mismatched fingerprint must be rejected");
+
+  // 4. Copied across organization -> different fingerprint -> REJECTED
+  const org2Fp = buildLedgerCursorFingerprint({ ...baseCtx, organizationId: "org-2" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, org2Fp), null, "Cursor copied across organization must be rejected");
+
+  // 5. Copied across term -> different fingerprint -> REJECTED
+  const term2Fp = buildLedgerCursorFingerprint({ ...baseCtx, termId: "term-2" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, term2Fp), null, "Cursor copied across term must be rejected");
+
+  // 6. Filter change -> different fingerprint -> REJECTED
+  const filterFp = buildLedgerCursorFingerprint({ ...baseCtx, type: "INCOME" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, filterFp), null, "Cursor used after filter change must be rejected");
+
+  // 7. Page-size change -> different fingerprint -> REJECTED
+  const sizeFp = buildLedgerCursorFingerprint({ ...baseCtx, pageSize: 25 });
+  assert.equal(decodeLedgerCursor(cursorWithFp, sizeFp), null, "Cursor used after page-size change must be rejected");
 });
