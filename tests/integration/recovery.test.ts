@@ -37,7 +37,7 @@ test.before(() => {
   fs.mkdirSync(sandboxUploads, { recursive: true });
   fs.writeFileSync(sandboxDb, Buffer.alloc(0));
 
-  execSync(`npx prisma db push --skip-generate`, {
+  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${storageRoot}"`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
     encoding: "utf8",

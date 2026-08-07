@@ -56,7 +56,7 @@ test.before(async () => {
   fs.mkdirSync(storageRoot, { recursive: true });
   defaultUploadsBefore = listFiles(defaultUploadsRoot);
 
-  execSync(`npx prisma db push --skip-generate`, {
+  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${storageRoot}"`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
     encoding: "utf8",
