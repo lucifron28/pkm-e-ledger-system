@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { prisma } from "../db/prisma";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import {
   claimCommandReceipt,
@@ -62,7 +63,7 @@ export interface CreateTransactionInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Buffer;
+    buffer: Uint8Array | Buffer;
   };
 }
 
@@ -286,7 +287,18 @@ export async function createTransactionService(
 
     return outcome.result;
   } catch (error) {
-    if (staged) await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    if (staged && !committedName) {
+      await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    }
+    if (committedName) {
+      const isReferenced = await prisma.attachment.findFirst({
+        where: { storageKey: committedName },
+        select: { id: true },
+      }).catch(() => null);
+      if (!isReferenced) {
+        await storageService.deleteActiveFile(committedName).catch(() => undefined);
+      }
+    }
     await releaseCommandReceipt(claim).catch(() => undefined);
     throw error;
   }
