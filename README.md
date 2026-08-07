@@ -36,7 +36,8 @@ The repository foundation and database foundation are completed. Feature develop
 * **Phase 5**: Reports & Exports (`feature/reports-and-exports`) — **Completed**
 * **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **Completed**
 * **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **Completed**
-* **Phase 8**: Post-implementation Business-Invariant Hardening (`fix/business-invariants-concurrency-and-audit`) — **In Review**
+* **Phase 8**: Post-implementation Business-Invariant Hardening (`fix/business-invariants-concurrency-and-audit`) — **Completed** (Merged into `main` via PR #10)
+* **Full Engineering Audit & Remediation**: (`audit/full-project-completeness-ui-docs`) — **Completed**
 
 Phase 8 adds cash transfer workflows, database-level financial invariants, idempotent financial commands, optimistic concurrency, crash-recoverable attachment storage, snapshot-consistent reads, immutable audit history, and cursor pagination. Reports are live generated views (HTML/PDF/XLSX) built from current non-deleted financial data — exports are not immutable publications.
 
