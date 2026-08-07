@@ -329,3 +329,34 @@ test("Audit Log: formatHumanReadableSummary computes detailed summaries for edit
   });
   assert.equal(regSummary, "Registered new user account Fictional User (fictional_user) as OFFICER");
 });
+
+test("Audit Log Domain: cstack multi-page pagination navigation (Page 1 -> 2 -> 3 -> 4 -> 3 -> 2 -> 1)", async () => {
+  const { parseCursorStack, encodeCursorStack } = await import("../../lib/domain/query");
+
+  // Page 4: cursor = C3, cstack = C1.C2.C3
+  const cstack4 = "C1.C2.C3";
+  const stack4 = parseCursorStack(cstack4);
+  assert.deepEqual(stack4, ["C1", "C2", "C3"]);
+
+  // Traverse to Page 3
+  const stack3 = [...stack4];
+  stack3.pop();
+  const cursor3 = stack3[stack3.length - 1];
+  assert.equal(cursor3, "C2");
+  assert.equal(encodeCursorStack(stack3), "C1.C2");
+
+  // Traverse to Page 2
+  const stack2 = [...stack3];
+  stack2.pop();
+  const cursor2 = stack2[stack2.length - 1];
+  assert.equal(cursor2, "C1");
+  assert.equal(encodeCursorStack(stack2), "C1");
+
+  // Traverse to Page 1
+  const stack1 = [...stack2];
+  stack1.pop();
+  const cursor1 = stack1[stack1.length - 1];
+  assert.equal(cursor1, undefined);
+  assert.equal(encodeCursorStack(stack1), undefined);
+});
+

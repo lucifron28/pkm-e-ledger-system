@@ -12,7 +12,7 @@ The navigation sidebar and top header menus now strictly derive visibility from 
 
 | Role | Visible Links |
 |---|---|
-| Management (Treasurer, Adviser, Audit) | Dashboard, Term Settings, Digital Ledger, Financial Reports, Treasurer Log, Account |
+| Management (Treasurer, Adviser, Audit) | Dashboard, Term Settings, Digital Ledger (including New Income `/ledger/income/new` & New Expense `/ledger/expense/new`), Financial Reports, Treasurer Log, Account |
 | Officer & Member | Dashboard, Reports, Account |
 | OSA | OSA Overview, Organization Ledger Summary, Reports, Account |
 

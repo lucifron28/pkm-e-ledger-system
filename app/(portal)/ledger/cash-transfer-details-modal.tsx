@@ -100,10 +100,33 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
 
             <div>
               <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Reference / Attachment Description</span>
-              <p className="mt-1 text-sm text-slate-800 bg-slate-50 p-2.5 rounded border border-slate-200">
+              <p className="mt-1 text-sm text-slate-800 bg-slate-50 p-2.5 rounded border border-slate-200 font-medium">
                 {transfer.referenceDescription}
               </p>
             </div>
+
+            {transfer.attachments && transfer.attachments.length > 0 && (
+              <div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Attachments</span>
+                <div className="space-y-1.5">
+                  {transfer.attachments.map((att) => (
+                    <div key={att.id} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded text-xs border border-slate-200">
+                      <span className="truncate max-w-[240px] font-medium text-slate-700">
+                        {att.originalName} {att.sizeBytes ? `(${Math.round(att.sizeBytes / 1024)} KB)` : ""}
+                      </span>
+                      <a
+                        href={`/api/attachments/${att.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#004aad] hover:underline font-bold"
+                      >
+                        Download / View
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

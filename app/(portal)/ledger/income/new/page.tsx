@@ -44,7 +44,7 @@ export default async function NewIncomePage() {
           activeTermId={activeTerm.id}
           incomeCategories={incomeCategories}
           expenseCategories={expenseCategories}
-          initialType={TransactionType.INCOME}
+          fixedType={TransactionType.INCOME}
         />
       </div>
     </div>

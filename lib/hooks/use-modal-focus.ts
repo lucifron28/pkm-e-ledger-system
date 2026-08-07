@@ -2,15 +2,43 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
-const FOCUSABLE_SELECTOR =
+export const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-interface UseModalFocusOptions {
+export interface UseModalFocusOptions {
   isOpen: boolean;
+  isPending?: boolean;
   onClose?: () => void;
 }
 
-export function useModalFocus({ isOpen, onClose }: UseModalFocusOptions) {
+export function shouldAllowModalClose(isOpen: boolean, isPending: boolean | undefined, key: string): boolean {
+  if (!isOpen) return false;
+  if (key === "Escape" && isPending) return false;
+  return key === "Escape";
+}
+
+export function getNextFocusTarget(
+  focusables: HTMLElement[],
+  activeElement: HTMLElement | null,
+  shiftKey: boolean
+): HTMLElement | null {
+  if (focusables.length === 0) return null;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+
+  if (shiftKey) {
+    if (activeElement === first || !activeElement || !focusables.includes(activeElement)) {
+      return last;
+    }
+  } else {
+    if (activeElement === last || !activeElement || !focusables.includes(activeElement)) {
+      return first;
+    }
+  }
+  return null;
+}
+
+export function useModalFocus({ isOpen, isPending, onClose }: UseModalFocusOptions) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const initialFocusRef = useRef<HTMLElement | null>(null);
@@ -49,38 +77,31 @@ export function useModalFocus({ isOpen, onClose }: UseModalFocusOptions) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape" && onClose) {
-        e.stopPropagation();
-        onClose();
-        return;
+      if (e.key === "Escape") {
+        if (isPending) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (onClose) {
+          e.stopPropagation();
+          onClose();
+          return;
+        }
       }
 
       if (e.key === "Tab" && containerRef.current) {
         const focusables = Array.from(
           containerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
         );
-        if (focusables.length === 0) {
+        const target = getNextFocusTarget(focusables, document.activeElement as HTMLElement | null, e.shiftKey);
+        if (target) {
           e.preventDefault();
-          return;
-        }
-
-        const firstElement = focusables[0];
-        const lastElement = focusables[focusables.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === firstElement || !containerRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            lastElement.focus();
-          }
-        } else {
-          if (document.activeElement === lastElement || !containerRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            firstElement.focus();
-          }
+          target.focus();
         }
       }
     },
-    [onClose]
+    [isPending, onClose]
   );
 
   return {

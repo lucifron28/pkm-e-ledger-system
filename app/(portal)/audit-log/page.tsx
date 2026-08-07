@@ -1,7 +1,9 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
 import { AUDIT_ACTION_LABELS, formatHumanReadableSummary, listAuditLogsForCurrentOrganization, listOrganizationUsers } from "@/lib/data/audit-log";
 import {
+  encodeCursorStack,
   hasScalarValue,
+  parseCursorStack,
   parseDateRangeParams,
   parsePageSize,
   parseScalarString,
@@ -71,7 +73,7 @@ export default async function AuditLogPage({
   }
   const logs = page.logs;
 
-  const prevCursor = parseScalarString(rawParams.prevCursor);
+  const stack = parseCursorStack(rawParams.cstack);
   const currentCursor = cursor;
   const hasCursor = Boolean(currentCursor);
 
@@ -84,15 +86,15 @@ export default async function AuditLogPage({
       actorUserId,
       pageSize: pageSize !== 50 ? String(pageSize) : undefined,
       cursor,
-      prevCursor,
+      cstack: encodeCursorStack(stack),
       ...overrides,
     };
     const hasFilterOverride = Object.keys(overrides).some(
-      (key) => key !== "cursor" && key !== "prevCursor"
+      (key) => key !== "cursor" && key !== "cstack"
     );
     if (hasFilterOverride) {
       if (!("cursor" in overrides)) merged.cursor = undefined;
-      if (!("prevCursor" in overrides)) merged.prevCursor = undefined;
+      if (!("cstack" in overrides)) merged.cstack = undefined;
     }
 
     for (const [key, val] of Object.entries(merged)) {
@@ -102,18 +104,33 @@ export default async function AuditLogPage({
     return `/audit-log${query ? `?${query}` : ""}`;
   };
 
-  const firstPageUrl = buildUrl({ cursor: undefined, prevCursor: undefined });
+  const firstPageUrl = buildUrl({ cursor: undefined, cstack: undefined });
+
+  let prevCursor: string | undefined = undefined;
+  let newStackForPrev: string[] = [];
+  if (hasCursor && stack.length > 0) {
+    const poppedStack = [...stack];
+    poppedStack.pop();
+    newStackForPrev = poppedStack;
+    prevCursor = poppedStack[poppedStack.length - 1];
+  }
+
   const prevPageUrl = hasCursor
     ? buildUrl({
-        cursor: prevCursor && prevCursor.length > 0 ? prevCursor : undefined,
-        prevCursor: undefined,
+        cursor: prevCursor,
+        cstack: encodeCursorStack(newStackForPrev),
       })
     : null;
+
+  const nextStack = page.pagination.hasMore && page.pagination.nextCursor
+    ? [...stack, page.pagination.nextCursor]
+    : [];
+
   const nextPageUrl =
     page.pagination.hasMore && page.pagination.nextCursor
       ? buildUrl({
           cursor: page.pagination.nextCursor,
-          prevCursor: currentCursor || "",
+          cstack: encodeCursorStack(nextStack),
         })
       : null;
 

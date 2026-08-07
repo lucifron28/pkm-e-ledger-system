@@ -16,7 +16,7 @@ import { CashTransferDetailsModal } from "./cash-transfer-details-modal";
 import { AttachmentManager } from "./attachment-manager";
 import { LedgerFilters } from "./ledger-filters";
 import { OsaLedgerSummaryView, OsaOrganizationSelectView } from "@/components/ledger/osa-ledger-summary";
-import { buildLedgerFilterUrl, parseLedgerQueryParams, parseScalarString } from "@/lib/domain/query";
+import { buildLedgerFilterUrl, encodeCursorStack, parseCursorStack, parseLedgerQueryParams } from "@/lib/domain/query";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -78,23 +78,36 @@ export default async function LedgerPage({
 
   const balances = snapshot.balances;
 
-  const prevCursor = parseScalarString(rawParams.prevCursor);
+  const stack = parseCursorStack(rawParams.cstack);
   const currentCursor = parsedQuery.cursor;
   const hasCursor = Boolean(currentCursor);
 
-  const firstPageUrl = buildLedgerFilterUrl(parsedQuery, { cursor: undefined, prevCursor: undefined });
+  const firstPageUrl = buildLedgerFilterUrl(parsedQuery, { cursor: undefined, cstack: undefined });
+
+  let prevCursor: string | undefined = undefined;
+  let newStackForPrev: string[] = [];
+  if (hasCursor && stack.length > 0) {
+    const poppedStack = [...stack];
+    poppedStack.pop();
+    newStackForPrev = poppedStack;
+    prevCursor = poppedStack[poppedStack.length - 1];
+  }
 
   const prevPageUrl = hasCursor
     ? buildLedgerFilterUrl(parsedQuery, {
-        cursor: prevCursor && prevCursor.length > 0 ? prevCursor : undefined,
-        prevCursor: undefined,
+        cursor: prevCursor,
+        cstack: encodeCursorStack(newStackForPrev),
       })
     : null;
+
+  const nextStack = snapshot.pagination.nextCursor
+    ? [...stack, snapshot.pagination.nextCursor]
+    : [];
 
   const nextPageUrl = snapshot.pagination.nextCursor
     ? buildLedgerFilterUrl(parsedQuery, {
         cursor: snapshot.pagination.nextCursor,
-        prevCursor: currentCursor || "",
+        cstack: encodeCursorStack(nextStack),
       })
     : null;
 

@@ -1,79 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getNextFocusTarget, shouldAllowModalClose } from "../../lib/hooks/use-modal-focus";
 
-// Simulated DOM focus state machine matching useModalFocus invariants
-class ModalFocusTracker {
-  private isOpen = false;
-  private wasOpen = false;
-  private activeElement: string | null = "trigger-btn";
-  private focusedElement: string | null = null;
-  private triggerId = "trigger-btn";
-  private initialFocusId = "close-btn";
-
-  constructor() {}
-
-  public getIsOpen() {
-    return this.isOpen;
-  }
-
-  public setOpen(open: boolean) {
-    if (open) {
-      if (!this.wasOpen) {
-        this.wasOpen = true;
-      }
-      // On opening, focus initial element inside modal
-      this.focusedElement = this.initialFocusId;
-      this.isOpen = true;
-    } else {
-      if (this.wasOpen) {
-        this.wasOpen = false;
-        // On closing (only after being open), restore focus to trigger
-        this.focusedElement = this.triggerId;
-      }
-      this.isOpen = false;
-    }
-  }
-
-  public getFocusedElement() {
-    return this.focusedElement;
-  }
-
-  public handleKey(key: string): boolean {
-    if (this.isOpen && key === "Escape") {
-      this.setOpen(false);
-      return true;
-    }
-    return false;
-  }
-}
-
-test("Modal Focus: Initial mount with isOpen=false does NOT steal focus", () => {
-  const tracker = new ModalFocusTracker();
-  assert.equal(tracker.getIsOpen(), false);
-  assert.equal(tracker.getFocusedElement(), null);
+test("Modal Focus Production Logic: initial mount with isOpen=false ignores Escape", () => {
+  assert.equal(shouldAllowModalClose(false, false, "Escape"), false);
 });
 
-test("Modal Focus: Opening modal sets focus to initial dialog element", () => {
-  const tracker = new ModalFocusTracker();
-  tracker.setOpen(true);
-  assert.equal(tracker.getIsOpen(), true);
-  assert.equal(tracker.getFocusedElement(), "close-btn");
+test("Modal Focus Production Logic: Escape key allows close when open and not pending", () => {
+  assert.equal(shouldAllowModalClose(true, false, "Escape"), true);
 });
 
-test("Modal Focus: Closing modal restores focus to trigger element", () => {
-  const tracker = new ModalFocusTracker();
-  tracker.setOpen(true);
-  assert.equal(tracker.getFocusedElement(), "close-btn");
-  tracker.setOpen(false);
-  assert.equal(tracker.getIsOpen(), false);
-  assert.equal(tracker.getFocusedElement(), "trigger-btn");
+test("Modal Focus Production Logic: Escape key PREVENTS close when isPending=true", () => {
+  assert.equal(shouldAllowModalClose(true, true, "Escape"), false);
 });
 
-test("Modal Focus: Escape key closes active modal and restores focus", () => {
-  const tracker = new ModalFocusTracker();
-  tracker.setOpen(true);
-  const handled = tracker.handleKey("Escape");
-  assert.equal(handled, true);
-  assert.equal(tracker.getIsOpen(), false);
-  assert.equal(tracker.getFocusedElement(), "trigger-btn");
+test("Modal Focus Production Logic: Tab wraps focus from last element to first element", () => {
+  const elem1 = { id: "input1" } as unknown as HTMLElement;
+  const elem2 = { id: "input2" } as unknown as HTMLElement;
+  const elem3 = { id: "button-submit" } as unknown as HTMLElement;
+  const focusables = [elem1, elem2, elem3];
+
+  const target = getNextFocusTarget(focusables, elem3, false);
+  assert.equal(target, elem1);
+});
+
+test("Modal Focus Production Logic: Shift+Tab wraps focus from first element to last element", () => {
+  const elem1 = { id: "input1" } as unknown as HTMLElement;
+  const elem2 = { id: "input2" } as unknown as HTMLElement;
+  const elem3 = { id: "button-submit" } as unknown as HTMLElement;
+  const focusables = [elem1, elem2, elem3];
+
+  const target = getNextFocusTarget(focusables, elem1, true);
+  assert.equal(target, elem3);
+});
+
+test("Modal Focus Production Logic: Tab advances focus normally when inside container", () => {
+  const elem1 = { id: "input1" } as unknown as HTMLElement;
+  const elem2 = { id: "input2" } as unknown as HTMLElement;
+  const elem3 = { id: "button-submit" } as unknown as HTMLElement;
+  const focusables = [elem1, elem2, elem3];
+
+  const targetForward = getNextFocusTarget(focusables, elem1, false);
+  assert.equal(targetForward, null); // Browser default navigation handles inner steps
+
+  const targetBackward = getNextFocusTarget(focusables, elem3, true);
+  assert.equal(targetBackward, null); // Browser default handles inner steps
 });

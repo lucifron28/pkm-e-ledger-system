@@ -11,6 +11,7 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
 
   const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
     isOpen: open,
+    isPending,
     onClose: () => setOpen(false),
   });
 
@@ -45,9 +46,10 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
               <button
                 ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => !isPending && setOpen(false)}
+                disabled={isPending}
                 aria-label="Close dialog"
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl"
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 &times;
               </button>
@@ -88,8 +90,9 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition"
+                  onClick={() => !isPending && setOpen(false)}
+                  disabled={isPending}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>

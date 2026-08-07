@@ -30,7 +30,7 @@ The audit systematically evaluated:
 
 ### 1.3 Version Validation Hardening
 - **Issue**: Version parameters used loose regex pattern matching.
-- **Fix**: Replaced regex with strict integer validation `Number.isInteger(v) && v >= 1` across terms, transactions, and transfers in Zod schemas and application services.
+- **Fix**: Replaced regex with `parseStrictVersion` enforcing strict integer validation `Number.isInteger(v) && v >= 1` across terms, transactions, and transfers in Zod schemas and application services.
 
 ### 1.4 Bcrypt UTF-8 Byte Limit & Field Constraints
 - **Issue**: Passwords over 72 UTF-8 bytes were silently truncated by Bcrypt; text fields lacked max-length bounds.

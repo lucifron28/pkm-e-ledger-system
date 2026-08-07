@@ -8,7 +8,7 @@ This document details the configuration, deployment, hosting, and backup mainten
 
 Before deploying the application, ensure the following software is installed on the host machine:
 
-1. **Node.js** (v18 or v22 LTS recommended) — *Note: Node 20 environment is NOT VERIFIED in this repository environment.*
+1. **Node.js** — Minimum supported runtime: Node >= 20.9 (LTS). Primary repository verification environment: Node 24.15.0 (Node 24 LTS). Node 18 is deprecated and no longer supported.
 2. **Git** — [Download here](https://git-scm.com/)
 3. **SQLite3** (Usually bundled automatically, but good to have CLI utility installed for low-level DB queries)
 
@@ -28,7 +28,7 @@ Follow these steps to set up the codebase on the server machine:
    ```bash
    npm ci
    ```
-   > **Note**: Do not run `npm install --omit=dev` before building. Build and database tools (`prisma`, `tsx`) are required during initial setup. Dev dependencies may optionally be pruned with `npm prune --omit=dev` after `npm run build`.
+   > **Note**: Do not run `npm install --omit=dev` before building. Build, testing, and database tools (`prisma`, `tsx`, `scripts/migrate.js`) require devDependencies. If production deployment prunes devDependencies (`npm prune --omit=dev`), you MUST run `npm install` (or `npm ci`) to reinstall devDependencies prior to executing maintenance scripts, database migrations, attachment reconciliation, or seeds.
 
 3. **Configure Environment Variables**:
    * Copy the template environment file:

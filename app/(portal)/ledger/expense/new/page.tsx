@@ -44,7 +44,7 @@ export default async function NewExpensePage() {
           activeTermId={activeTerm.id}
           incomeCategories={incomeCategories}
           expenseCategories={expenseCategories}
-          initialType={TransactionType.EXPENSE}
+          fixedType={TransactionType.EXPENSE}
         />
       </div>
     </div>

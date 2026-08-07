@@ -7,7 +7,7 @@ import {
 } from "../../lib/domain/financial";
 import { MAX_MONEY_CENTS, parsePesoToCents, validateMoneyAmount } from "../../lib/domain/money";
 import { normalizeAcademicYear, validateAcademicYear } from "../../lib/domain/term-labels";
-import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
+import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeCursorStack, encodeLedgerCursor, parseCursorStack, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
 import { CashAccount, ExpenseReportBucket, TransactionType } from "@prisma/client";
 import { reportBucketToSchedule2Bucket } from "../../lib/domain/reports";
 
@@ -413,7 +413,7 @@ test("Query Domain: decodeLedgerCursor strictly enforces fingerprint matching", 
   assert.equal(decodeLedgerCursor(cursorWithFp, sizeFp), null, "Cursor used after page-size change must be rejected");
 });
 
-test("Financial Domain: buildLedgerFilterUrl pagination navigation and filter reset", () => {
+test("Financial Domain: buildLedgerFilterUrl multi-page cstack pagination navigation and filter reset", () => {
   const baseFilters = {
     academicYear: "2026-2027",
     semester: "FIRST_SEMESTER" as const,
@@ -427,26 +427,55 @@ test("Financial Domain: buildLedgerFilterUrl pagination navigation and filter re
     dateTo: undefined,
     search: undefined,
     org: undefined,
-    cursor: "C2",
+    cursor: "C3",
     pageSize: 50,
-    prevCursor: "C1",
+    cstack: "C1.C2.C3",
   };
 
-  // 1. URL preserves cursor and prevCursor when no filter override is passed
-  const normalUrl = buildLedgerFilterUrl(baseFilters, {});
-  assert.match(normalUrl, /cursor=C2/);
-  assert.match(normalUrl, /prevCursor=C1/);
+  // 1. Page 4 -> Previous yields Page 3 with cursor=C2 and cstack=C1.C2
+  const stack = parseCursorStack(baseFilters.cstack);
+  const poppedStack = [...stack];
+  poppedStack.pop();
+  const prevCursor = poppedStack[poppedStack.length - 1];
+  const prevUrl = buildLedgerFilterUrl(baseFilters, {
+    cursor: prevCursor,
+    cstack: encodeCursorStack(poppedStack),
+  });
+  assert.match(prevUrl, /cursor=C2/);
+  assert.match(prevUrl, /cstack=C1\.C2/);
 
-  // 2. Filter override (e.g. type=INCOME) clears both cursor and prevCursor
+  // Page 3 -> Previous yields Page 2 with cursor=C1 and cstack=C1
+  const poppedStack2 = [...poppedStack];
+  poppedStack2.pop();
+  const prevCursor2 = poppedStack2[poppedStack2.length - 1];
+  const prevUrl2 = buildLedgerFilterUrl(baseFilters, {
+    cursor: prevCursor2,
+    cstack: encodeCursorStack(poppedStack2),
+  });
+  assert.match(prevUrl2, /cursor=C1/);
+  assert.match(prevUrl2, /cstack=C1/);
+
+  // Page 2 -> Previous yields Page 1 with no cursor and no cstack
+  const poppedStack3 = [...poppedStack2];
+  poppedStack3.pop();
+  const prevCursor3 = poppedStack3[poppedStack3.length - 1];
+  const prevUrl3 = buildLedgerFilterUrl(baseFilters, {
+    cursor: prevCursor3,
+    cstack: encodeCursorStack(poppedStack3),
+  });
+  assert.equal(prevUrl3.includes("cursor="), false);
+  assert.equal(prevUrl3.includes("cstack="), false);
+
+  // 2. Filter override (e.g. type=INCOME) clears both cursor and cstack
   const filterUrl = buildLedgerFilterUrl(baseFilters, { type: "INCOME" });
   assert.match(filterUrl, /type=INCOME/);
   assert.equal(filterUrl.includes("cursor="), false);
-  assert.equal(filterUrl.includes("prevCursor="), false);
+  assert.equal(filterUrl.includes("cstack="), false);
 
-  // 3. Page size change clears both cursor and prevCursor
+  // 3. Page size change clears both cursor and cstack
   const pageSizeUrl = buildLedgerFilterUrl(baseFilters, { pageSize: "25" });
   assert.match(pageSizeUrl, /pageSize=25/);
   assert.equal(pageSizeUrl.includes("cursor="), false);
-  assert.equal(pageSizeUrl.includes("prevCursor="), false);
+  assert.equal(pageSizeUrl.includes("cstack="), false);
 });
 
