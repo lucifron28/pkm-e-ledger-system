@@ -20,8 +20,7 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
-const transferSchema = z.object({
-  termId: z.string().trim().min(1, "Term ID is required."),
+const transferBaseSchema = z.object({
   fromAccount: z.nativeEnum(CashAccount, { message: "Source account is required." }),
   toAccount: z.nativeEnum(CashAccount, { message: "Destination account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
@@ -30,6 +29,16 @@ const transferSchema = z.object({
   description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
   referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
   eventActivityName: z.string().trim().max(200, "Event / Activity name must be under 200 characters.").optional(),
+});
+
+const createTransferSchema = transferBaseSchema.extend({
+  termId: z.string().trim().min(1, "Term ID is required."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
+});
+
+export const editTransferSchema = transferBaseSchema.extend({
+  id: z.string().trim().min(1, "Transfer ID is required."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -55,7 +64,7 @@ export async function createCashTransferAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const validation = transferSchema.safeParse(transferFields(formData));
+  const validation = createTransferSchema.safeParse(transferFields(formData));
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
@@ -108,11 +117,6 @@ export async function createCashTransferAction(
   revalidatePath("/ledger");
   redirect("/ledger");
 }
-
-const editTransferSchema = transferSchema.extend({
-  id: z.string().trim().min(1, "Transfer ID is required."),
-  version: z.string().trim().min(1, "Version is required.").refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1, "Version must be a positive integer."),
-});
 
 export async function editCashTransferAction(
   _prevState: TransferActionState,
@@ -169,7 +173,7 @@ export async function editCashTransferAction(
 const deleteTransferSchema = z.object({
   id: z.string().trim().min(1, "Transfer ID is required."),
   deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 

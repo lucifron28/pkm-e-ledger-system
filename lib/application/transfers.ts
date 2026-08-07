@@ -78,7 +78,7 @@ export interface CreateTransferInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Buffer;
+    buffer: Uint8Array | Buffer;
   };
 }
 
@@ -110,6 +110,7 @@ export async function createCashTransferService(
   const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
 
   const payload = {
+    termId: input.termId,
     transferDate: input.transferDate.toISOString(),
     fromAccount: input.fromAccount,
     toAccount: input.toAccount,
@@ -271,7 +272,18 @@ export async function createCashTransferService(
 
     return outcome.result;
   } catch (error) {
-    if (staged) await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    if (staged && !committedName) {
+      await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    }
+    if (committedName) {
+      const isReferenced = await prisma.attachment.findFirst({
+        where: { storageKey: committedName },
+        select: { id: true },
+      }).catch(() => null);
+      if (!isReferenced) {
+        await storageService.deleteActiveFile(committedName).catch(() => undefined);
+      }
+    }
     await releaseCommandReceipt(claim).catch(() => undefined);
     throw error;
   }

@@ -159,7 +159,7 @@ const updateBalancesSchema = z.object({
   termId: z.string().min(1, "Term ID is required."),
   openingCashOnHand: z.string(),
   openingCashInBank: z.string(),
-  version: z.string().trim().min(1, "Version is required.").refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1, "Version must be a positive integer."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 

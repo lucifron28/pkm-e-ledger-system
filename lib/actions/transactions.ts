@@ -25,8 +25,7 @@ function getAttachmentFile(formData: FormData): File {
   return file;
 }
 
-const transactionSchema = z.object({
-  termId: z.string().trim().min(1, "Term ID is required."),
+const transactionBaseSchema = z.object({
   type: z.nativeEnum(TransactionType, { message: "Transaction type is required." }),
   transactionDate: z.string().trim().min(1, "Transaction date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
@@ -37,6 +36,16 @@ const transactionSchema = z.object({
   description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
   referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
   eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(200, "Event / Activity name must be under 200 characters."),
+});
+
+const createTransactionSchema = transactionBaseSchema.extend({
+  termId: z.string().trim().min(1, "Term ID is required."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
+});
+
+export const editTransactionSchema = transactionBaseSchema.extend({
+  id: z.string().trim().min(1, "Transaction ID is required."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -64,7 +73,7 @@ export async function createTransactionAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const validation = transactionSchema.safeParse(transactionFields(formData));
+  const validation = createTransactionSchema.safeParse(transactionFields(formData));
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
@@ -119,10 +128,6 @@ export async function createTransactionAction(
   redirect("/ledger");
 }
 
-const editTransactionSchema = transactionSchema.extend({
-  id: z.string().trim().min(1, "Transaction ID is required."),
-  version: z.string().trim().min(1, "Version is required.").refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1, "Version must be a positive integer."),
-});
 
 export async function editTransactionAction(
   _prevState: TxActionState,
@@ -181,7 +186,7 @@ export async function editTransactionAction(
 const deleteTransactionSchema = z.object({
   id: z.string().trim().min(1, "Transaction ID is required."),
   deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: z.string().trim().min(1, "Version is required.").regex(/^[1-9]\d*$/, "Version must be a positive integer."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
