@@ -20,6 +20,7 @@
     "test:db": "node scripts/smoke-test.js",
     "backup": "node scripts/backup.js",
     "restore": "node scripts/restore.js",
+    "storage:reconcile": "node scripts/reconcile-storage.js",
     "verify-readiness": "node scripts/verify-readiness.js"
   },
   "dependencies": {

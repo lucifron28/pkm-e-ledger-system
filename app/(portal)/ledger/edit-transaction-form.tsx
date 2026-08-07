@@ -20,9 +20,21 @@ export function EditTransactionForm({
   const [state, formAction, isPending] = useActionState(editTransactionAction, null);
   const [isOpen, setIsOpen] = useState(false);
   const [txType, setTxType] = useState<TransactionType>(transaction.type);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(transaction.categoryId);
   const categories = txType === TransactionType.INCOME ? incomeCategories : expenseCategories;
   const dateStr = transaction.transactionDate.toISOString().split("T")[0];
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+
+  const isCurrentCategoryInList = categories.some((c) => c.id === transaction.categoryId);
+
+  const handleTypeChange = (newType: TransactionType) => {
+    setTxType(newType);
+    if (newType === transaction.type) {
+      setSelectedCategoryId(transaction.categoryId);
+    } else {
+      setSelectedCategoryId("");
+    }
+  };
 
   return (
     <div className="inline">
@@ -31,15 +43,15 @@ export function EditTransactionForm({
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 text-left" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") setIsOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby={`edit-tx-title-${transaction.id}`} className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">Edit Transaction</h3>
-              <button type="button" onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+              <h3 id={`edit-tx-title-${transaction.id}`} className="font-bold text-slate-900 text-lg">Edit Transaction</h3>
+              <button type="button" onClick={() => setIsOpen(false)} aria-label="Close dialog" className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
             </div>
 
             {state?.error && !state.fieldErrors && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
+              <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
             )}
 
             <form action={formAction} className="space-y-4">
@@ -52,7 +64,7 @@ export function EditTransactionForm({
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>
                   <select
                     name="type" value={txType}
-                    onChange={(e) => setTxType(e.target.value as TransactionType)}
+                    onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
                   >
                     <option value="INCOME">Income</option>
@@ -82,7 +94,17 @@ export function EditTransactionForm({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Category</label>
-                  <select name="categoryId" required defaultValue={transaction.categoryId} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
+                  <select
+                    name="categoryId"
+                    required
+                    value={selectedCategoryId}
+                    onChange={(e) => setSelectedCategoryId(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  >
+                    <option value="">Select category</option>
+                    {txType === transaction.type && !isCurrentCategoryInList && (
+                      <option value={transaction.categoryId}>{transaction.categoryName} (Inactive)</option>
+                    )}
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}

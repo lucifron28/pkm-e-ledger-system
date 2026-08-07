@@ -105,8 +105,8 @@ export default async function LedgerPage({
 
       {activeTerm.active ? (
         <>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Transaction</h2></div><div className="p-6"><CreateTransactionForm incomeCategories={incomeCategories} expenseCategories={expenseCategories} /></div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Cash Transfer</h2></div><div className="p-6"><CreateCashTransferForm /></div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Transaction</h2></div><div className="p-6"><CreateTransactionForm activeTermId={activeTerm.id} incomeCategories={incomeCategories} expenseCategories={expenseCategories} /></div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Cash Transfer</h2></div><div className="p-6"><CreateCashTransferForm activeTermId={activeTerm.id} /></div></div>
         </>
       ) : (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center text-sm font-semibold text-amber-900">

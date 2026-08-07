@@ -26,6 +26,7 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 const transactionSchema = z.object({
+  termId: z.string().trim().min(1, "Term ID is required."),
   type: z.nativeEnum(TransactionType, { message: "Transaction type is required." }),
   transactionDate: z.string().trim().min(1, "Transaction date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
@@ -41,6 +42,7 @@ const transactionSchema = z.object({
 
 function transactionFields(formData: FormData) {
   return {
+    termId: formData.get("termId")?.toString() || "",
     type: formData.get("type")?.toString() || "",
     transactionDate: formData.get("transactionDate")?.toString() || "",
     amount: formData.get("amount")?.toString() || "",
@@ -87,6 +89,7 @@ export async function createTransactionAction(
 
   try {
     await createTransactionService(user, {
+      termId: validation.data.termId,
       type: validation.data.type,
       transactionDate,
       amountCents,
@@ -102,7 +105,7 @@ export async function createTransactionAction(
         originalName: validatedFile.originalName,
         mimeType: validatedFile.mimeType,
         sizeBytes: validatedFile.sizeBytes,
-        buffer: validatedFile.buffer,
+        buffer: Buffer.from(validatedFile.buffer),
       },
     });
   } catch (error) {
@@ -118,7 +121,7 @@ export async function createTransactionAction(
 
 const editTransactionSchema = transactionSchema.extend({
   id: z.string().trim().min(1, "Transaction ID is required."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: z.string().trim().min(1, "Version is required.").refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1, "Version must be a positive integer."),
 });
 
 export async function editTransactionAction(

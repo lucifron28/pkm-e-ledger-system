@@ -24,6 +24,7 @@ type GetOsaLedgerSummaryForUser = typeof import("../../lib/data/osa").getOsaLedg
 
 const testDbPath = path.join(__dirname, "temp_isolation_test.db");
 const dbUrl = `file:${testDbPath}`;
+const sandboxUploadsDir = path.join(__dirname, "temp_isolation_uploads");
 
 let getTermByIdForUser: GetTermByIdForUser | null = null;
 let listTermsForUser: ListTermsForUser | null = null;
@@ -108,7 +109,7 @@ test.before(async () => {
   // 2. Scaffold the isolated database with the real Prisma schema
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
   fs.writeFileSync(testDbPath, Buffer.alloc(0));
-  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${storageRoot}"`, {
+  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${sandboxUploadsDir}"`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
     encoding: "utf8",
@@ -530,7 +531,7 @@ test("Organization Isolation Integration: Historical term safety in transaction 
         },
       }, { storageService: storage });
     },
-    /Supplied term is not the active academic term/
+    /The selected academic term is no longer active/
   );
 
   await assert.rejects(
@@ -552,7 +553,7 @@ test("Organization Isolation Integration: Historical term safety in transaction 
         },
       }, { storageService: storage });
     },
-    /Supplied term is not the active academic term/
+    /The selected academic term is no longer active/
   );
 
   if (fs.existsSync(sandboxUploads)) fs.rmSync(sandboxUploads, { recursive: true, force: true });

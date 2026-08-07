@@ -9,14 +9,17 @@
 * **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
 * **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
 * **Database & ORM**: SQLite via Prisma ORM 6
-* **Planned Features**: Server Actions for mutations, Route Handlers for file downloads and Excel exports (`exceljs`), and database-backed sessions with `bcryptjs` password hashing.
+* **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
+* **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
+* **Database & ORM**: SQLite via Prisma ORM 6
+* **Key Architecture**: Server Actions for mutations, Route Handlers for file downloads and PDF/Excel exports (`pdfkit`, `exceljs`), and database-backed sessions with `bcryptjs` password hashing.
 
 ---
 
 ## Documentation Links
 
 * [Project Specification](docs/project-specification.md) — Complete source of truth for functional rules, RBAC, domain rules, and security specifications.
-* [Implementation Roadmap](docs/implementation-roadmap.md) — 7-phase implementation plan, branch names, grouped commits, and status tracking.
+* [Implementation Roadmap](docs/implementation-roadmap.md) — Multi-phase implementation plan, branch names, grouped commits, and status tracking.
 * [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided official workbook reference.
 * [Repository Agent Guidelines](AGENTS.md) — Coding agent rules, financial invariants, architecture constraints, and testing expectations.
 * [Deployment Manual](DEPLOYMENT.md) — Reference guide for local Windows hosting using PM2 and automated Task Scheduler backups.
@@ -25,7 +28,7 @@
 
 ## Current Project Status
 
-The repository foundation and database foundation are completed. Feature development will proceed phase-by-phase according to the implementation roadmap:
+The repository foundation and database foundation are completed. Feature development and post-implementation hardening are complete:
 
 * **Phase 0**: Project Foundation (`chore/project-foundation`) — **Completed**
 * **Phase 1**: Database Foundation Completion (`feature/database-foundation-completion`) — **Completed**
@@ -37,7 +40,7 @@ The repository foundation and database foundation are completed. Feature develop
 * **Phase 6**: Transparency Portals & OSA Monitoring (`feature/transparency-portals`) — **Completed**
 * **Phase 7**: Testing, Hardening & Demo Polish (`feature/testing-hardening-and-demo`) — **Completed**
 * **Phase 8**: Post-implementation Business-Invariant Hardening (`fix/business-invariants-concurrency-and-audit`) — **Completed** (Merged into `main` via PR #10)
-* **Full Engineering Audit & Remediation**: (`audit/full-project-completeness-ui-docs`) — **Completed**
+* **Full Engineering Audit & Remediation**: (`audit/full-project-completeness-ui-docs`) — **In Progress**
 
 Phase 8 adds cash transfer workflows, database-level financial invariants, idempotent financial commands, optimistic concurrency, crash-recoverable attachment storage, snapshot-consistent reads, immutable audit history, and cursor pagination. Reports are live generated views (HTML/PDF/XLSX) built from current non-deleted financial data — exports are not immutable publications.
 
@@ -81,7 +84,6 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
    Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 4. **Seeded Demo Accounts**:
-   *Note: Login UI and authentication routes will be implemented in Phase 2.*
    * **OSA Monitoring Account**: `demo_osa` / `password`
    * **Organization Treasurer**: `demo_treasurer_supreme-student-council` / `password`
    * **Organization Adviser**: `demo_adviser_supreme-student-council` / `password`

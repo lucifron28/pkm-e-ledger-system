@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { hashPassword, verifyPassword } from "../auth/password";
+import { hashPassword, validatePasswordLength, verifyPassword } from "../auth/password";
 import { getSessionResult } from "../auth/session";
-import { createSystemAuditLog } from "../data/audit-log";
+import { createAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
 
 const passwordSchema = z.object({
@@ -47,6 +47,14 @@ export async function changePasswordAction(
   }
 
   const { currentPassword, newPassword, confirmNewPassword } = validation.data;
+
+  const passwordCheck = validatePasswordLength(newPassword);
+  if (!passwordCheck.valid) {
+    return {
+      error: passwordCheck.message,
+      fieldErrors: { newPassword: [passwordCheck.message!] },
+    };
+  }
 
   // New passwords match check
   if (newPassword !== confirmNewPassword) {
@@ -111,7 +119,7 @@ export async function changePasswordAction(
         throw new Error("Your password was modified in another session. Please reload and try again.");
       }
 
-      await createSystemAuditLog({
+      await createAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,

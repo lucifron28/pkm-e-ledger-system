@@ -1,5 +1,6 @@
 import { CashAccount, TransactionType } from "@prisma/client";
 import { assertNoOverflow, validateMoneyAmount } from "./money";
+export { assertNoOverflow, validateMoneyAmount };
 import { InsufficientFundsError, ValidationError } from "./errors";
 
 export type AccountMovement =

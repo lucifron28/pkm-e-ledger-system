@@ -15,15 +15,15 @@ export function DeleteTransactionForm({ id, version }: { id: string; version: nu
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") setIsOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby={`del-tx-title-${id}`} className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">Delete Transaction</h3>
-              <button type="button" onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+              <h3 id={`del-tx-title-${id}`} className="font-bold text-slate-900">Delete Transaction</h3>
+              <button type="button" onClick={() => setIsOpen(false)} aria-label="Close dialog" className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
             </div>
 
             {state?.error && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
+              <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
             )}
 
             <form action={formAction} className="space-y-4">

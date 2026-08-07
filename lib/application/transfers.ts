@@ -64,7 +64,7 @@ function toCashTransferDto(transfer: CashTransfer & { recordedBy?: { fullName: s
 }
 
 export interface CreateTransferInput {
-  termId?: string;
+  termId: string;
   transferDate: Date;
   fromAccount: CashAccount;
   toAccount: CashAccount;
@@ -78,7 +78,7 @@ export interface CreateTransferInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Uint8Array;
+    buffer: Buffer;
   };
 }
 
@@ -159,13 +159,10 @@ export async function createCashTransferService(
         payload,
         async (tx) => {
           const term = await tx.academicTerm.findFirst({
-            where: { organizationId: user.organizationId!, active: true },
+            where: { id: input.termId, organizationId: user.organizationId!, active: true },
           });
           if (!term) {
-            throw new ValidationError("No active academic term configured for cash transfers.");
-          }
-          if (input.termId && input.termId !== term.id) {
-            throw new ValidationError("Supplied term is not the active academic term. New entries may only be recorded in the active term.");
+            throw new ValidationError("The selected academic term is no longer active. Reload the ledger before recording this entry.");
           }
 
           const activeTransactions = await tx.transaction.findMany({

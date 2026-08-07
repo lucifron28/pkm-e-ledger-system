@@ -6,21 +6,32 @@ import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 
 interface CreateTransactionFormProps {
+  activeTermId: string;
   incomeCategories: CategoryDto[];
   expenseCategories: CategoryDto[];
+  initialType?: TransactionType;
 }
 
 export function CreateTransactionForm({
+  activeTermId,
   incomeCategories,
   expenseCategories,
+  initialType = TransactionType.INCOME,
 }: CreateTransactionFormProps) {
   const [state, formAction, isPending] = useActionState(createTransactionAction, null);
-  const [txType, setTxType] = useState<TransactionType>(TransactionType.INCOME);
+  const [txType, setTxType] = useState<TransactionType>(initialType);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const categories = txType === TransactionType.INCOME ? incomeCategories : expenseCategories;
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
+  const handleTypeChange = (newType: TransactionType) => {
+    setTxType(newType);
+    setSelectedCategoryId("");
+  };
+
   return (
     <form action={formAction} encType="multipart/form-data" className="space-y-4">
+      <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {state?.error && !state.fieldErrors && (
         <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
@@ -31,7 +42,7 @@ export function CreateTransactionForm({
           <select
             name="type"
             value={txType}
-            onChange={(e) => setTxType(e.target.value as TransactionType)}
+            onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
             className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
           >
             <option value="INCOME">Income</option>
@@ -71,7 +82,13 @@ export function CreateTransactionForm({
 
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Category</label>
-          <select name="categoryId" required className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]">
+          <select
+            name="categoryId"
+            required
+            value={selectedCategoryId}
+            onChange={(e) => setSelectedCategoryId(e.target.value)}
+            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          >
             <option value="">Select category</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>

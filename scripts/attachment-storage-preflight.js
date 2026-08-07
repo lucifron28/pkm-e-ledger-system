@@ -59,6 +59,16 @@ function parseArgs(argv) {
   return args;
 }
 
+function getCanonicalDbIdentity(dbUrl) {
+  if (!dbUrl) return "";
+  const raw = dbUrl.replace(/^file:/, "");
+  return path.resolve(raw);
+}
+
+function getCanonicalUploadsRoot(uploadsRoot) {
+  return path.resolve(uploadsRoot);
+}
+
 function normalizeLegacyKey(row) {
   const storedName = (row.storedName || "").trim();
   const storagePath = (row.storagePath || "").trim();
@@ -79,30 +89,144 @@ function sha256Of(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-async function runRollback(uploadsRoot) {
-  const sidecarPath = path.join(uploadsRoot, SIDECAR_NAME);
-  if (fs.existsSync(sidecarPath)) {
-    const sidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
-    let removed = 0;
-    for (const mapping of sidecar.mappings || []) {
-      // Only files this run created may be rolled back. Pre-existing
-      // destinations (identical content found on disk before the run) are
-      // never deleted.
-      if (mapping.provenance !== "CREATED_BY_RUN") continue;
-      const copiedPath = path.join(uploadsRoot, mapping.newStorageKey);
-      if (fs.existsSync(copiedPath)) {
-        fs.unlinkSync(copiedPath);
-        removed++;
-      }
-    }
-    fs.unlinkSync(sidecarPath);
-    console.log(`[preflight] Rolled back ${removed} CREATED_BY_RUN file(s); pre-existing files retained.`);
-  } else {
+async function runRollback(prisma, uploadsRoot, dbUrl) {
+  const canonicalRoot = getCanonicalUploadsRoot(uploadsRoot);
+  const canonicalDb = getCanonicalDbIdentity(dbUrl);
+  const sidecarPath = path.join(canonicalRoot, SIDECAR_NAME);
+
+  if (!fs.existsSync(sidecarPath)) {
     console.log("[preflight] No sidecar mapping found; nothing to roll back.");
+    return;
   }
+
+  const sidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
+
+  if (sidecar.state === "MIGRATED") {
+    throw new Error("Cannot rollback: migration is already finalized (MIGRATED). Live files preserved.");
+  }
+
+  if (sidecar.state === "ROLLED_BACK") {
+    console.log("[preflight] Migration has already been rolled back.");
+    return;
+  }
+
+  if (sidecar.dbIdentity && canonicalDb && sidecar.dbIdentity !== canonicalDb) {
+    throw new Error(`Cannot rollback: database identity mismatch (sidecar=${sidecar.dbIdentity}, current=${canonicalDb}).`);
+  }
+
+  if (sidecar.uploadsRoot && sidecar.uploadsRoot !== canonicalRoot) {
+    throw new Error(`Cannot rollback: uploads root mismatch (sidecar=${sidecar.uploadsRoot}, current=${canonicalRoot}).`);
+  }
+
+  let dbReferencedKeys = new Set();
+  if (prisma) {
+    try {
+      const columns = await prisma.$queryRawUnsafe(`PRAGMA table_info("Attachment")`);
+      const names = new Set(columns.map((c) => c.name));
+      if (names.has("storageKey")) {
+        const rows = await prisma.$queryRawUnsafe(`SELECT DISTINCT storageKey FROM "Attachment"`);
+        dbReferencedKeys = new Set(rows.map((r) => r.storageKey).filter(Boolean));
+      }
+    } catch {
+      /* table might not have storageKey yet */
+    }
+  }
+
+  let removed = 0;
+  for (const mapping of sidecar.mappings || []) {
+    if (mapping.provenance !== "CREATED_BY_RUN") continue;
+    if (dbReferencedKeys.has(mapping.newStorageKey)) {
+      console.warn(`[preflight] Skipping rollback of ${mapping.newStorageKey}: referenced by database.`);
+      continue;
+    }
+    const copiedPath = path.join(canonicalRoot, mapping.newStorageKey);
+    if (fs.existsSync(copiedPath)) {
+      fs.unlinkSync(copiedPath);
+      removed++;
+    }
+  }
+
+  if (fs.existsSync(sidecarPath)) {
+    fs.unlinkSync(sidecarPath);
+  }
+  console.log(`[preflight] Rolled back ${removed} CREATED_BY_RUN file(s); pre-existing and referenced files retained.`);
 }
 
-async function runPreflight(prisma, uploadsRoot) {
+async function finalizeMigration(prisma, uploadsRoot, dbUrl) {
+  const canonicalRoot = getCanonicalUploadsRoot(uploadsRoot);
+  const canonicalDb = getCanonicalDbIdentity(dbUrl);
+  const sidecarPath = path.join(canonicalRoot, SIDECAR_NAME);
+
+  if (!fs.existsSync(sidecarPath)) {
+    console.log("[preflight] No sidecar mapping found; nothing to finalize.");
+    return;
+  }
+
+  const sidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
+  if (sidecar.state === "MIGRATED") {
+    console.log("[preflight] Sidecar is already MIGRATED; no-op.");
+    return;
+  }
+
+  // Verify DB schema has storageKey
+  const columns = await prisma.$queryRawUnsafe(`PRAGMA table_info("Attachment")`);
+  const names = new Set(columns.map((c) => c.name));
+  if (!names.has("storageKey")) {
+    throw new Error("Cannot finalize migration: Attachment table missing storageKey column.");
+  }
+
+  // Verify mapped rows match on storageKey and physical file exists
+  for (const mapping of sidecar.mappings || []) {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT id, storageKey FROM "Attachment" WHERE id = '${mapping.attachmentId}'`
+    );
+    if (rows.length > 0) {
+      if (rows[0].storageKey !== mapping.newStorageKey) {
+        throw new Error(`Finalization verification failed: attachment ${mapping.attachmentId} has storageKey=${rows[0].storageKey}, expected ${mapping.newStorageKey}`);
+      }
+    }
+    const destFile = path.join(canonicalRoot, mapping.newStorageKey);
+    if (!fs.existsSync(destFile)) {
+      throw new Error(`Finalization verification failed: physical file missing for ${mapping.newStorageKey}`);
+    }
+    if (mapping.sourceHash && sha256Of(destFile) !== mapping.sourceHash) {
+      throw new Error(`Finalization verification failed: physical file hash mismatch for ${mapping.newStorageKey}`);
+    }
+  }
+
+  sidecar.state = "MIGRATED";
+  sidecar.finalizedAt = new Date().toISOString();
+  fs.writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), "utf8");
+  console.log(`[preflight] Migration finalized (MIGRATED); sidecar updated in ${SIDECAR_NAME}.`);
+}
+
+async function runPreflight(prisma, uploadsRoot, dbUrl) {
+  const canonicalRoot = getCanonicalUploadsRoot(uploadsRoot);
+  const canonicalDb = getCanonicalDbIdentity(dbUrl);
+  const sidecarPath = path.join(canonicalRoot, SIDECAR_NAME);
+
+  if (fs.existsSync(sidecarPath)) {
+    const existingSidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
+    if (existingSidecar.state === "MIGRATED") {
+      console.log("[preflight] Sidecar is already MIGRATED; skipping preflight.");
+      return;
+    }
+    if (
+      existingSidecar.state === "PREPARED" &&
+      existingSidecar.dbIdentity === canonicalDb &&
+      existingSidecar.uploadsRoot === canonicalRoot
+    ) {
+      console.log("[preflight] Found existing PREPARED sidecar for current database; verifying files on disk.");
+      for (const mapping of existingSidecar.mappings || []) {
+        const destFile = path.join(canonicalRoot, mapping.newStorageKey);
+        if (!fs.existsSync(destFile) && mapping.sourceFile && fs.existsSync(mapping.sourceFile)) {
+          fs.copyFileSync(mapping.sourceFile, destFile);
+        }
+      }
+      return;
+    }
+  }
+
   const tableRows = await prisma.$queryRawUnsafe(
     `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Attachment'`
   );
@@ -138,7 +262,7 @@ async function runPreflight(prisma, uploadsRoot) {
     const sorted = [...group].sort(compareLegacyRows);
     for (const loser of sorted.slice(1)) {
       const newStorageKey = `${rawKey}-dup-${loser.id}`;
-      const sourceFile = path.join(uploadsRoot, path.basename(rawKey));
+      const sourceFile = path.join(canonicalRoot, path.basename(rawKey));
       if (!fs.existsSync(sourceFile) || !fs.statSync(sourceFile).isFile()) {
         missingFiles.push({ attachmentId: loser.id, basename: path.basename(rawKey) });
         continue;
@@ -156,14 +280,11 @@ async function runPreflight(prisma, uploadsRoot) {
     throw new Error("Duplicate legacy storage keys with missing physical files.");
   }
 
-  // Copy duplicated physical files to their deterministic migration keys and
-  // verify integrity before the database migration runs. Every destination is
-  // tracked as CREATED_BY_RUN or PREEXISTING; a pre-existing destination with
-  // different content aborts the preflight without overwriting anything.
+  const runId = crypto.randomUUID();
   const copied = [];
   try {
     for (const mapping of mappings) {
-      const destFile = path.join(uploadsRoot, mapping.newStorageKey);
+      const destFile = path.join(canonicalRoot, mapping.newStorageKey);
       const sourceHash = sha256Of(mapping.sourceFile);
       const sourceSize = fs.statSync(mapping.sourceFile).size;
       if (fs.existsSync(destFile)) {
@@ -191,9 +312,14 @@ async function runPreflight(prisma, uploadsRoot) {
     }
 
     const sidecar = {
-      version: 2,
+      version: 3,
+      runId,
       generatedAt: new Date().toISOString(),
-      uploadsRoot,
+      dbIdentity: canonicalDb,
+      uploadsRoot: canonicalRoot,
+      schemaState: "LEGACY",
+      migrationTarget: "20260801000000_storage_keys_and_audit_snapshots",
+      state: "PREPARED",
       mappings: mappings.map(({ attachmentId, oldStorageKey, newStorageKey, sourceHash, sizeBytes, provenance }) => ({
         attachmentId,
         oldStorageKey,
@@ -203,9 +329,9 @@ async function runPreflight(prisma, uploadsRoot) {
         provenance,
       })),
     };
-    fs.writeFileSync(path.join(uploadsRoot, SIDECAR_NAME), JSON.stringify(sidecar, null, 2), "utf8");
+    fs.writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), "utf8");
 
-    console.log(`[preflight] Prepared ${mappings.length} duplicate mapping(s); sidecar recorded in ${SIDECAR_NAME}.`);
+    console.log(`[preflight] Prepared ${mappings.length} duplicate mapping(s); sidecar (PREPARED) recorded in ${SIDECAR_NAME}.`);
   } catch (error) {
     for (const file of copied) {
       try {
@@ -228,9 +354,11 @@ async function main() {
   const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
   try {
     if (args.rollback) {
-      await runRollback(uploadsRoot);
+      await runRollback(prisma, uploadsRoot, dbUrl);
+    } else if (args.finalize) {
+      await finalizeMigration(prisma, uploadsRoot, dbUrl);
     } else {
-      await runPreflight(prisma, uploadsRoot);
+      await runPreflight(prisma, uploadsRoot, dbUrl);
     }
     console.log("[preflight] SUCCESS");
   } catch (error) {
@@ -245,4 +373,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { normalizeLegacyKey, runPreflight, runRollback };
+module.exports = { normalizeLegacyKey, runPreflight, runRollback, finalizeMigration };

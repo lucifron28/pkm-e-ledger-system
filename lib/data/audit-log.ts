@@ -467,3 +467,37 @@ export async function listAuditLogsForCurrentOrganization(
     pagination: { hasMore, nextCursor },
   };
 }
+
+export async function listOrganizationUsers(
+  organizationId: string
+): Promise<Array<{ id: string; fullName: string; username: string }>> {
+  return prisma.user.findMany({
+    where: { organizationId, active: true },
+    orderBy: { fullName: "asc" },
+    select: { id: true, fullName: true, username: true },
+  });
+}
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  ADDED_INCOME: "Recorded Income",
+  ADDED_EXPENSE: "Recorded Expense",
+  EDITED_TRANSACTION: "Edited Transaction",
+  DELETED_TRANSACTION: "Deleted Transaction",
+  CREATED_CASH_TRANSFER: "Transferred Cash",
+  EDITED_CASH_TRANSFER: "Edited Cash Transfer",
+  DELETED_CASH_TRANSFER: "Deleted Cash Transfer",
+  CHANGED_OPENING_BALANCE: "Updated Opening Balances",
+  ACTIVATED_ACADEMIC_TERM: "Activated Academic Term",
+  UPLOADED_ATTACHMENT: "Uploaded Attachment",
+  DELETED_ATTACHMENT: "Deleted Attachment",
+  GENERATED_REPORT: "Generated Report",
+  LOGGED_IN: "User Login",
+  LOGGED_OUT: "User Logout",
+  CHANGED_PASSWORD: "Password Changed",
+  REGISTERED_USER: "User Registered",
+  CREATED_ORGANIZATION: "Created Organization",
+  TOGGLED_ORGANIZATION_STATUS: "Toggled Organization Status",
+  CREATED_CATEGORY: "Created Category",
+  UPDATED_CATEGORY: "Updated Category",
+  TOGGLED_CATEGORY_STATUS: "Toggled Category Status",
+};

@@ -1,5 +1,6 @@
 import { CashAccount, ExpenseReportBucket, Semester, TransactionType } from "@prisma/client";
 import {
+  assertNoOverflow,
   calculateAccountBalances,
   financialRowsToMovements,
   transferRowsToMovements,
@@ -193,14 +194,64 @@ export interface RawReportInputTransfer extends TransferRow {
 }
 
 export function buildReportPackage(
-  term: RawReportInputTerm,
-  transactions: RawReportInputTransaction[],
-  transfers: RawReportInputTransfer[] = [],
-  asOfDate = new Date()
+  term: {
+    id: string;
+    academicYear: string;
+    semester: Semester;
+    openingCashOnHandCents: number;
+    openingCashInBankCents: number;
+    organization: { id: string; name: string; slug: string };
+  },
+  transactions: any[],
+  transfers: any[] = [],
+  asOfDate: Date = new Date()
 ): ReportPackageDto {
-  const openingCashOnHandCents = term.openingCashOnHandCents;
-  const openingCashInBankCents = term.openingCashInBankCents;
-  const balanceForwardedCents = openingCashOnHandCents + openingCashInBankCents;
+  const result = buildReportPackageDto(term.organization.name, term, transactions, transfers, asOfDate);
+  result.organizationId = term.organization.id;
+  result.organizationSlug = term.organization.slug;
+  return result;
+}
+
+export function buildReportPackageDto(
+  organizationName: string,
+  term: {
+    id: string;
+    academicYear: string;
+    semester: Semester;
+    openingCashOnHandCents: number;
+    openingCashInBankCents: number;
+    organization?: { id: string; name: string; slug: string };
+  },
+  transactions: Array<{
+    id: string;
+    type: TransactionType;
+    transactionDate: Date;
+    documentNumber: string | null;
+    counterpartyName: string | null;
+    description: string;
+    referenceDescription: string;
+    amountCents: number;
+    cashAccount: CashAccount;
+    categoryId: string;
+    category: { name: string; reportBucket: ExpenseReportBucket | null };
+    attachments: Array<{ id?: string; originalName: string; sizeBytes: number; mimeType?: string }>;
+  }>,
+  transfers: Array<{
+    id?: string;
+    transferDate?: Date;
+    documentNumber?: string | null;
+    description?: string;
+    referenceDescription?: string;
+    amountCents: number;
+    fromAccount: CashAccount;
+    toAccount: CashAccount;
+    attachments?: Array<{ id?: string; originalName: string; sizeBytes: number; mimeType?: string }>;
+  }>,
+  asOfDate: Date = new Date()
+): ReportPackageDto {
+  const openingCashOnHandCents = assertNoOverflow(term.openingCashOnHandCents);
+  const openingCashInBankCents = assertNoOverflow(term.openingCashInBankCents);
+  const balanceForwardedCents = assertNoOverflow(openingCashOnHandCents + openingCashInBankCents);
 
   let totalIncomeCents = 0;
   let totalIncomeCashOnHandCents = 0;
@@ -214,24 +265,24 @@ export function buildReportPackage(
   const expenseTransactions = transactions.filter((t) => t.type === TransactionType.EXPENSE);
 
   for (const t of incomeTransactions) {
-    totalIncomeCents += t.amountCents;
+    totalIncomeCents = assertNoOverflow(totalIncomeCents + t.amountCents);
     if (t.cashAccount === "CASH_ON_HAND") {
-      totalIncomeCashOnHandCents += t.amountCents;
+      totalIncomeCashOnHandCents = assertNoOverflow(totalIncomeCashOnHandCents + t.amountCents);
     } else {
-      totalIncomeCashInBankCents += t.amountCents;
+      totalIncomeCashInBankCents = assertNoOverflow(totalIncomeCashInBankCents + t.amountCents);
     }
   }
 
   for (const t of expenseTransactions) {
-    totalExpenseCents += t.amountCents;
+    totalExpenseCents = assertNoOverflow(totalExpenseCents + t.amountCents);
     if (t.cashAccount === "CASH_ON_HAND") {
-      totalExpenseCashOnHandCents += t.amountCents;
+      totalExpenseCashOnHandCents = assertNoOverflow(totalExpenseCashOnHandCents + t.amountCents);
     } else {
-      totalExpenseCashInBankCents += t.amountCents;
+      totalExpenseCashInBankCents = assertNoOverflow(totalExpenseCashInBankCents + t.amountCents);
     }
   }
 
-  const totalCashAvailableCents = balanceForwardedCents + totalIncomeCents;
+  const totalCashAvailableCents = assertNoOverflow(balanceForwardedCents + totalIncomeCents);
 
   const movements = [
     ...financialRowsToMovements(transactions),
@@ -244,9 +295,9 @@ export function buildReportPackage(
     movements
   );
 
-  const endingCashOnHandCents = balances.cashOnHandCents;
-  const endingCashInBankCents = balances.cashInBankCents;
-  const endingBalanceCents = balances.remainingCents;
+  const endingCashOnHandCents = assertNoOverflow(balances.cashOnHandCents);
+  const endingCashInBankCents = assertNoOverflow(balances.cashInBankCents);
+  const endingBalanceCents = assertNoOverflow(balances.remainingCents);
 
   const incomeCategoryMap = new Map<string, { categoryName: string; items: CollectionItemDto[]; totalCents: number }>();
   let collectionSeq = 1;
@@ -261,7 +312,7 @@ export function buildReportPackage(
     }
 
     const group = incomeCategoryMap.get(catId)!;
-    group.totalCents += t.amountCents;
+    group.totalCents = assertNoOverflow(group.totalCents + t.amountCents);
     group.items.push({
       sequenceNumber: collectionSeq++,
       transactionId: t.id,
@@ -279,7 +330,7 @@ export function buildReportPackage(
     ([catId, val]) => ({
       categoryId: catId,
       categoryName: val.categoryName,
-      totalCents: val.totalCents,
+      totalCents: assertNoOverflow(val.totalCents),
       items: val.items,
     })
   );
@@ -314,7 +365,7 @@ export function buildReportPackage(
     };
 
     bucketCents[mappedBucket] = t.amountCents;
-    bucketTotals[mappedBucket] += t.amountCents;
+    bucketTotals[mappedBucket] = assertNoOverflow(bucketTotals[mappedBucket] + t.amountCents);
 
     expenseRows.push({
       sequenceNumber: expenseSeq++,
@@ -334,8 +385,8 @@ export function buildReportPackage(
 
   const expenseCategories: ExpenseBucketSummaryDto[] = SCHEDULE_2_BUCKETS.map((bKey) => ({
     bucketKey: bKey,
-    bucketName: bKey,
-    totalCents: bucketTotals[bKey],
+    bucketName: bKey === "Misc" ? "Miscellaneous" : bKey,
+    totalCents: assertNoOverflow(bucketTotals[bKey]),
   }));
 
   const attachments: AttachmentReferenceDto[] = [];
@@ -349,7 +400,7 @@ export function buildReportPackage(
         documentNumber: t.documentNumber,
         description: t.description,
         originalName: att.originalName,
-        mimeType: att.mimeType,
+        mimeType: att.mimeType || "application/octet-stream",
         sizeBytes: att.sizeBytes,
       });
     }
@@ -364,16 +415,16 @@ export function buildReportPackage(
         documentNumber: transfer.documentNumber || null,
         description: transfer.description || "Cash transfer",
         originalName: att.originalName,
-        mimeType: att.mimeType,
+        mimeType: att.mimeType || "application/octet-stream",
         sizeBytes: att.sizeBytes,
       });
     }
   }
 
   return {
-    organizationId: term.organization.id,
-    organizationName: term.organization.name,
-    organizationSlug: term.organization.slug,
+    organizationId: term.organization?.id || "",
+    organizationName: organizationName || term.organization?.name || "",
+    organizationSlug: term.organization?.slug || "",
     termId: term.id,
     academicYear: term.academicYear,
     semester: term.semester,

@@ -21,6 +21,7 @@ function getAttachmentFile(formData: FormData): File {
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 const transferSchema = z.object({
+  termId: z.string().trim().min(1, "Term ID is required."),
   fromAccount: z.nativeEnum(CashAccount, { message: "Source account is required." }),
   toAccount: z.nativeEnum(CashAccount, { message: "Destination account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
@@ -34,6 +35,7 @@ const transferSchema = z.object({
 
 function transferFields(formData: FormData) {
   return {
+    termId: formData.get("termId")?.toString() || "",
     fromAccount: formData.get("fromAccount")?.toString() || "",
     toAccount: formData.get("toAccount")?.toString() || "",
     transferDate: formData.get("transferDate")?.toString() || "",
@@ -78,6 +80,7 @@ export async function createCashTransferAction(
 
   try {
     await createCashTransferService(user, {
+      termId: validation.data.termId,
       fromAccount: validation.data.fromAccount,
       toAccount: validation.data.toAccount,
       amountCents,
@@ -91,7 +94,7 @@ export async function createCashTransferAction(
         originalName: validatedFile.originalName,
         mimeType: validatedFile.mimeType,
         sizeBytes: validatedFile.sizeBytes,
-        buffer: validatedFile.buffer,
+        buffer: Buffer.from(validatedFile.buffer),
       },
     });
   } catch (error) {
@@ -108,7 +111,7 @@ export async function createCashTransferAction(
 
 const editTransferSchema = transferSchema.extend({
   id: z.string().trim().min(1, "Transfer ID is required."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: z.string().trim().min(1, "Version is required.").refine((v) => Number.isInteger(Number(v)) && Number(v) >= 1, "Version must be a positive integer."),
 });
 
 export async function editCashTransferAction(

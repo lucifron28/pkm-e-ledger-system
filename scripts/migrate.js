@@ -142,6 +142,16 @@ async function main() {
     process.exit(1);
   }
 
+  try {
+    execFileSync(process.execPath, [...preflightArgs, "--finalize"], {
+      cwd: ROOT_DIR,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    console.warn("[migrate] Warning: sidecar finalization encountered an error:", error.message);
+  }
+
   console.log("[migrate] SUCCESS");
 }
 

@@ -3,12 +3,17 @@
 import { useActionState, useMemo } from "react";
 import { createCashTransferAction } from "@/lib/actions/transfers";
 
-export function CreateCashTransferForm() {
+interface CreateCashTransferFormProps {
+  activeTermId: string;
+}
+
+export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormProps) {
   const [state, formAction, isPending] = useActionState(createCashTransferAction, null);
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
     <form action={formAction} encType="multipart/form-data" className="space-y-4">
+      <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {state?.error && <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

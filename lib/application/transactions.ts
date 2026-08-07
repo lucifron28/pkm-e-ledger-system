@@ -46,14 +46,14 @@ export interface TransactionDto {
 }
 
 export interface CreateTransactionInput {
-  termId?: string;
+  termId: string;
   type: TransactionType;
   transactionDate: Date;
   amountCents: number;
   cashAccount: CashAccount;
   categoryId: string;
   documentNumber?: string | null;
-  counterpartyName: string;
+  counterpartyName?: string | null;
   description: string;
   referenceDescription: string;
   eventActivityName?: string | null;
@@ -62,7 +62,7 @@ export interface CreateTransactionInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Uint8Array;
+    buffer: Buffer;
   };
 }
 
@@ -90,6 +90,7 @@ export async function createTransactionService(
   const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
 
   const payloadForHash = {
+    termId: input.termId,
     type: input.type,
     transactionDate: input.transactionDate.toISOString(),
     amountCents: input.amountCents,
@@ -141,13 +142,10 @@ export async function createTransactionService(
         payloadForHash,
         async (tx) => {
           const term = await tx.academicTerm.findFirst({
-            where: { organizationId: user.organizationId!, active: true },
+            where: { id: input.termId, organizationId: user.organizationId!, active: true },
           });
           if (!term) {
-            throw new ValidationError("No active academic term configured for transactions.");
-          }
-          if (input.termId && input.termId !== term.id) {
-            throw new ValidationError("Supplied term is not the active academic term. New entries may only be recorded in the active term.");
+            throw new ValidationError("The selected academic term is no longer active. Reload the ledger before recording this entry.");
           }
 
           const category = await tx.transactionCategory.findFirst({
@@ -194,7 +192,7 @@ export async function createTransactionService(
               cashAccount: input.cashAccount,
               categoryId: category.id,
               documentNumber: input.documentNumber?.trim() || null,
-              counterpartyName: input.counterpartyName.trim(),
+              counterpartyName: input.counterpartyName?.trim() || null,
               description: input.description.trim(),
               referenceDescription: input.referenceDescription.trim(),
               eventActivityName: input.eventActivityName?.trim() || null,
@@ -364,10 +362,13 @@ export async function editTransactionService(
         }
 
         const category = await tx.transactionCategory.findFirst({
-          where: { id: input.categoryId, type: input.type, active: true },
+          where: { id: input.categoryId },
         });
-        if (!category) {
-          throw new ValidationError("Invalid or inactive category for this transaction type.");
+        if (!category || category.type !== input.type) {
+          throw new ValidationError("Invalid category for this transaction type.");
+        }
+        if (input.categoryId !== existing.categoryId && !category.active) {
+          throw new ValidationError("Selected category is inactive. Please choose an active category.");
         }
 
         const activeTransactions = await tx.transaction.findMany({
