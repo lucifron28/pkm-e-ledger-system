@@ -39,9 +39,16 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
           tabIndex={-1}
           onKeyDown={handleKeyDown}
         >
-          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`edit-tr-title-${transfer.id}`}
+            className="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200"
+          >
             <div className="px-6 py-4 bg-[#004aad] text-white flex items-center justify-between">
-              <h3 className="font-bold text-[#f9d818] text-base">Edit Cash Transfer</h3>
+              <h3 id={`edit-tr-title-${transfer.id}`} className="font-bold text-[#f9d818] text-base">
+                Edit Cash Transfer
+              </h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
