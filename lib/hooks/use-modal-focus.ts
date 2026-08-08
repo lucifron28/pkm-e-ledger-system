@@ -38,10 +38,10 @@ export function getNextFocusTarget(
   return null;
 }
 
-export function useModalFocus({ isOpen, isPending, onClose }: UseModalFocusOptions) {
+export function useModalFocus<T extends HTMLElement = HTMLElement>({ isOpen, isPending, onClose }: UseModalFocusOptions) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const initialFocusRef = useRef<HTMLElement | null>(null);
+  const initialFocusRef = useRef<T | null>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef<boolean>(false);
 

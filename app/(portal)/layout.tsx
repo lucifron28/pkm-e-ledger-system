@@ -32,9 +32,8 @@ export default async function PortalLayout({
             </Suspense>
           </div>
 
-          {/* Right Header User & Organization Info */}
-          {/* Right Header User & Organization Info - hidden below md */}
-          <div className="hidden md:flex items-center space-x-4 text-xs">
+          {/* Right Header User & Organization Info - hidden below xl */}
+          <div className="hidden xl:flex items-center space-x-4 text-xs">
             <div className="text-right">
               <div className="font-bold text-white text-sm leading-tight">{user.fullName}</div>
               <div className="text-blue-100 flex items-center justify-end space-x-1.5">
