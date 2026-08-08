@@ -181,7 +181,9 @@ export interface LedgerPageSnapshotDto {
   terms: { id: string; academicYear: string; semester: Semester; active: boolean }[];
   pagination: {
     hasMore: boolean;
+    hasPrevious?: boolean;
     nextCursor: string | null;
+    previousCursor?: string | null;
     pageSize: number;
     countOnPage: number;
   };
@@ -215,7 +217,7 @@ function emptySnapshot(query: ParsedLedgerQuery): LedgerPageSnapshotDto {
     entries: [],
     categories: [],
     terms: [],
-    pagination: { hasMore: false, nextCursor: null, pageSize: query.pageSize, countOnPage: 0 },
+    pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null, pageSize: query.pageSize, countOnPage: 0 },
     queryValidity: emptyValidity(query),
   };
 }
@@ -302,6 +304,16 @@ export async function listTermsForLedger(): Promise<
   });
 }
 
+export async function listTermsForCurrentOrganization() {
+  const user = await requireManagementUser();
+  if (!user.organizationId) return [];
+  return prisma.academicTerm.findMany({
+    where: { organizationId: user.organizationId },
+    orderBy: [{ academicYear: "desc" }, { createdAt: "desc" }],
+    select: { id: true, academicYear: true, semester: true, active: true },
+  });
+}
+
 function compareLedgerEntries(a: LedgerEntry, b: LedgerEntry): number {
   const dateDifference = b.financialDate.getTime() - a.financialDate.getTime();
   if (dateDifference !== 0) return dateDifference;
@@ -309,6 +321,15 @@ function compareLedgerEntries(a: LedgerEntry, b: LedgerEntry): number {
   if (createdDifference !== 0) return createdDifference;
   if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
   return a.id.localeCompare(b.id);
+}
+
+function compareLedgerEntriesAsc(a: LedgerEntry, b: LedgerEntry): number {
+  const dateDifference = a.financialDate.getTime() - b.financialDate.getTime();
+  if (dateDifference !== 0) return dateDifference;
+  const createdDifference = a.createdAt.getTime() - b.createdAt.getTime();
+  if (createdDifference !== 0) return createdDifference;
+  if (a.kind !== b.kind) return b.kind.localeCompare(a.kind);
+  return b.id.localeCompare(a.id);
 }
 
 function compareToCursor(entry: LedgerEntry, cursor: ReturnType<typeof decodeLedgerCursor>): number {
@@ -371,19 +392,33 @@ function buildLedgerCursorConditions(
 
   const cursorDate = new Date(cursor.financialDate);
   const cursorCreatedAt = new Date(cursor.createdAt);
-  const conditions: Record<string, unknown>[] = [
-    { [dateField]: { lt: cursorDate } },
-    { [dateField]: cursorDate, createdAt: { lt: cursorCreatedAt } },
-  ];
+  const isPrev = cursor.dir === "prev";
 
-  if (kind === cursor.kind) {
-    conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt, id: { gt: cursor.id } });
-  } else if (kind === "TRANSFER") {
-    // TRANSFER sorts after TRANSACTION when date and createdAt tie.
-    conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt });
+  if (isPrev) {
+    const conditions: Record<string, unknown>[] = [
+      { [dateField]: { gt: cursorDate } },
+      { [dateField]: cursorDate, createdAt: { gt: cursorCreatedAt } },
+    ];
+    if (kind === cursor.kind) {
+      conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt, id: { lt: cursor.id } });
+    } else if (kind === "TRANSACTION") {
+      conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt });
+    }
+    return conditions;
+  } else {
+    const conditions: Record<string, unknown>[] = [
+      { [dateField]: { lt: cursorDate } },
+      { [dateField]: cursorDate, createdAt: { lt: cursorCreatedAt } },
+    ];
+
+    if (kind === cursor.kind) {
+      conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt, id: { gt: cursor.id } });
+    } else if (kind === "TRANSFER") {
+      conditions.push({ [dateField]: cursorDate, createdAt: cursorCreatedAt });
+    }
+
+    return conditions;
   }
-
-  return conditions;
 }
 
 function applyLedgerDateAndCursorConditions(
@@ -534,12 +569,16 @@ export async function getLedgerPageSnapshot(
     if (transferFilterConditions.length > 0) transferWhere.AND = transferFilterConditions;
     applyLedgerDateAndCursorConditions(transferWhere, "transferDate", dateRange, cursor, "TRANSFER");
 
+    const isPrev = cursor?.dir === "prev";
+
     const transactionRows = query.entryType === "TRANSFER"
       ? []
       : await tx.transaction.findMany({
           where: transactionWhere,
           include: transactionInclude,
-          orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }, { id: "asc" }],
+          orderBy: isPrev
+            ? [{ transactionDate: "asc" }, { createdAt: "asc" }, { id: "desc" }]
+            : [{ transactionDate: "desc" }, { createdAt: "desc" }, { id: "asc" }],
           take: query.pageSize + 1,
         });
     const transferRows = query.entryType === "TRANSACTION" || query.type || query.categoryId
@@ -547,7 +586,9 @@ export async function getLedgerPageSnapshot(
       : await tx.cashTransfer.findMany({
           where: transferWhere,
           include: transferInclude,
-          orderBy: [{ transferDate: "desc" }, { createdAt: "desc" }, { id: "asc" }],
+          orderBy: isPrev
+            ? [{ transferDate: "asc" }, { createdAt: "asc" }, { id: "desc" }]
+            : [{ transferDate: "desc" }, { createdAt: "desc" }, { id: "asc" }],
           take: query.pageSize + 1,
         });
 
@@ -592,18 +633,39 @@ export async function getLedgerPageSnapshot(
         kind: "TRANSFER" as const,
         financialDate: transfer.transferDate,
       })),
-    ].sort(compareLedgerEntries);
+    ].sort(isPrev ? compareLedgerEntriesAsc : compareLedgerEntries);
 
-    const afterCursor = cursor ? entries.filter((entry) => compareToCursor(entry, cursor) > 0) : entries;
-    const pageEntries = afterCursor.slice(0, query.pageSize);
-    const hasMore = afterCursor.length > query.pageSize;
+    const afterCursor = cursor
+      ? entries.filter((entry) => (isPrev ? compareToCursor(entry, cursor) < 0 : compareToCursor(entry, cursor) > 0))
+      : entries;
+    const hasExtra = afterCursor.length > query.pageSize;
+    const rawPageEntries = hasExtra ? afterCursor.slice(0, query.pageSize) : afterCursor;
+    const pageEntries = isPrev ? [...rawPageEntries].reverse() : rawPageEntries;
+
+    const first = pageEntries[0];
     const last = pageEntries[pageEntries.length - 1];
+
+    const hasMore = isPrev ? true : hasExtra;
+    const hasPrevious = isPrev ? hasExtra : Boolean(cursor);
+
     const nextCursor = hasMore && last
       ? encodeLedgerCursor({
           financialDate: last.financialDate.toISOString(),
           createdAt: last.createdAt.toISOString(),
           kind: last.kind,
           id: last.id,
+          dir: "next",
+          fingerprint,
+        })
+      : null;
+
+    const previousCursor = hasPrevious && first
+      ? encodeLedgerCursor({
+          financialDate: first.financialDate.toISOString(),
+          createdAt: first.createdAt.toISOString(),
+          kind: first.kind,
+          id: first.id,
+          dir: "prev",
           fingerprint,
         })
       : null;
@@ -624,7 +686,7 @@ export async function getLedgerPageSnapshot(
       entries: pageEntries,
       categories,
       terms,
-      pagination: { hasMore, nextCursor, pageSize: query.pageSize, countOnPage: pageEntries.length },
+      pagination: { hasMore, hasPrevious, nextCursor, previousCursor, pageSize: query.pageSize, countOnPage: pageEntries.length },
       queryValidity: emptyValidity(query),
     };
   });

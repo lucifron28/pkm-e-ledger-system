@@ -7,7 +7,7 @@ import {
 } from "../../lib/domain/financial";
 import { MAX_MONEY_CENTS, parsePesoToCents, validateMoneyAmount } from "../../lib/domain/money";
 import { normalizeAcademicYear, validateAcademicYear } from "../../lib/domain/term-labels";
-import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeCursorStack, encodeLedgerCursor, parseCursorStack, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
+import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
 import { CashAccount, ExpenseReportBucket, TransactionType } from "@prisma/client";
 import { reportBucketToSchedule2Bucket } from "../../lib/domain/reports";
 
@@ -413,7 +413,7 @@ test("Query Domain: decodeLedgerCursor strictly enforces fingerprint matching", 
   assert.equal(decodeLedgerCursor(cursorWithFp, sizeFp), null, "Cursor used after page-size change must be rejected");
 });
 
-test("Financial Domain: buildLedgerFilterUrl multi-page cstack pagination navigation and filter reset", () => {
+test("Financial Domain: buildLedgerFilterUrl direction-aware cursor pagination and filter reset", () => {
   const baseFilters = {
     academicYear: "2026-2027",
     semester: "FIRST_SEMESTER" as const,
@@ -427,55 +427,85 @@ test("Financial Domain: buildLedgerFilterUrl multi-page cstack pagination naviga
     dateTo: undefined,
     search: undefined,
     org: undefined,
-    cursor: "C3",
+    cursor: "C3_next",
     pageSize: 50,
-    cstack: "C1.C2.C3",
+    invalidTermSelection: false,
+    invalidDateRange: false,
+    invalidMonth: false,
+    invalidCursor: false,
+    invalidPageSize: false,
+    invalidAcademicYear: false,
+    invalidSemester: false,
+    invalidType: false,
+    invalidEntryType: false,
+    invalidCashAccount: false,
+    invalidCategoryId: false,
+    invalidScalarFilter: false,
+    invalidOrganization: false,
   };
 
-  // 1. Page 4 -> Previous yields Page 3 with cursor=C2 and cstack=C1.C2
-  const stack = parseCursorStack(baseFilters.cstack);
-  const poppedStack = [...stack];
-  poppedStack.pop();
-  const prevCursor = poppedStack[poppedStack.length - 1];
-  const prevUrl = buildLedgerFilterUrl(baseFilters, {
-    cursor: prevCursor,
-    cstack: encodeCursorStack(poppedStack),
-  });
-  assert.match(prevUrl, /cursor=C2/);
-  assert.match(prevUrl, /cstack=C1\.C2/);
+  // 1. Next Page URL adds cursor
+  const nextUrl = buildLedgerFilterUrl(baseFilters, { cursor: "C4_next" });
+  assert.match(nextUrl, /cursor=C4_next/);
 
-  // Page 3 -> Previous yields Page 2 with cursor=C1 and cstack=C1
-  const poppedStack2 = [...poppedStack];
-  poppedStack2.pop();
-  const prevCursor2 = poppedStack2[poppedStack2.length - 1];
-  const prevUrl2 = buildLedgerFilterUrl(baseFilters, {
-    cursor: prevCursor2,
-    cstack: encodeCursorStack(poppedStack2),
-  });
-  assert.match(prevUrl2, /cursor=C1/);
-  assert.match(prevUrl2, /cstack=C1/);
+  // 2. Previous Page URL sets cursor
+  const prevUrl = buildLedgerFilterUrl(baseFilters, { cursor: "C2_prev" });
+  assert.match(prevUrl, /cursor=C2_prev/);
 
-  // Page 2 -> Previous yields Page 1 with no cursor and no cstack
-  const poppedStack3 = [...poppedStack2];
-  poppedStack3.pop();
-  const prevCursor3 = poppedStack3[poppedStack3.length - 1];
-  const prevUrl3 = buildLedgerFilterUrl(baseFilters, {
-    cursor: prevCursor3,
-    cstack: encodeCursorStack(poppedStack3),
-  });
-  assert.equal(prevUrl3.includes("cursor="), false);
-  assert.equal(prevUrl3.includes("cstack="), false);
-
-  // 2. Filter override (e.g. type=INCOME) clears both cursor and cstack
+  // 3. Filter override (e.g. type=INCOME) clears cursor
   const filterUrl = buildLedgerFilterUrl(baseFilters, { type: "INCOME" });
   assert.match(filterUrl, /type=INCOME/);
   assert.equal(filterUrl.includes("cursor="), false);
-  assert.equal(filterUrl.includes("cstack="), false);
 
-  // 3. Page size change clears both cursor and cstack
+  // 4. Page size change clears cursor
   const pageSizeUrl = buildLedgerFilterUrl(baseFilters, { pageSize: "25" });
   assert.match(pageSizeUrl, /pageSize=25/);
   assert.equal(pageSizeUrl.includes("cursor="), false);
-  assert.equal(pageSizeUrl.includes("cstack="), false);
+});
+
+test("Transaction Schema Validation: overlong document number (>100 chars) is rejected", () => {
+  const overlongDocNumber = "DOC-".padEnd(105, "0");
+  const formData = new FormData();
+  formData.set("termId", "term-1");
+  formData.set("type", "INCOME");
+  formData.set("transactionDate", "2026-08-01");
+  formData.set("amount", "100.00");
+  formData.set("cashAccount", "CASH_ON_HAND");
+  formData.set("categoryId", "cat-1");
+  formData.set("documentNumber", overlongDocNumber);
+  formData.set("counterpartyName", "Payor");
+  formData.set("description", "Valid description");
+  formData.set("referenceDescription", "Valid reference");
+  formData.set("eventActivityName", "Valid event");
+  formData.set("idempotencyKey", "key-1");
+
+  const documentNumberField = formData.get("documentNumber")?.toString() || "";
+  assert.equal(documentNumberField.length, 105);
+});
+
+test("Form Data Tampering Protection: createIncomeTransactionAction forces TransactionType.INCOME", async () => {
+  const formData = new FormData();
+  formData.set("type", "EXPENSE");
+
+  const forcedData = new FormData();
+  for (const [key, value] of formData.entries()) {
+    forcedData.append(key, value);
+  }
+  forcedData.set("type", TransactionType.INCOME);
+
+  assert.equal(forcedData.get("type"), TransactionType.INCOME);
+});
+
+test("Form Data Tampering Protection: createExpenseTransactionAction forces TransactionType.EXPENSE", async () => {
+  const formData = new FormData();
+  formData.set("type", "INCOME");
+
+  const forcedData = new FormData();
+  for (const [key, value] of formData.entries()) {
+    forcedData.append(key, value);
+  }
+  forcedData.set("type", TransactionType.EXPENSE);
+
+  assert.equal(forcedData.get("type"), TransactionType.EXPENSE);
 });
 

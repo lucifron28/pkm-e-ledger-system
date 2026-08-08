@@ -353,7 +353,9 @@ export interface AuditLogPageDto {
   logs: AuditLogDto[];
   pagination: {
     hasMore: boolean;
+    hasPrevious?: boolean;
     nextCursor: string | null;
+    previousCursor?: string | null;
   };
   invalidCursor?: boolean;
 }
@@ -402,6 +404,8 @@ export interface AuditLogFilters {
 
 export interface AuditCursorPayload {
   id: string;
+  createdAt: string;
+  dir: "next" | "prev";
   fingerprint: string;
 }
 
@@ -418,16 +422,22 @@ export function buildAuditLogCursorFingerprint(organizationId: string, filters: 
   return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
 }
 
-export function encodeAuditCursor(id: string, fingerprint: string): string {
-  return Buffer.from(JSON.stringify({ id, fingerprint }), "utf8").toString("base64url");
+export function encodeAuditCursor(id: string, createdAt: string, dir: "next" | "prev", fingerprint: string): string {
+  return Buffer.from(JSON.stringify({ id, createdAt, dir, fingerprint }), "utf8").toString("base64url");
 }
 
-export function decodeAuditCursor(value: string | undefined, expectedFingerprint: string): string | null {
+export function decodeAuditCursor(value: string | undefined, expectedFingerprint: string): AuditCursorPayload | null {
   if (!value || typeof value !== "string" || !value.trim()) return null;
   try {
-    const decoded = JSON.parse(Buffer.from(value.trim(), "base64url").toString("utf8"));
-    if (typeof decoded.id === "string" && decoded.fingerprint === expectedFingerprint) {
-      return decoded.id;
+    const decoded = JSON.parse(Buffer.from(value.trim(), "base64url").toString("utf8")) as Partial<AuditCursorPayload>;
+    if (
+      typeof decoded.id === "string" &&
+      typeof decoded.createdAt === "string" &&
+      !Number.isNaN(Date.parse(decoded.createdAt)) &&
+      (decoded.dir === "next" || decoded.dir === "prev") &&
+      decoded.fingerprint === expectedFingerprint
+    ) {
+      return decoded as AuditCursorPayload;
     }
   } catch {
     /* Invalid cursor format */
@@ -440,16 +450,16 @@ export async function listAuditLogsForCurrentOrganization(
 ): Promise<AuditLogPageDto> {
   const user = await requireManagementUser();
   if (!user.organizationId) {
-    return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+    return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
   }
 
   const expectedFingerprint = buildAuditLogCursorFingerprint(user.organizationId, filters);
-  let resolvedCursorId: string | null = null;
+  let decodedCursor: AuditCursorPayload | null = null;
 
   if (filters.cursor) {
-    resolvedCursorId = decodeAuditCursor(filters.cursor, expectedFingerprint);
-    if (!resolvedCursorId) {
-      return { logs: [], pagination: { hasMore: false, nextCursor: null }, invalidCursor: true };
+    decodedCursor = decodeAuditCursor(filters.cursor, expectedFingerprint);
+    if (!decodedCursor) {
+      return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null }, invalidCursor: true };
     }
   }
 
@@ -483,15 +493,33 @@ export async function listAuditLogsForCurrentOrganization(
         lte = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
       }
 
-      if (gte && lte && gte > lte) return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+      if (gte && lte && gte > lte) return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
 
       where.createdAt = {
         ...(gte ? { gte } : {}),
         ...(lte ? { lte } : {}),
       };
     } catch {
-      return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+      return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
     }
+  }
+
+  const isPrev = decodedCursor?.dir === "prev";
+
+  if (decodedCursor) {
+    const cursorDate = new Date(decodedCursor.createdAt);
+    const cursorId = decodedCursor.id;
+    const cursorConditions = isPrev
+      ? [
+          { createdAt: { gt: cursorDate } },
+          { createdAt: cursorDate, id: { gt: cursorId } },
+        ]
+      : [
+          { createdAt: { lt: cursorDate } },
+          { createdAt: cursorDate, id: { lt: cursorId } },
+        ];
+    const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+    where.AND = [...existingAnd, { OR: cursorConditions }] as Prisma.AuditLogWhereInput[];
   }
 
   const logs = await prisma.auditLog.findMany({
@@ -500,19 +528,28 @@ export async function listAuditLogsForCurrentOrganization(
       user: { select: { id: true, username: true, fullName: true } },
       organization: { select: { id: true, name: true } },
     },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    orderBy: isPrev
+      ? [{ createdAt: "asc" }, { id: "asc" }]
+      : [{ createdAt: "desc" }, { id: "desc" }],
     take,
-    ...(resolvedCursorId ? { cursor: { id: resolvedCursorId }, skip: 1 } : {}),
   });
 
-  const hasMore = logs.length > pageSize;
-  const paginatedLogs = hasMore ? logs.slice(0, pageSize) : logs;
-  const lastId = paginatedLogs.length > 0 ? paginatedLogs[paginatedLogs.length - 1].id : null;
-  const nextCursor = hasMore && lastId ? encodeAuditCursor(lastId, expectedFingerprint) : null;
+  const hasExtra = logs.length > pageSize;
+  const rawPageLogs = hasExtra ? logs.slice(0, pageSize) : logs;
+  const pageLogs = isPrev ? [...rawPageLogs].reverse() : rawPageLogs;
+
+  const firstLog = pageLogs[0];
+  const lastLog = pageLogs[pageLogs.length - 1];
+
+  const hasMore = isPrev ? true : hasExtra;
+  const hasPrevious = isPrev ? hasExtra : Boolean(decodedCursor);
+
+  const nextCursor = hasMore && lastLog ? encodeAuditCursor(lastLog.id, lastLog.createdAt.toISOString(), "next", expectedFingerprint) : null;
+  const previousCursor = hasPrevious && firstLog ? encodeAuditCursor(firstLog.id, firstLog.createdAt.toISOString(), "prev", expectedFingerprint) : null;
 
   return {
-    logs: paginatedLogs.map(toAuditLogDto),
-    pagination: { hasMore, nextCursor },
+    logs: pageLogs.map(toAuditLogDto),
+    pagination: { hasMore, hasPrevious, nextCursor, previousCursor },
   };
 }
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState, useState, useMemo } from "react";
-import { createTransactionAction } from "@/lib/actions/transactions";
+import {
+  createTransactionAction,
+  createIncomeTransactionAction,
+  createExpenseTransactionAction,
+} from "@/lib/actions/transactions";
 import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 
@@ -20,7 +24,13 @@ export function CreateTransactionForm({
   initialType = TransactionType.INCOME,
   fixedType,
 }: CreateTransactionFormProps) {
-  const [state, formAction, isPending] = useActionState(createTransactionAction, null);
+  const actionToUse =
+    fixedType === TransactionType.INCOME
+      ? createIncomeTransactionAction
+      : fixedType === TransactionType.EXPENSE
+      ? createExpenseTransactionAction
+      : createTransactionAction;
+  const [state, formAction, isPending] = useActionState(actionToUse, null);
   const effectiveInitialType = fixedType || initialType;
   const [txType, setTxType] = useState<TransactionType>(effectiveInitialType);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
@@ -40,7 +50,7 @@ export function CreateTransactionForm({
       <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {fixedType && <input type="hidden" name="type" value={fixedType} />}
-      {state?.error && !state.fieldErrors && (
+      {state?.error && (
         <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -56,12 +66,15 @@ export function CreateTransactionForm({
               name="type"
               value={txType}
               onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
+              aria-invalid={Boolean(state?.fieldErrors?.type)}
+              aria-describedby={state?.fieldErrors?.type ? "create-tx-type-error" : undefined}
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
             >
               <option value="INCOME">Income</option>
               <option value="EXPENSE">Expense</option>
             </select>
           )}
+          {state?.fieldErrors?.type && <p id="create-tx-type-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.type[0]}</p>}
         </div>
 
         <div>
@@ -139,9 +152,13 @@ export function CreateTransactionForm({
             id="create-tx-doc-number"
             name="documentNumber"
             type="text"
+            maxLength={50}
             placeholder="e.g. OR-001"
+            aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
+            aria-describedby={state?.fieldErrors?.documentNumber ? "create-tx-doc-number-error" : undefined}
             className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
           />
+          {state?.fieldErrors?.documentNumber && <p id="create-tx-doc-number-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.documentNumber[0]}</p>}
         </div>
       </div>
 
@@ -152,6 +169,7 @@ export function CreateTransactionForm({
           name="counterpartyName"
           type="text"
           required
+          maxLength={100}
           placeholder="Name of person or entity"
           aria-invalid={Boolean(state?.fieldErrors?.counterpartyName)}
           aria-describedby={state?.fieldErrors?.counterpartyName ? "create-tx-counterparty-error" : undefined}
@@ -167,6 +185,7 @@ export function CreateTransactionForm({
           name="description"
           type="text"
           required
+          maxLength={250}
           placeholder="Brief description of the transaction"
           aria-invalid={Boolean(state?.fieldErrors?.description)}
           aria-describedby={state?.fieldErrors?.description ? "create-tx-description-error" : undefined}
@@ -182,6 +201,7 @@ export function CreateTransactionForm({
           name="referenceDescription"
           type="text"
           required
+          maxLength={250}
           placeholder="Notes about supporting documents"
           aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
           aria-describedby={state?.fieldErrors?.referenceDescription ? "create-tx-reference-error" : undefined}
@@ -215,6 +235,7 @@ export function CreateTransactionForm({
           name="eventActivityName"
           type="text"
           required
+          maxLength={100}
           placeholder="Associated project, event, or activity"
           aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
           aria-describedby={state?.fieldErrors?.eventActivityName ? "create-tx-event-error" : undefined}

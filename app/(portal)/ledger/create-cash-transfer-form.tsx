@@ -18,7 +18,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
       <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <input type="hidden" name="toAccount" value={toAccount} />
-      {state?.error && !state.fieldErrors && (
+      {state?.error && (
         <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -91,9 +91,13 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
             id="create-transfer-doc-number"
             name="documentNumber"
             type="text"
+            maxLength={50}
             placeholder="e.g. TR-001"
+            aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
+            aria-describedby={state?.fieldErrors?.documentNumber ? "create-transfer-doc-number-error" : undefined}
             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
           />
+          {state?.fieldErrors?.documentNumber && <p id="create-transfer-doc-number-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.documentNumber[0]}</p>}
         </div>
 
         <div>
@@ -102,9 +106,13 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
             id="create-transfer-event"
             name="eventActivityName"
             type="text"
+            maxLength={100}
             placeholder="Associated event/activity"
+            aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
+            aria-describedby={state?.fieldErrors?.eventActivityName ? "create-transfer-event-error" : undefined}
             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
           />
+          {state?.fieldErrors?.eventActivityName && <p id="create-transfer-event-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.eventActivityName[0]}</p>}
         </div>
       </div>
 
@@ -115,6 +123,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
           name="description"
           type="text"
           required
+          maxLength={250}
           placeholder="Reason for cash transfer"
           aria-invalid={Boolean(state?.fieldErrors?.description)}
           aria-describedby={state?.fieldErrors?.description ? "create-transfer-desc-error" : undefined}
@@ -130,6 +139,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
           name="referenceDescription"
           type="text"
           required
+          maxLength={250}
           placeholder="Notes about deposit slip or receipt"
           aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
           aria-describedby={state?.fieldErrors?.referenceDescription ? "create-transfer-ref-error" : undefined}

@@ -330,33 +330,28 @@ test("Audit Log: formatHumanReadableSummary computes detailed summaries for edit
   assert.equal(regSummary, "Registered new user account Fictional User (fictional_user) as OFFICER");
 });
 
-test("Audit Log Domain: cstack multi-page pagination navigation (Page 1 -> 2 -> 3 -> 4 -> 3 -> 2 -> 1)", async () => {
-  const { parseCursorStack, encodeCursorStack } = await import("../../lib/domain/query");
+test("Audit Log Domain: direction-aware keyset pagination encoding and fingerprint validation", async () => {
+  const { encodeAuditCursor, decodeAuditCursor, buildAuditLogCursorFingerprint } = await import("../../lib/data/audit-log");
 
-  // Page 4: cursor = C3, cstack = C1.C2.C3
-  const cstack4 = "C1.C2.C3";
-  const stack4 = parseCursorStack(cstack4);
-  assert.deepEqual(stack4, ["C1", "C2", "C3"]);
+  const orgId = "org-1";
+  const filters = { pageSize: 50 };
+  const fp = buildAuditLogCursorFingerprint(orgId, filters);
 
-  // Traverse to Page 3
-  const stack3 = [...stack4];
-  stack3.pop();
-  const cursor3 = stack3[stack3.length - 1];
-  assert.equal(cursor3, "C2");
-  assert.equal(encodeCursorStack(stack3), "C1.C2");
+  const nextCursorStr = encodeAuditCursor("log-100", "2026-08-01T10:00:00.000Z", "next", fp);
+  const prevCursorStr = encodeAuditCursor("log-50", "2026-08-01T12:00:00.000Z", "prev", fp);
 
-  // Traverse to Page 2
-  const stack2 = [...stack3];
-  stack2.pop();
-  const cursor2 = stack2[stack2.length - 1];
-  assert.equal(cursor2, "C1");
-  assert.equal(encodeCursorStack(stack2), "C1");
+  const decodedNext = decodeAuditCursor(nextCursorStr, fp);
+  assert.notEqual(decodedNext, null);
+  assert.equal(decodedNext?.id, "log-100");
+  assert.equal(decodedNext?.dir, "next");
 
-  // Traverse to Page 1
-  const stack1 = [...stack2];
-  stack1.pop();
-  const cursor1 = stack1[stack1.length - 1];
-  assert.equal(cursor1, undefined);
-  assert.equal(encodeCursorStack(stack1), undefined);
+  const decodedPrev = decodeAuditCursor(prevCursorStr, fp);
+  assert.notEqual(decodedPrev, null);
+  assert.equal(decodedPrev?.id, "log-50");
+  assert.equal(decodedPrev?.dir, "prev");
+
+  // Tampered fingerprint fails validation
+  const wrongFp = buildAuditLogCursorFingerprint("org-2", filters);
+  assert.equal(decodeAuditCursor(nextCursorStr, wrongFp), null);
 });
 

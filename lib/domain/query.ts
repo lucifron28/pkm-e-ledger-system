@@ -165,6 +165,7 @@ export interface LedgerCursor {
   createdAt: string;
   kind: "TRANSACTION" | "TRANSFER";
   id: string;
+  dir?: "next" | "prev";
   fingerprint?: string;
 }
 
@@ -185,6 +186,8 @@ export function decodeLedgerCursor(value: unknown, expectedFingerprint?: string)
       Number.isNaN(Date.parse(decoded.financialDate)) ||
       Number.isNaN(Date.parse(decoded.createdAt))
     ) return null;
+
+    if (decoded.dir !== undefined && decoded.dir !== "next" && decoded.dir !== "prev") return null;
 
     if (expectedFingerprint && decoded.fingerprint !== expectedFingerprint) {
       return null;
@@ -436,20 +439,6 @@ export function calculateEffectiveDateRange(
   };
 }
 
-export function parseCursorStack(raw: unknown): string[] {
-  const str = parseScalarString(raw);
-  if (!str) return [];
-  const parts = str.split(".").map((p) => p.trim()).filter(Boolean);
-  if (parts.length > 50) return parts.slice(-50);
-  return parts;
-}
-
-export function encodeCursorStack(stack: string[]): string | undefined {
-  if (stack.length === 0) return undefined;
-  const bounded = stack.length > 50 ? stack.slice(-50) : stack;
-  return bounded.join(".");
-}
-
 const LEDGER_URL_PARAM_KEYS = [
   "academicYear",
   "semester",
@@ -465,7 +454,6 @@ const LEDGER_URL_PARAM_KEYS = [
   "pageSize",
   "org",
   "cursor",
-  "cstack",
 ] as const;
 
 /**
@@ -491,7 +479,7 @@ export function buildLedgerFilterUrl(
     | "org"
     | "cursor"
     | "pageSize"
-  > & { cstack?: string },
+  >,
   overrides: Record<string, string | undefined>
 ): string {
   const merged: Record<string, string | undefined> = {
@@ -509,16 +497,14 @@ export function buildLedgerFilterUrl(
     pageSize: filters.pageSize && filters.pageSize !== 50 ? String(filters.pageSize) : undefined,
     org: filters.org,
     cursor: filters.cursor,
-    cstack: filters.cstack,
     ...overrides,
   };
 
   const hasFilterOrPageSizeOverride = Object.keys(overrides).some(
-    (key) => key !== "cursor" && key !== "cstack"
+    (key) => key !== "cursor"
   );
   if (hasFilterOrPageSizeOverride) {
     if (!("cursor" in overrides)) merged.cursor = undefined;
-    if (!("cstack" in overrides)) merged.cstack = undefined;
   }
 
   const params = new URLSearchParams();

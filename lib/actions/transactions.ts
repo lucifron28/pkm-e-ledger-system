@@ -128,6 +128,30 @@ export async function createTransactionAction(
   redirect("/ledger");
 }
 
+export async function createIncomeTransactionAction(
+  prevState: TxActionState,
+  formData: FormData
+): Promise<TxActionState> {
+  const forcedData = new FormData();
+  for (const [key, value] of formData.entries()) {
+    forcedData.append(key, value);
+  }
+  forcedData.set("type", TransactionType.INCOME);
+  return createTransactionAction(prevState, forcedData);
+}
+
+export async function createExpenseTransactionAction(
+  prevState: TxActionState,
+  formData: FormData
+): Promise<TxActionState> {
+  const forcedData = new FormData();
+  for (const [key, value] of formData.entries()) {
+    forcedData.append(key, value);
+  }
+  forcedData.set("type", TransactionType.EXPENSE);
+  return createTransactionAction(prevState, forcedData);
+}
+
 
 export async function editTransactionAction(
   _prevState: TxActionState,

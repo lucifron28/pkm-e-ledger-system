@@ -77,17 +77,16 @@ export function useModalFocus({ isOpen, isPending, onClose }: UseModalFocusOptio
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape") {
-        if (isPending) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
+      if (shouldAllowModalClose(isOpen, isPending, e.key)) {
         if (onClose) {
           e.stopPropagation();
           onClose();
           return;
         }
+      } else if (e.key === "Escape" && isPending) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
       }
 
       if (e.key === "Tab" && containerRef.current) {
@@ -101,7 +100,7 @@ export function useModalFocus({ isOpen, isPending, onClose }: UseModalFocusOptio
         }
       }
     },
-    [isPending, onClose]
+    [isOpen, isPending, onClose]
   );
 
   return {

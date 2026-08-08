@@ -16,7 +16,7 @@ import { CashTransferDetailsModal } from "./cash-transfer-details-modal";
 import { AttachmentManager } from "./attachment-manager";
 import { LedgerFilters } from "./ledger-filters";
 import { OsaLedgerSummaryView, OsaOrganizationSelectView } from "@/components/ledger/osa-ledger-summary";
-import { buildLedgerFilterUrl, encodeCursorStack, parseCursorStack, parseLedgerQueryParams } from "@/lib/domain/query";
+import { buildLedgerFilterUrl, parseLedgerQueryParams } from "@/lib/domain/query";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -78,37 +78,17 @@ export default async function LedgerPage({
 
   const balances = snapshot.balances;
 
-  const stack = parseCursorStack(rawParams.cstack);
   const currentCursor = parsedQuery.cursor;
   const hasCursor = Boolean(currentCursor);
 
-  const firstPageUrl = buildLedgerFilterUrl(parsedQuery, { cursor: undefined, cstack: undefined });
+  const firstPageUrl = buildLedgerFilterUrl(parsedQuery, { cursor: undefined });
 
-  let prevCursor: string | undefined = undefined;
-  let newStackForPrev: string[] = [];
-  if (hasCursor && stack.length > 0) {
-    const poppedStack = [...stack];
-    poppedStack.pop();
-    newStackForPrev = poppedStack;
-    prevCursor = poppedStack[poppedStack.length - 1];
-  }
-
-  const prevPageUrl = hasCursor
-    ? buildLedgerFilterUrl(parsedQuery, {
-        cursor: prevCursor,
-        cstack: encodeCursorStack(newStackForPrev),
-      })
+  const prevPageUrl = snapshot.pagination.previousCursor
+    ? buildLedgerFilterUrl(parsedQuery, { cursor: snapshot.pagination.previousCursor })
     : null;
 
-  const nextStack = snapshot.pagination.nextCursor
-    ? [...stack, snapshot.pagination.nextCursor]
-    : [];
-
   const nextPageUrl = snapshot.pagination.nextCursor
-    ? buildLedgerFilterUrl(parsedQuery, {
-        cursor: snapshot.pagination.nextCursor,
-        cstack: encodeCursorStack(nextStack),
-      })
+    ? buildLedgerFilterUrl(parsedQuery, { cursor: snapshot.pagination.nextCursor })
     : null;
 
   return (
