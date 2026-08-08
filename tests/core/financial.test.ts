@@ -463,26 +463,111 @@ test("Financial Domain: buildLedgerFilterUrl direction-aware cursor pagination a
   assert.equal(pageSizeUrl.includes("cursor="), false);
 });
 
-test("Transaction Schema Validation: overlong document number (>100 chars) is rejected", () => {
-  const overlongDocNumber = "DOC-".padEnd(105, "0");
-  const formData = new FormData();
-  formData.set("termId", "term-1");
-  formData.set("type", "INCOME");
-  formData.set("transactionDate", "2026-08-01");
-  formData.set("amount", "100.00");
-  formData.set("cashAccount", "CASH_ON_HAND");
-  formData.set("categoryId", "cat-1");
-  formData.set("documentNumber", overlongDocNumber);
-  formData.set("counterpartyName", "Payor");
-  formData.set("description", "Valid description");
-  formData.set("referenceDescription", "Valid reference");
-  formData.set("eventActivityName", "Valid event");
-  const documentNumberField = formData.get("documentNumber")?.toString() || "";
-  assert.equal(documentNumberField.length, 105);
+test("Real Transaction Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
+  const { createTransactionSchema, editTransactionSchema } = await import("../../lib/actions/transactions");
+  const { TRANSACTION_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
+
+  const validBase = {
+    termId: "term-1",
+    id: "tx-1",
+    version: "1",
+    idempotencyKey: "key-1",
+    type: "INCOME",
+    transactionDate: "2026-08-01",
+    amount: "100.00",
+    cashAccount: "CASH_ON_HAND",
+    categoryId: "cat-1",
+    documentNumber: "a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber),
+    counterpartyName: "b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName),
+    description: "c".repeat(TRANSACTION_FIELD_LIMITS.description),
+    referenceDescription: "d".repeat(TRANSACTION_FIELD_LIMITS.referenceDescription),
+    eventActivityName: "e".repeat(TRANSACTION_FIELD_LIMITS.eventActivityName),
+  };
+
+  // Boundary N accepted on create and edit schemas
+  assert.equal(createTransactionSchema.safeParse(validBase).success, true);
+  assert.equal(editTransactionSchema.safeParse(validBase).success, true);
+
+  // Field N+1 rejections
+  const fields: Array<{ field: keyof typeof TRANSACTION_FIELD_LIMITS; limit: number; expectedMsg: string }> = [
+    { field: "documentNumber", limit: 100, expectedMsg: "Document number must be at most 100 characters." },
+    { field: "counterpartyName", limit: 200, expectedMsg: "Payor / Payee must be at most 200 characters." },
+    { field: "description", limit: 500, expectedMsg: "Description must be at most 500 characters." },
+    { field: "referenceDescription", limit: 500, expectedMsg: "Reference description must be at most 500 characters." },
+    { field: "eventActivityName", limit: 200, expectedMsg: "Event / Activity name must be at most 200 characters." },
+  ];
+
+  for (const { field, limit, expectedMsg } of fields) {
+    const invalidPayload = { ...validBase, [field]: "x".repeat(limit + 1) };
+
+    const createResult = createTransactionSchema.safeParse(invalidPayload);
+    assert.equal(createResult.success, false);
+    if (!createResult.success) {
+      const issue = createResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+
+    const editResult = editTransactionSchema.safeParse(invalidPayload);
+    assert.equal(editResult.success, false);
+    if (!editResult.success) {
+      const issue = editResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+  }
+});
+
+test("Real Cash Transfer Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
+  const { createTransferSchema, editTransferSchema } = await import("../../lib/actions/transfers");
+  const { TRANSFER_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
+
+  const validBase = {
+    termId: "term-1",
+    id: "tr-1",
+    version: "1",
+    idempotencyKey: "key-1",
+    fromAccount: "CASH_ON_HAND",
+    toAccount: "CASH_IN_BANK",
+    transferDate: "2026-08-01",
+    amount: "100.00",
+    documentNumber: "a".repeat(TRANSFER_FIELD_LIMITS.documentNumber),
+    description: "b".repeat(TRANSFER_FIELD_LIMITS.description),
+    referenceDescription: "c".repeat(TRANSFER_FIELD_LIMITS.referenceDescription),
+    eventActivityName: "d".repeat(TRANSFER_FIELD_LIMITS.eventActivityName),
+  };
+
+  // Boundary N accepted on create and edit schemas
+  assert.equal(createTransferSchema.safeParse(validBase).success, true);
+  assert.equal(editTransferSchema.safeParse(validBase).success, true);
+
+  // Field N+1 rejections
+  const fields: Array<{ field: keyof typeof TRANSFER_FIELD_LIMITS; limit: number; expectedMsg: string }> = [
+    { field: "documentNumber", limit: 100, expectedMsg: "Document number must be at most 100 characters." },
+    { field: "description", limit: 500, expectedMsg: "Description must be at most 500 characters." },
+    { field: "referenceDescription", limit: 500, expectedMsg: "Reference description must be at most 500 characters." },
+    { field: "eventActivityName", limit: 200, expectedMsg: "Event / Activity name must be at most 200 characters." },
+  ];
+
+  for (const { field, limit, expectedMsg } of fields) {
+    const invalidPayload = { ...validBase, [field]: "x".repeat(limit + 1) };
+
+    const createResult = createTransferSchema.safeParse(invalidPayload);
+    assert.equal(createResult.success, false);
+    if (!createResult.success) {
+      const issue = createResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+
+    const editResult = editTransferSchema.safeParse(invalidPayload);
+    assert.equal(editResult.success, false);
+    if (!editResult.success) {
+      const issue = editResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+  }
 });
 
 test("Form Data Tampering Protection: forceTransactionType forces TransactionType.INCOME for income action", async () => {
-  const { forceTransactionType } = await import("../../lib/domain/field-limits");
+  const { forceTransactionType } = await import("../../lib/domain/transactions");
   const formData = new FormData();
   formData.set("type", "EXPENSE");
   formData.set("amount", "100.00");
@@ -493,7 +578,7 @@ test("Form Data Tampering Protection: forceTransactionType forces TransactionTyp
 });
 
 test("Form Data Tampering Protection: forceTransactionType forces TransactionType.EXPENSE for expense action", async () => {
-  const { forceTransactionType } = await import("../../lib/domain/field-limits");
+  const { forceTransactionType } = await import("../../lib/domain/transactions");
   const formData = new FormData();
   formData.set("type", "INCOME");
   formData.set("amount", "50.00");
@@ -501,27 +586,5 @@ test("Form Data Tampering Protection: forceTransactionType forces TransactionTyp
   const forced = forceTransactionType(formData, TransactionType.EXPENSE);
   assert.equal(forced.get("type"), TransactionType.EXPENSE);
   assert.equal(forced.get("amount"), "50.00");
-});
-
-test("Transaction & Transfer Field Limits: boundary and boundary+1 length validations", async () => {
-  const { TRANSACTION_FIELD_LIMITS, TRANSFER_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
-
-  // Document Number limit (100)
-  assert.equal("a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber).length, 100);
-  assert.equal("a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber + 1).length, 101);
-
-  // Counterparty limit (200)
-  assert.equal("b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName).length, 200);
-  assert.equal("b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName + 1).length, 201);
-
-  // Description limit (500)
-  assert.equal("c".repeat(TRANSACTION_FIELD_LIMITS.description).length, 500);
-  assert.equal("c".repeat(TRANSACTION_FIELD_LIMITS.description + 1).length, 501);
-
-  // Transfer limits matching domain values
-  assert.equal(TRANSFER_FIELD_LIMITS.documentNumber, 100);
-  assert.equal(TRANSFER_FIELD_LIMITS.description, 500);
-  assert.equal(TRANSFER_FIELD_LIMITS.referenceDescription, 500);
-  assert.equal(TRANSFER_FIELD_LIMITS.eventActivityName, 200);
 });
 

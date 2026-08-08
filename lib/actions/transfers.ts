@@ -22,18 +22,18 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
-const transferBaseSchema = z.object({
+export const transferBaseSchema = z.object({
   fromAccount: z.nativeEnum(CashAccount, { message: "Source cash account is required." }),
   toAccount: z.nativeEnum(CashAccount, { message: "Destination cash account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
-  documentNumber: z.string().trim().max(TRANSFER_FIELD_LIMITS.documentNumber, `Document number must be under ${TRANSFER_FIELD_LIMITS.documentNumber} characters.`).optional(),
-  description: z.string().trim().min(1, "Description is required.").max(TRANSFER_FIELD_LIMITS.description, `Description must be under ${TRANSFER_FIELD_LIMITS.description} characters.`),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSFER_FIELD_LIMITS.referenceDescription, `Reference description must be under ${TRANSFER_FIELD_LIMITS.referenceDescription} characters.`),
-  eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be under ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
+  documentNumber: z.string().trim().max(TRANSFER_FIELD_LIMITS.documentNumber, `Document number must be at most ${TRANSFER_FIELD_LIMITS.documentNumber} characters.`).optional(),
+  description: z.string().trim().min(1, "Description is required.").max(TRANSFER_FIELD_LIMITS.description, `Description must be at most ${TRANSFER_FIELD_LIMITS.description} characters.`),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSFER_FIELD_LIMITS.referenceDescription, `Reference description must be at most ${TRANSFER_FIELD_LIMITS.referenceDescription} characters.`),
+  eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
 });
 
-const createTransferSchema = transferBaseSchema.extend({
+export const createTransferSchema = transferBaseSchema.extend({
   termId: z.string().trim().min(1, "Term ID is required."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
