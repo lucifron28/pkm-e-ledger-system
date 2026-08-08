@@ -70,13 +70,17 @@ test("Password Verification: over 72 bytes login attempt safely returns false wi
   assert.equal(result, false);
 });
 
-test("Registration & Password Change Validation enforces password length boundary", () => {
+test("Password Validation: shared validatePasswordLength helper enforces 8-72 byte boundary for registration and password change inputs", () => {
   const validRegPassword = "Password123";
   assert.equal(validatePasswordLength(validRegPassword).valid, true);
 
   const overlongRegPassword = "a".repeat(73);
-  assert.equal(validatePasswordLength(overlongRegPassword).valid, false);
+  const overlongRegResult = validatePasswordLength(overlongRegPassword);
+  assert.equal(overlongRegResult.valid, false);
+  assert.equal(overlongRegResult.message?.includes("72 bytes"), true);
 
   const overlongChangePassword = "a".repeat(73);
-  assert.equal(validatePasswordLength(overlongChangePassword).valid, false);
+  const overlongChangeResult = validatePasswordLength(overlongChangePassword);
+  assert.equal(overlongChangeResult.valid, false);
+  assert.equal(overlongChangeResult.message?.includes("72 bytes"), true);
 });

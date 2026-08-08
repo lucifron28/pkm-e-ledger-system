@@ -11,6 +11,8 @@ import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../dom
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { DomainError } from "../domain/errors";
 
+import { TRANSFER_FIELD_LIMITS } from "../domain/field-limits";
+
 function getAttachmentFile(formData: FormData): File {
   const file = formData.get("attachment");
   if (!(file instanceof File) || file.size <= 0) {
@@ -25,10 +27,10 @@ const transferBaseSchema = z.object({
   toAccount: z.nativeEnum(CashAccount, { message: "Destination cash account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
-  documentNumber: z.string().trim().max(100, "Document number must be under 100 characters.").optional(),
-  description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
-  eventActivityName: z.string().trim().max(200, "Event / Activity name must be under 200 characters.").optional(),
+  documentNumber: z.string().trim().max(TRANSFER_FIELD_LIMITS.documentNumber, `Document number must be under ${TRANSFER_FIELD_LIMITS.documentNumber} characters.`).optional(),
+  description: z.string().trim().min(1, "Description is required.").max(TRANSFER_FIELD_LIMITS.description, `Description must be under ${TRANSFER_FIELD_LIMITS.description} characters.`),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSFER_FIELD_LIMITS.referenceDescription, `Reference description must be under ${TRANSFER_FIELD_LIMITS.referenceDescription} characters.`),
+  eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be under ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
 });
 
 const createTransferSchema = transferBaseSchema.extend({

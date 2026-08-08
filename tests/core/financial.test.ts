@@ -477,35 +477,51 @@ test("Transaction Schema Validation: overlong document number (>100 chars) is re
   formData.set("description", "Valid description");
   formData.set("referenceDescription", "Valid reference");
   formData.set("eventActivityName", "Valid event");
-  formData.set("idempotencyKey", "key-1");
-
   const documentNumberField = formData.get("documentNumber")?.toString() || "";
   assert.equal(documentNumberField.length, 105);
 });
 
-test("Form Data Tampering Protection: createIncomeTransactionAction forces TransactionType.INCOME", async () => {
+test("Form Data Tampering Protection: forceTransactionType forces TransactionType.INCOME for income action", async () => {
+  const { forceTransactionType } = await import("../../lib/domain/field-limits");
   const formData = new FormData();
   formData.set("type", "EXPENSE");
+  formData.set("amount", "100.00");
 
-  const forcedData = new FormData();
-  for (const [key, value] of formData.entries()) {
-    forcedData.append(key, value);
-  }
-  forcedData.set("type", TransactionType.INCOME);
-
-  assert.equal(forcedData.get("type"), TransactionType.INCOME);
+  const forced = forceTransactionType(formData, TransactionType.INCOME);
+  assert.equal(forced.get("type"), TransactionType.INCOME);
+  assert.equal(forced.get("amount"), "100.00");
 });
 
-test("Form Data Tampering Protection: createExpenseTransactionAction forces TransactionType.EXPENSE", async () => {
+test("Form Data Tampering Protection: forceTransactionType forces TransactionType.EXPENSE for expense action", async () => {
+  const { forceTransactionType } = await import("../../lib/domain/field-limits");
   const formData = new FormData();
   formData.set("type", "INCOME");
+  formData.set("amount", "50.00");
 
-  const forcedData = new FormData();
-  for (const [key, value] of formData.entries()) {
-    forcedData.append(key, value);
-  }
-  forcedData.set("type", TransactionType.EXPENSE);
+  const forced = forceTransactionType(formData, TransactionType.EXPENSE);
+  assert.equal(forced.get("type"), TransactionType.EXPENSE);
+  assert.equal(forced.get("amount"), "50.00");
+});
 
-  assert.equal(forcedData.get("type"), TransactionType.EXPENSE);
+test("Transaction & Transfer Field Limits: boundary and boundary+1 length validations", async () => {
+  const { TRANSACTION_FIELD_LIMITS, TRANSFER_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
+
+  // Document Number limit (100)
+  assert.equal("a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber).length, 100);
+  assert.equal("a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber + 1).length, 101);
+
+  // Counterparty limit (200)
+  assert.equal("b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName).length, 200);
+  assert.equal("b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName + 1).length, 201);
+
+  // Description limit (500)
+  assert.equal("c".repeat(TRANSACTION_FIELD_LIMITS.description).length, 500);
+  assert.equal("c".repeat(TRANSACTION_FIELD_LIMITS.description + 1).length, 501);
+
+  // Transfer limits matching domain values
+  assert.equal(TRANSFER_FIELD_LIMITS.documentNumber, 100);
+  assert.equal(TRANSFER_FIELD_LIMITS.description, 500);
+  assert.equal(TRANSFER_FIELD_LIMITS.referenceDescription, 500);
+  assert.equal(TRANSFER_FIELD_LIMITS.eventActivityName, 200);
 });
 

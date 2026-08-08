@@ -6,6 +6,7 @@ import type { TransactionDto, CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 import { formatPesoInputFromCents } from "@/lib/data/money";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
+import { TRANSACTION_FIELD_LIMITS } from "@/lib/domain/field-limits";
 
 interface EditTransactionFormProps {
   transaction: TransactionDto;
@@ -26,7 +27,7 @@ export function EditTransactionForm({
   const dateStr = transaction.transactionDate.toISOString().split("T")[0];
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
-  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus<HTMLInputElement>({
     isOpen,
     isPending,
     onClose: () => setIsOpen(false),
@@ -216,6 +217,7 @@ export function EditTransactionForm({
                     id={`edit-doc-${transaction.id}`}
                     name="documentNumber"
                     type="text"
+                    maxLength={TRANSACTION_FIELD_LIMITS.documentNumber}
                     defaultValue={transaction.documentNumber || ""}
                     placeholder="e.g. OR-1001"
                     aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
@@ -239,6 +241,7 @@ export function EditTransactionForm({
                     id={`edit-party-${transaction.id}`}
                     name="counterpartyName"
                     type="text"
+                    maxLength={TRANSACTION_FIELD_LIMITS.counterpartyName}
                     defaultValue={transaction.counterpartyName || ""}
                     placeholder={txType === TransactionType.INCOME ? "Received from..." : "Paid to..."}
                     aria-invalid={Boolean(state?.fieldErrors?.counterpartyName)}
@@ -259,6 +262,7 @@ export function EditTransactionForm({
                     id={`edit-event-${transaction.id}`}
                     name="eventActivityName"
                     type="text"
+                    maxLength={TRANSACTION_FIELD_LIMITS.eventActivityName}
                     defaultValue={transaction.eventActivityName || ""}
                     placeholder="e.g. Sportsfest 2026"
                     aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
@@ -282,6 +286,7 @@ export function EditTransactionForm({
                   name="description"
                   type="text"
                   required
+                  maxLength={TRANSACTION_FIELD_LIMITS.description}
                   defaultValue={transaction.description}
                   aria-invalid={Boolean(state?.fieldErrors?.description)}
                   aria-describedby={state?.fieldErrors?.description ? `err-desc-${transaction.id}` : undefined}
@@ -303,6 +308,7 @@ export function EditTransactionForm({
                   name="referenceDescription"
                   type="text"
                   required
+                  maxLength={TRANSACTION_FIELD_LIMITS.referenceDescription}
                   defaultValue={transaction.referenceDescription}
                   aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
                   aria-describedby={state?.fieldErrors?.referenceDescription ? `err-ref-${transaction.id}` : undefined}

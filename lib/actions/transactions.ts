@@ -15,6 +15,8 @@ import {
 } from "../application/transactions";
 import { DomainError } from "../domain/errors";
 
+import { TRANSACTION_FIELD_LIMITS, forceTransactionType } from "../domain/field-limits";
+
 type TxActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 
 function getAttachmentFile(formData: FormData): File {
@@ -31,11 +33,11 @@ const transactionBaseSchema = z.object({
   amount: z.string().trim().min(1, "Amount is required."),
   cashAccount: z.nativeEnum(CashAccount, { message: "Cash account is required." }),
   categoryId: z.string().trim().min(1, "Category is required."),
-  documentNumber: z.string().trim().max(100, "Document number must be under 100 characters.").optional(),
-  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(200, "Payor / Payee must be under 200 characters."),
-  description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
-  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(200, "Event / Activity name must be under 200 characters."),
+  documentNumber: z.string().trim().max(TRANSACTION_FIELD_LIMITS.documentNumber, `Document number must be under ${TRANSACTION_FIELD_LIMITS.documentNumber} characters.`).optional(),
+  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(TRANSACTION_FIELD_LIMITS.counterpartyName, `Payor / Payee must be under ${TRANSACTION_FIELD_LIMITS.counterpartyName} characters.`),
+  description: z.string().trim().min(1, "Description is required.").max(TRANSACTION_FIELD_LIMITS.description, `Description must be under ${TRANSACTION_FIELD_LIMITS.description} characters.`),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSACTION_FIELD_LIMITS.referenceDescription, `Reference description must be under ${TRANSACTION_FIELD_LIMITS.referenceDescription} characters.`),
+  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(TRANSACTION_FIELD_LIMITS.eventActivityName, `Event / Activity name must be under ${TRANSACTION_FIELD_LIMITS.eventActivityName} characters.`),
 });
 
 const createTransactionSchema = transactionBaseSchema.extend({
@@ -128,28 +130,19 @@ export async function createTransactionAction(
   redirect("/ledger");
 }
 
+
 export async function createIncomeTransactionAction(
   prevState: TxActionState,
   formData: FormData
 ): Promise<TxActionState> {
-  const forcedData = new FormData();
-  for (const [key, value] of formData.entries()) {
-    forcedData.append(key, value);
-  }
-  forcedData.set("type", TransactionType.INCOME);
-  return createTransactionAction(prevState, forcedData);
+  return createTransactionAction(prevState, forceTransactionType(formData, TransactionType.INCOME));
 }
 
 export async function createExpenseTransactionAction(
   prevState: TxActionState,
   formData: FormData
 ): Promise<TxActionState> {
-  const forcedData = new FormData();
-  for (const [key, value] of formData.entries()) {
-    forcedData.append(key, value);
-  }
-  forcedData.set("type", TransactionType.EXPENSE);
-  return createTransactionAction(prevState, forcedData);
+  return createTransactionAction(prevState, forceTransactionType(formData, TransactionType.EXPENSE));
 }
 
 

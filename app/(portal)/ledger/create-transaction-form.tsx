@@ -9,6 +9,8 @@ import {
 import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 
+import { TRANSACTION_FIELD_LIMITS } from "@/lib/domain/field-limits";
+
 interface CreateTransactionFormProps {
   activeTermId: string;
   incomeCategories: CategoryDto[];
@@ -55,24 +57,29 @@ export function CreateTransactionForm({
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label htmlFor="create-tx-type" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>
           {fixedType ? (
-            <div id="create-tx-type" className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-slate-700">
-              {fixedType === TransactionType.INCOME ? "Income (Fixed)" : "Expense (Fixed)"}
-            </div>
+            <>
+              <span id="create-tx-type-label" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</span>
+              <div aria-labelledby="create-tx-type-label" className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-slate-700">
+                {fixedType === TransactionType.INCOME ? "Income (Fixed)" : "Expense (Fixed)"}
+              </div>
+            </>
           ) : (
-            <select
-              id="create-tx-type"
-              name="type"
-              value={txType}
-              onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
-              aria-invalid={Boolean(state?.fieldErrors?.type)}
-              aria-describedby={state?.fieldErrors?.type ? "create-tx-type-error" : undefined}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
-            >
-              <option value="INCOME">Income</option>
-              <option value="EXPENSE">Expense</option>
-            </select>
+            <>
+              <label htmlFor="create-tx-type" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>
+              <select
+                id="create-tx-type"
+                name="type"
+                value={txType}
+                onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
+                aria-invalid={Boolean(state?.fieldErrors?.type)}
+                aria-describedby={state?.fieldErrors?.type ? "create-tx-type-error" : undefined}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+              >
+                <option value="INCOME">Income</option>
+                <option value="EXPENSE">Expense</option>
+              </select>
+            </>
           )}
           {state?.fieldErrors?.type && <p id="create-tx-type-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.type[0]}</p>}
         </div>
@@ -152,7 +159,7 @@ export function CreateTransactionForm({
             id="create-tx-doc-number"
             name="documentNumber"
             type="text"
-            maxLength={50}
+            maxLength={TRANSACTION_FIELD_LIMITS.documentNumber}
             placeholder="e.g. OR-001"
             aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
             aria-describedby={state?.fieldErrors?.documentNumber ? "create-tx-doc-number-error" : undefined}
@@ -169,7 +176,7 @@ export function CreateTransactionForm({
           name="counterpartyName"
           type="text"
           required
-          maxLength={100}
+          maxLength={TRANSACTION_FIELD_LIMITS.counterpartyName}
           placeholder="Name of person or entity"
           aria-invalid={Boolean(state?.fieldErrors?.counterpartyName)}
           aria-describedby={state?.fieldErrors?.counterpartyName ? "create-tx-counterparty-error" : undefined}
@@ -185,7 +192,7 @@ export function CreateTransactionForm({
           name="description"
           type="text"
           required
-          maxLength={250}
+          maxLength={TRANSACTION_FIELD_LIMITS.description}
           placeholder="Brief description of the transaction"
           aria-invalid={Boolean(state?.fieldErrors?.description)}
           aria-describedby={state?.fieldErrors?.description ? "create-tx-description-error" : undefined}
@@ -201,7 +208,7 @@ export function CreateTransactionForm({
           name="referenceDescription"
           type="text"
           required
-          maxLength={250}
+          maxLength={TRANSACTION_FIELD_LIMITS.referenceDescription}
           placeholder="Notes about supporting documents"
           aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
           aria-describedby={state?.fieldErrors?.referenceDescription ? "create-tx-reference-error" : undefined}
@@ -235,7 +242,7 @@ export function CreateTransactionForm({
           name="eventActivityName"
           type="text"
           required
-          maxLength={100}
+          maxLength={TRANSACTION_FIELD_LIMITS.eventActivityName}
           placeholder="Associated project, event, or activity"
           aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
           aria-describedby={state?.fieldErrors?.eventActivityName ? "create-tx-event-error" : undefined}

@@ -5,6 +5,7 @@ import { editCashTransferAction } from "@/lib/actions/transfers";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoInputFromCents } from "@/lib/data/money";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
+import { TRANSFER_FIELD_LIMITS } from "@/lib/domain/field-limits";
 
 export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEntry, { kind: "TRANSFER" }> }) {
   const [state, formAction, isPending] = useActionState(editCashTransferAction, null);
@@ -14,7 +15,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
   const date = transfer.transferDate.toISOString().slice(0, 10);
 
-  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus({
+  const { triggerRef, containerRef, initialFocusRef, handleKeyDown } = useModalFocus<HTMLInputElement>({
     isOpen: open,
     isPending,
     onClose: () => setOpen(false),
@@ -38,89 +39,73 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
           tabIndex={-1}
           onKeyDown={handleKeyDown}
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`edit-transfer-heading-${transfer.id}`}
-            className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex items-center justify-between">
-              <h3 id={`edit-transfer-heading-${transfer.id}`} className="font-bold text-slate-900 text-lg">
-                Edit Cash Transfer
-              </h3>
+          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 bg-[#004aad] text-white flex items-center justify-between">
+              <h3 className="font-bold text-[#f9d818] text-base">Edit Cash Transfer</h3>
               <button
-                ref={initialFocusRef as React.RefObject<HTMLButtonElement>}
                 type="button"
-                onClick={() => !isPending && setOpen(false)}
+                onClick={() => setOpen(false)}
                 disabled={isPending}
-                aria-label="Close dialog"
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-white hover:text-yellow-300 text-sm font-bold"
               >
-                &times;
+                Close
               </button>
             </div>
 
-            {state?.error && !state.fieldErrors && (
-              <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">
-                {state.error}
-              </div>
-            )}
-
-            <form action={formAction} className="space-y-4">
+            <form action={formAction} className="p-6 space-y-4">
               <input type="hidden" name="id" value={transfer.id} />
               <input type="hidden" name="version" value={transfer.version} />
               <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
               <input type="hidden" name="toAccount" value={toAccount} />
 
+              {state?.error && (
+                <div role="alert" className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg">
+                  {state.error}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor={`edit-from-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-from-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                     From Account
                   </label>
                   <select
-                    id={`edit-from-${transfer.id}`}
+                    id={`edit-tr-from-${transfer.id}`}
                     name="fromAccount"
                     value={fromAccount}
                     onChange={(e) => setFromAccount(e.target.value as "CASH_ON_HAND" | "CASH_IN_BANK")}
-                    aria-invalid={Boolean(state?.fieldErrors?.fromAccount)}
-                    aria-describedby={state?.fieldErrors?.fromAccount ? `err-from-${transfer.id}` : undefined}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
                   >
                     <option value="CASH_ON_HAND">Cash on Hand</option>
                     <option value="CASH_IN_BANK">Cash in Bank</option>
                   </select>
-                  {state?.fieldErrors?.fromAccount && (
-                    <p id={`err-from-${transfer.id}`} className="mt-1 text-xs text-red-600">
-                      {state.fieldErrors.fromAccount[0]}
-                    </p>
-                  )}
                 </div>
-
                 <div>
-                  <label htmlFor={`edit-to-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-to-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                     To Account
                   </label>
-                  <select
-                    id={`edit-to-${transfer.id}`}
-                    disabled
-                    value={toAccount}
-                    className="w-full px-3 py-2 border rounded-lg text-sm bg-slate-100 text-slate-600"
-                  >
-                    <option value="CASH_IN_BANK">Cash in Bank</option>
-                    <option value="CASH_ON_HAND">Cash on Hand</option>
-                  </select>
+                  <input
+                    id={`edit-tr-to-${transfer.id}`}
+                    type="text"
+                    readOnly
+                    value={toAccount === "CASH_IN_BANK" ? "Cash in Bank" : "Cash on Hand"}
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 font-medium cursor-not-allowed"
+                  />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor={`edit-[#tr-date-${transfer.id}]`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Transfer Date
+                  <label htmlFor={`edit-tr-date-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Date
                   </label>
                   <input
-                    id={`edit-[#tr-date-${transfer.id}]`}
+                    ref={initialFocusRef}
+                    id={`edit-tr-date-${transfer.id}`}
                     name="transferDate"
                     type="date"
-                    defaultValue={date}
                     required
+                    defaultValue={date}
                     aria-invalid={Boolean(state?.fieldErrors?.transferDate)}
                     aria-describedby={state?.fieldErrors?.transferDate ? `err-tr-date-${transfer.id}` : undefined}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
@@ -134,15 +119,15 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
 
                 <div>
                   <label htmlFor={`edit-tr-amount-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Amount
+                    Amount (₱)
                   </label>
                   <input
                     id={`edit-tr-amount-${transfer.id}`}
                     name="amount"
                     type="text"
                     inputMode="decimal"
-                    defaultValue={formatPesoInputFromCents(transfer.amountCents)}
                     required
+                    defaultValue={formatPesoInputFromCents(transfer.amountCents)}
                     aria-invalid={Boolean(state?.fieldErrors?.amount)}
                     aria-describedby={state?.fieldErrors?.amount ? `err-tr-amount-${transfer.id}` : undefined}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#004aad]"
@@ -162,6 +147,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     id={`edit-tr-doc-${transfer.id}`}
                     name="documentNumber"
                     type="text"
+                    maxLength={TRANSFER_FIELD_LIMITS.documentNumber}
                     defaultValue={transfer.documentNumber || ""}
                     placeholder="Document number"
                     aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
@@ -174,27 +160,28 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     </p>
                   )}
                 </div>
+              </div>
 
-                <div>
-                  <label htmlFor={`edit-tr-event-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Event / Activity
-                  </label>
-                  <input
-                    id={`edit-tr-event-${transfer.id}`}
-                    name="eventActivityName"
-                    type="text"
-                    defaultValue={transfer.eventActivityName || ""}
-                    placeholder="Event / Activity"
-                    aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
-                    aria-describedby={state?.fieldErrors?.eventActivityName ? `err-tr-event-${transfer.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
-                  />
-                  {state?.fieldErrors?.eventActivityName && (
-                    <p id={`err-tr-event-${transfer.id}`} className="mt-1 text-xs text-red-600">
-                      {state.fieldErrors.eventActivityName[0]}
-                    </p>
-                  )}
-                </div>
+              <div>
+                <label htmlFor={`edit-tr-event-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Event / Activity
+                </label>
+                <input
+                  id={`edit-tr-event-${transfer.id}`}
+                  name="eventActivityName"
+                  type="text"
+                  maxLength={TRANSFER_FIELD_LIMITS.eventActivityName}
+                  defaultValue={transfer.eventActivityName || ""}
+                  placeholder="Event / Activity"
+                  aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
+                  aria-describedby={state?.fieldErrors?.eventActivityName ? `err-tr-event-${transfer.id}` : undefined}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                />
+                {state?.fieldErrors?.eventActivityName && (
+                  <p id={`err-tr-event-${transfer.id}`} className="mt-1 text-xs text-red-600">
+                    {state.fieldErrors.eventActivityName[0]}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -205,6 +192,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   id={`edit-tr-desc-${transfer.id}`}
                   name="description"
                   type="text"
+                  maxLength={TRANSFER_FIELD_LIMITS.description}
                   defaultValue={transfer.description}
                   required
                   placeholder="Description"
@@ -227,6 +215,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   id={`edit-tr-ref-${transfer.id}`}
                   name="referenceDescription"
                   type="text"
+                  maxLength={TRANSFER_FIELD_LIMITS.referenceDescription}
                   defaultValue={transfer.referenceDescription}
                   required
                   placeholder="Reference"

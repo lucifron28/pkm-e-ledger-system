@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { createCashTransferAction } from "@/lib/actions/transfers";
+import { TRANSFER_FIELD_LIMITS } from "@/lib/domain/field-limits";
 
 interface CreateCashTransferFormProps {
   activeTermId: string;
@@ -41,16 +42,14 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
         </div>
 
         <div>
-          <label htmlFor="create-transfer-to" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">To Account</label>
-          <select
-            id="create-transfer-to"
-            disabled
-            value={toAccount}
-            className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600"
-          >
-            <option value="CASH_IN_BANK">Cash in Bank</option>
-            <option value="CASH_ON_HAND">Cash on Hand</option>
-          </select>
+          <label htmlFor="create-transfer-to-display" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">To Account</label>
+          <input
+            id="create-transfer-to-display"
+            type="text"
+            readOnly
+            value={toAccount === "CASH_IN_BANK" ? "Cash in Bank" : "Cash on Hand"}
+            className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-700 font-medium cursor-not-allowed"
+          />
         </div>
 
         <div>
@@ -91,7 +90,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
             id="create-transfer-doc-number"
             name="documentNumber"
             type="text"
-            maxLength={50}
+            maxLength={TRANSFER_FIELD_LIMITS.documentNumber}
             placeholder="e.g. TR-001"
             aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
             aria-describedby={state?.fieldErrors?.documentNumber ? "create-transfer-doc-number-error" : undefined}
@@ -106,7 +105,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
             id="create-transfer-event"
             name="eventActivityName"
             type="text"
-            maxLength={100}
+            maxLength={TRANSFER_FIELD_LIMITS.eventActivityName}
             placeholder="Associated event/activity"
             aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
             aria-describedby={state?.fieldErrors?.eventActivityName ? "create-transfer-event-error" : undefined}
@@ -123,7 +122,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
           name="description"
           type="text"
           required
-          maxLength={250}
+          maxLength={TRANSFER_FIELD_LIMITS.description}
           placeholder="Reason for cash transfer"
           aria-invalid={Boolean(state?.fieldErrors?.description)}
           aria-describedby={state?.fieldErrors?.description ? "create-transfer-desc-error" : undefined}
@@ -139,7 +138,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
           name="referenceDescription"
           type="text"
           required
-          maxLength={250}
+          maxLength={TRANSFER_FIELD_LIMITS.referenceDescription}
           placeholder="Notes about deposit slip or receipt"
           aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
           aria-describedby={state?.fieldErrors?.referenceDescription ? "create-transfer-ref-error" : undefined}
