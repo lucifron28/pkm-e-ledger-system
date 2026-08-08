@@ -15,4 +15,5 @@
 | Navigation | Role-derived navigation matrix & OSA query preservation | Medium | `components/navigation/portal-nav.tsx`, `lib/auth/rbac.ts` | `tests/core/navigation.test.ts` | Automated | Remediated |
 | Audit Log | Human-readable summaries, actor user filter & keyset pagination | Low | `lib/data/audit-log.ts`, `app/(portal)/audit-log/page.tsx` | `tests/core/audit.test.ts` | Automated | Remediated |
 | Dashboard | Specification-aligned card ordering & terminology | Low | `app/(portal)/dashboard/page.tsx` | Source Reviewed | Manual Browser Not Verified |
-| Accessibility | Accessible modal focus management, ARIA attributes & Escape key handling | Medium | `lib/hooks/use-modal-focus.ts`, `app/(portal)/ledger/*.tsx` | `tests/core/modal-focus.test.ts` | Automated | Remediated |
+| Accessibility | Accessible modal focus management & Escape key decision helpers | Medium | `lib/hooks/use-modal-focus.ts` | `tests/core/modal-focus.test.ts` | Automated | Remediated |
+| Accessibility | Dialog ARIA markup (role=dialog, aria-modal, aria-labelledby) | Medium | `app/(portal)/ledger/*.tsx` | Source Reviewed | Source Reviewed | Remediated |

@@ -59,8 +59,8 @@ This document details the final verification checklist for validating the **PKM 
 
 ### 5. Responsive Design & Accessibility Scan
 - [ ] Viewport navigation checked at ~360px mobile, ~768px tablet, and desktop viewports (`NOT VERIFIED - Manual UI viewport inspection required`).
-- [x] `PortalNav` desktop navigation (`hidden md:flex`) and mobile menu toggle (`md:hidden`) with `aria-expanded` and `aria-controls="mobile-menu"` (markup-level check only).
-- [x] All interactive buttons and inputs have visible focus indicators (`focus-visible:ring-2`) (markup-level check only).
+- [x] `PortalNav` desktop navigation (`hidden xl:flex`) and mobile menu toggle (`xl:hidden`) with `aria-expanded` and `aria-controls="mobile-menu"` (markup-level check only).
+- [x] Interactive buttons and inputs have focus styling (Source-reviewed markup-level check; manual browser focus traversal `NOT VERIFIED`).
 - [x] Official PKM color palette (`#004aad` primary, `#f9d818` accent) used consistently (markup-level check only).
 - [ ] Print CSS verified: Summary & S1 in portrait, Schedule 2 in landscape, toolbar and headers hidden on print (`NOT VERIFIED - Manual print preview inspection required`).
 
