@@ -135,7 +135,12 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 * **Dependencies**: Phase 8
 * **Goal**: Comprehensive post-merge audit and remediation covering functional completeness, business invariants, authorization, concurrency, storage safety, reports/exports, accessibility, responsive UI, test suite reliability, and documentation accuracy.
 * **Grouped Commits**:
-  1. `fix(terms): include optimistic version in TermDto and pass to balance edit form`
-  2. `test(integration): use migration orchestrator deploy instead of db push in integration tests`
-  3. `docs(audit): update repository status and documentation for completed audit`
+  1. `financial and term consistency`
+  2. `migration/storage safety`
+  3. `authorization/security hardening`
+  4. `report/export correctness`
+  5. `query and pagination hardening`
+  6. `UI/accessibility remediation`
+  7. `regression-test expansion`
+  8. `documentation and verification alignment`
 * **Status**: **In Progress**

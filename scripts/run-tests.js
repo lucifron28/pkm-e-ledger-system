@@ -38,6 +38,9 @@ if (targetFiles.length === 0) {
   process.exit(1);
 }
 const relativeFiles = targetFiles.map((f) => path.relative(process.cwd(), f));
+console.log(`\n=== Discovered ${targetFiles.length} Test File(s) [mode: ${mode}] ===`);
+relativeFiles.forEach((f) => console.log(`  - ${f}`));
+console.log("");
 const setupPath = path.resolve(__dirname, "test-setup.js");
 const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
 const result = spawnSync(npxCmd, ["tsx", "-r", setupPath, "--test", ...relativeFiles], {
