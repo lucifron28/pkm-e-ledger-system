@@ -5,12 +5,20 @@ skinparam packageStyle rectangle
 skinparam shadowing false
 skinparam actorStyle awesome
 
+actor ManagementActor as "Management User"
 actor Treasurer
 actor Adviser
 actor Audit
+actor TransparencyActor as "Transparency User"
 actor Officer
 actor Member
 actor OSA
+
+ManagementActor <|-- Treasurer
+ManagementActor <|-- Adviser
+ManagementActor <|-- Audit
+TransparencyActor <|-- Officer
+TransparencyActor <|-- Member
 
 rectangle "PKM e-Ledger System" {
   usecase "Authenticate" as UC_Auth
@@ -28,51 +36,22 @@ rectangle "PKM e-Ledger System" {
   usecase "Monitor Organizations" as UC_Monitor
 }
 
-Treasurer --> UC_Auth
-Treasurer --> UC_Dashboard
-Treasurer --> UC_Term
-Treasurer --> UC_Income
-Treasurer --> UC_Expense
-Treasurer --> UC_Transfer
-Treasurer --> UC_Attachments
-Treasurer --> UC_Log
-Treasurer --> UC_Reports
-Treasurer --> UC_PDF
-Treasurer --> UC_XLSX
+ManagementActor --> UC_Auth
+ManagementActor --> UC_Dashboard
+ManagementActor --> UC_Term
+ManagementActor --> UC_Income
+ManagementActor --> UC_Expense
+ManagementActor --> UC_Transfer
+ManagementActor --> UC_Attachments
+ManagementActor --> UC_Log
+ManagementActor --> UC_Reports
+ManagementActor --> UC_PDF
+ManagementActor --> UC_XLSX
 
-Adviser --> UC_Auth
-Adviser --> UC_Dashboard
-Adviser --> UC_Term
-Adviser --> UC_Income
-Adviser --> UC_Expense
-Adviser --> UC_Transfer
-Adviser --> UC_Attachments
-Adviser --> UC_Log
-Adviser --> UC_Reports
-Adviser --> UC_PDF
-Adviser --> UC_XLSX
-
-Audit --> UC_Auth
-Audit --> UC_Dashboard
-Audit --> UC_Term
-Audit --> UC_Income
-Audit --> UC_Expense
-Audit --> UC_Transfer
-Audit --> UC_Attachments
-Audit --> UC_Log
-Audit --> UC_Reports
-Audit --> UC_PDF
-Audit --> UC_XLSX
-
-Officer --> UC_Auth
-Officer --> UC_Dashboard
-Officer --> UC_Reports
-Officer --> UC_Transparency
-
-Member --> UC_Auth
-Member --> UC_Dashboard
-Member --> UC_Reports
-Member --> UC_Transparency
+TransparencyActor --> UC_Auth
+TransparencyActor --> UC_Dashboard
+TransparencyActor --> UC_Reports
+TransparencyActor --> UC_Transparency
 
 OSA --> UC_Auth
 OSA --> UC_Dashboard
