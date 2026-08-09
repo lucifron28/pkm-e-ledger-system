@@ -116,8 +116,9 @@ ledger totals.
 
 ![Dashboard balances after soft deletion](evidence/screenshots/33-dashboard-after-soft-delete.png)
 
-Dashboard result showed Cash on Hand `₱1,350.00`, Total Income `₱850.00`, and
-Remaining Balance `₱4,150.00` after soft deletion.
+Dashboard result showed Cash on Hand `₱1,350.00`, Cash in Bank `₱2,800.00`,
+Total Income `₱850.00`, Total Expense `₱700.00`, and Remaining Balance
+`₱4,150.00` after soft deletion.
 
 ### Step 14 - Treasurer Log
 
@@ -128,8 +129,8 @@ cash-transfer events with actor and role context.
 
 ![Treasurer Log soft-delete evidence](evidence/screenshots/34-treasurer-log-soft-delete.png)
 
-Final UAT log entry recorded `Deleted Transaction` for the fictional
-management account with the submitted deletion reason.
+Final UAT log entry recorded `Deleted Transaction` with the submitted deletion
+reason.
 
 ### Step 15 - Report viewer
 
