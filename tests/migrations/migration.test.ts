@@ -130,6 +130,51 @@ test("Migration Test Suite: deploy all migrations on an empty DB", async () => {
   }
 });
 
+test("Migration Test Suite: hardening completes when legacy Report table is already absent", async () => {
+  cleanupTempDir();
+  fs.mkdirSync(TEMP_MIGRATION_DIR, { recursive: true });
+
+  const dbPath = path.join(TEMP_MIGRATION_DIR, "without-report.db");
+  const dbUrl = `file:${dbPath}`;
+  const uploadsRoot = path.join(TEMP_MIGRATION_DIR, "uploads");
+  fs.mkdirSync(uploadsRoot, { recursive: true });
+  const phase7SchemaPath = prepareMigrationFixture("without-report-phase7", PHASE_7_MIGRATIONS);
+  fs.writeFileSync(dbPath, Buffer.alloc(0));
+  deployMigrations(phase7SchemaPath, dbUrl, uploadsRoot);
+
+  const legacyPrisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    await legacyPrisma.$executeRawUnsafe(`PRAGMA foreign_keys = OFF`);
+    await legacyPrisma.$executeRawUnsafe(`DROP TABLE "Report"`);
+  } finally {
+    await legacyPrisma.$disconnect();
+  }
+
+  const hardenedSchemaPath = prepareMigrationFixture("without-report-hardened", HARDENED_MIGRATIONS);
+  deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+
+  const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    const reportTable = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" = 'Report'`
+    );
+    assert.equal(reportTable.length, 0);
+
+    const archiveTable = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" = '_LegacyReportArchive'`
+    );
+    assert.equal(archiveTable.length, 1);
+
+    const migrationCount = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*) AS count FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`
+    );
+    assert.equal(Number(migrationCount[0].count), HARDENED_MIGRATIONS.length);
+  } finally {
+    await prisma.$disconnect();
+    cleanupTempDir();
+  }
+});
+
 test("Migration Test Suite: preflight aborts when a duplicate legacy key has no physical file", async () => {
   cleanupTempDir();
   fs.mkdirSync(TEMP_MIGRATION_DIR, { recursive: true });

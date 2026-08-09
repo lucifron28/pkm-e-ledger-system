@@ -21,6 +21,21 @@ CREATE TABLE IF NOT EXISTS "_LegacyReportArchive" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SQLite still compiles the source table in an INSERT ... SELECT when the
+-- WHERE clause says the table exists. Create an empty compatibility table so
+-- databases where Report was already removed can complete this migration.
+CREATE TABLE IF NOT EXISTS "Report" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "organizationId" TEXT NOT NULL,
+    "termId" TEXT,
+    "generatedById" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "filtersJson" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
 INSERT INTO "_LegacyReportArchive" ("id", "organizationId", "termId", "type", "title", "generatedById", "snapshotDataJson", "fileStoragePath", "fileMimeType", "fileSizeBytes", "createdAt")
 SELECT "id", "organizationId", "termId", "type", "title", "generatedById", "filtersJson", NULL, NULL, NULL, "createdAt"
 FROM "Report"
