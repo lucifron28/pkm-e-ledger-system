@@ -43,6 +43,9 @@ Evidence:
 - [Login](evidence/screenshots/01-login.png)
 - [Management dashboard](evidence/screenshots/02-treasurer-dashboard.png)
 - [Adviser desktop dashboard](evidence/screenshots/14-adviser-dashboard-desktop.jpg)
+- [Adviser reports](evidence/screenshots/15-adviser-reports-desktop.jpg)
+- [Audit dashboard](evidence/screenshots/16-audit-dashboard-desktop.jpg)
+- [Audit Log](evidence/screenshots/17-audit-log-desktop.jpg)
 - [Term settings and balances](evidence/screenshots/03-term-settings-balances.png)
 - [Populated ledger](evidence/screenshots/05-ledger-populated.png)
 - [Cash transfers](evidence/screenshots/16-ledger-transfers.png)
@@ -60,6 +63,8 @@ navigation and mutation controls were not available in their portal.
 
 - [Officer transparency dashboard](evidence/screenshots/11-officer-transparency.png)
 - [Member transparency dashboard](evidence/screenshots/12-member-transparency.png)
+- [Officer desktop dashboard](evidence/screenshots/18-officer-dashboard-desktop.jpg)
+- [Officer desktop report view](evidence/screenshots/19-officer-reports-desktop.jpg)
 
 ## OSA Monitoring Workflow
 
@@ -141,11 +146,12 @@ PlantUML CLI rendered four source diagrams to PNG and SVG:
 
 ## UAT Result
 
-Core manual workflows passed for the tested fictional records. Two defects
-found during UAT were corrected on this branch:
+Core manual workflows passed for the tested fictional records. UAT defects
+were corrected on this branch:
 
-- Next.js Server Action modules no longer export non-function validation
-  schemas, allowing transaction and transfer forms to load.
+- Validation schemas were moved into a server-safe domain module so Next.js
+  Server Action modules export functions only while schema regression tests
+  remain available.
 - PDFKit is treated as a server external package so authenticated PDF export
   resolves its bundled font data correctly.
 
