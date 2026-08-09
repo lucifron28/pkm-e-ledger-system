@@ -6,8 +6,8 @@ This document details the final verification checklist for validating the **PKM 
 
 ## Verification Execution Evidence Log
 
-- **Execution Timestamp**: `2026-08-09T14:41:34+08:00`
-- **Verified executable Git HEAD**: `68b057d` (final report-template correction commit; documentation follows)
+- **Execution Timestamp**: `2026-08-10`
+- **Verified executable Git HEAD**: `e892500` (legacy Report compatibility preflight correction; documentation follows)
 - **Execution Environment**: Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11 / PowerShell with `cmd.exe` command execution.
 - **Clean install**: `npm ci` exit status `0`; root `postinstall` generated Prisma Client v6.19.3.
 - **Execution note**: Direct PowerShell `npm` and `npx` wrappers were blocked by local execution policy. Final validation ran the literal commands through `cmd.exe`; project command exit statuses below are from that run.
@@ -15,9 +15,9 @@ This document details the final verification checklist for validating the **PKM 
 
 ---
 
-## Final Gate Re-run (Authoritative, 2026-08-09)
+## Final Gate Re-run (Authoritative, 2026-08-10)
 
-- Verified executable commit: `6522f4a`.
+- Verified executable commit: `e892500`.
 - `npm ci`, `npm run lint`, `npm run typecheck`, `npm run db:generate`, and `npx prisma validate` passed.
 - `npm run test:core`: 11 files, 99 cases passed.
 - `npm run test:integration`: 5 files, 29 cases passed.
@@ -25,6 +25,7 @@ This document details the final verification checklist for validating the **PKM 
 - `npm run test`: 17 files, 142 cases passed.
 - `npm run test:db`, `npm run build`, `npm run verify-readiness`, and `npm run storage:reconcile` passed.
 - `npm audit` reported 4 findings (2 high, 2 moderate); `npm audit --omit=dev` reported 3 findings (1 high, 2 moderate). Residual findings match the classified non-applicable/dev-only triage below.
+- Migration correction verified: historical migration SQL matches `origin/main`; legacy `Report` compatibility is created only by orchestrator preflight when Phase 7 is complete, hardening is pending, and `Report` is absent. Migration tests cover Report-present archive, Report-absent compatibility cleanup, and safe rerun without a temporary table.
 
 ## Prior Automated Verification Evidence (2026-08-09)
 
@@ -47,7 +48,7 @@ This document details the final verification checklist for validating the **PKM 
 
 ---
 
-## Current Dependency-Security Triage (2026-08-09)
+## Current Dependency-Security Triage (2026-08-10)
 
 Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
 `npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,
@@ -113,8 +114,8 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 - [x] `npm run typecheck` passes with 0 TypeScript compilation errors (`tsc --noEmit`, exit status 0).
 - [x] `npm run test:core` passes 99 core unit tests across 11 test files (`attachments.test.ts`, `audit.test.ts`, `financial.test.ts`, `modal-focus.test.ts`, `money.test.ts`, `navigation.test.ts`, `password.test.ts`, `rbac.test.ts`, `reports.test.ts`, `storage-reconciliation.test.ts`, `transfers.test.ts`).
 - [x] `npm run test:integration` passes 29 integration tests across 5 test files (`concurrency.test.ts`, `organization-isolation.test.ts`, `recovery.test.ts`, `security-routes.test.ts`, `seed.test.ts`), including production-Prisma-singleton isolation assertions (`PRAGMA database_list` targets the temporary test database), restore CLI confirmation tests, real concurrency/idempotency scenarios, migration-orchestrator storage-key tests, and seed idempotency.
-- [x] `npm run test:migrations` passes 13 migration tests across 1 test file (`migration.test.ts`), including empty-DB deploy, legacy upgrade with real-file storage-key resolution, missing-file preflight abort, sidecar validation fail-closed, PREPARED resume hash/size verification, and the migration-orchestrator scenarios.
-- [x] `npm run test` passes full test suite (141/141 passing across 17 test files; 0 fail, 0 skip).
+- [x] `npm run test:migrations` passes 14 migration tests across 1 test file (`migration.test.ts`), including empty-DB deploy, legacy upgrade with real-file storage-key resolution, missing-file preflight abort, sidecar validation fail-closed, PREPARED resume hash/size verification, legacy Report compatibility, and safe rerun scenarios.
+- [x] `npm run test` passes full test suite (142/142 passing across 17 test files; 0 fail, 0 skip).
 - [x] `npm run test:db` passes database smoke test against an isolated fictional seeded database (14 organizations, 18 categories, 71 users, 14 academic terms; verifies single active term per org, canonical YYYY-YYYY academic year format, typed category buckets, all six roles, and unique demo usernames).
 - [x] `npm run build` succeeds with one non-fatal Turbopack NFT warning and generates Next.js App Router production bundle (18 route endpoints).
 
@@ -142,9 +143,9 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 - [x] Official PKM color palette (`#004aad` primary, `#f9d818` accent) used consistently (markup-level check only).
 - [ ] Print CSS verified: Summary & S1 in portrait, Schedule 2 in landscape, toolbar and headers hidden on print. Browser print action was exercised, but system print preview was unavailable; PDF orientation was independently verified with `pdfinfo`. `NOT VERIFIED` for print-preview-only behavior.
 
-## Manual UAT Evidence (2026-08-09)
+## Manual UAT Evidence (2026-08-10)
 
-- [x] Numbered desktop screenshot evidence `01` through `30` captured with fictional/demo data only. Current screenshots are wide desktop images; no mobile-sized image is used as final current evidence.
+- [x] Retained numbered desktop screenshot evidence and supporting responsive/accessibility captures use fictional/demo data only. Current desktop screenshots are wide images; no mobile-sized image is used as final current evidence.
 - [x] Fictional local UAT records created for income, expenses, transfers, attachments, edit flow, and audit history. No official workbook data imported.
 - [x] Report package viewer verified: Summary, Schedule 1 Collections, Schedule 2 Expenses, signatures, and Receipts / Attachments reference. See [report evidence](final-demo-uat-documentation.md#report-package-and-exports).
 - [x] PDF export verified as four pages: Summary portrait, Schedule 1 portrait, Schedule 2 landscape, and Attachments portrait. See [rendered PDF pages](final-demo-uat-documentation.md#report-package-and-exports).

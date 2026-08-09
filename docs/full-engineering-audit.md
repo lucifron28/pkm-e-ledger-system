@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document details the comprehensive full post-implementation engineering audit and the subsequent financial-report-template alignment pass performed on the PKM e-Ledger System codebase (branch `feat/financial-report-template-alignment`).
+This document details the comprehensive full post-implementation engineering audit and the subsequent financial-report-template alignment pass performed on the PKM e-Ledger System codebase (branch `qa/manual-uat-demo-readiness`).
 
 The audit systematically evaluated:
 1. Schema and database migrations (deterministic attachment storage key uniqueness, sidecar lifecycle).
@@ -74,7 +74,7 @@ The audit systematically evaluated:
 
 ## 2. Final Current-Head Verification Results
 
-Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `68b057d` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
+Verification executed on `2026-08-10` from executable Git HEAD `e892500` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
 
 - `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
 - `npm run lint`: exit status 0; 0 errors and 0 warnings.
@@ -83,8 +83,8 @@ Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `6
 - `npx prisma validate`: exit status 0; schema valid.
 - `npm run test:core`: 11 discovered files; 99 pass, 0 fail, 0 skip.
 - `npm run test:integration`: 5 discovered files; 29 pass, 0 fail, 0 skip.
-- `npm run test:migrations`: 1 discovered file; 13 pass, 0 fail, 0 skip.
-- `npm run test`: 17 discovered files; 141 pass, 0 fail, 0 skip.
+- `npm run test:migrations`: 1 discovered file; 14 pass, 0 fail, 0 skip.
+- `npm run test`: 17 discovered files; 142 pass, 0 fail, 0 skip.
 - `npm run test:db`: exit status 0; 14 organizations, 18 categories, 71 users, and 14 academic terms validated.
 - `npm run build`: exit status 0; 18 route endpoints generated. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness`: exit status 0; all checks passed.
@@ -94,7 +94,7 @@ Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `6
 
 Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
 
-## 3. Current Dependency-Security Triage (2026-08-09)
+## 3. Current Dependency-Security Triage (2026-08-10)
 
 Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
 `npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,
