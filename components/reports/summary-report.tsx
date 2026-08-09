@@ -1,13 +1,23 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { formatReportDate } from "@/lib/reports/report-layout";
 
 interface SummaryReportProps {
   report: ReportPackageDto;
 }
 
 export function SummaryReport({ report }: SummaryReportProps) {
+  const signatureRows = [
+    { label: "Prepared by:", title: report.signatories.treasurerTitle },
+    { label: "Certified Correct:", title: report.signatories.auditorTitle },
+    { label: "Coordinated by:", title: report.signatories.osaCoordinatorTitle },
+    { label: "Approved by:", title: report.signatories.organizationPresidentTitle },
+    { label: "Noted by:", title: report.signatories.adviserTitle },
+    { label: "Certified by:", title: report.signatories.accountantTitle },
+  ];
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-8 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
+    <div className="report-page report-summary bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-8 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
       {/* Header */}
       <div className="text-center space-y-1 border-b pb-6">
         <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
@@ -16,14 +26,14 @@ export function SummaryReport({ report }: SummaryReportProps) {
         <h1 className="text-2xl font-black tracking-tight text-[#004aad]">
           {report.organizationName}
         </h1>
-        <h2 className="text-lg font-bold text-slate-800">
+        <h2 className="text-lg font-bold text-slate-800 uppercase">
           Financial Summary Report
         </h2>
         <p className="text-sm text-slate-600 font-medium">
           {report.academicYear} &bull; {report.semesterLabel}
         </p>
         <p className="text-xs text-slate-500">
-          As of {report.asOfDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+          As of {formatReportDate(report.asOfDate)}
         </p>
       </div>
 
@@ -142,43 +152,21 @@ export function SummaryReport({ report }: SummaryReportProps) {
         </div>
       </div>
 
-      {/* Signature Section - 4 Signatures */}
+      {/* Signature Section - six role-only slots */}
       <div className="pt-10 border-t space-y-12">
         <h4 className="font-bold text-slate-800 uppercase tracking-wider text-xs text-center">
           Signatures & Verification
         </h4>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center text-xs">
-          <div className="space-y-8">
-            <p className="text-slate-500 font-semibold">Prepared by:</p>
-            <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
-              <p className="text-slate-600 font-medium">{report.signatories.treasurerTitle}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-10 text-center text-xs">
+          {signatureRows.map((signature) => (
+            <div key={signature.title} className="space-y-8">
+              <p className="text-slate-500 font-semibold">{signature.label}</p>
+              <div className="border-b border-slate-400 pb-1">
+                <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
+                <p className="text-slate-600 font-medium">{signature.title}</p>
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-8">
-            <p className="text-slate-500 font-semibold">Certified Correct:</p>
-            <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
-              <p className="text-slate-600 font-medium">{report.signatories.auditorTitle}</p>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            <p className="text-slate-500 font-semibold">Approved by:</p>
-            <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
-              <p className="text-slate-600 font-medium">{report.signatories.adviserTitle}</p>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            <p className="text-slate-500 font-semibold">Noted by / Approved by:</p>
-            <div className="border-b border-slate-400 pb-1">
-              <p className="font-bold text-slate-900 uppercase tracking-wide">____________________</p>
-              <p className="text-slate-600 font-medium">{report.signatories.presidentOsaTitle}</p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

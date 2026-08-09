@@ -161,6 +161,24 @@ export default async function ReportsPage({
             break-before: page;
             break-after: page;
           }
+          .report-page {
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .report-table thead {
+            display: table-header-group;
+          }
+          .report-table tr,
+          .report-group {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .report-schedule-2 {
+            min-width: 0;
+          }
         }
       `}</style>
 

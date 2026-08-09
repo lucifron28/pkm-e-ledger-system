@@ -141,8 +141,10 @@ export interface ReportPackageDto {
   signatories: {
     treasurerTitle: string;
     auditorTitle: string;
+    osaCoordinatorTitle: string;
+    organizationPresidentTitle: string;
     adviserTitle: string;
-    presidentOsaTitle: string;
+    accountantTitle: string;
   };
 }
 
@@ -277,7 +279,6 @@ export function buildReportPackageDto(
   const endingBalanceCents = assertNoOverflow(balances.remainingCents);
 
   const incomeCategoryMap = new Map<string, { categoryName: string; items: CollectionItemDto[]; totalCents: number }>();
-  let collectionSeq = 1;
   let totalCollectionItemsCount = 0;
 
   for (const t of incomeTransactions) {
@@ -291,7 +292,7 @@ export function buildReportPackageDto(
     const group = incomeCategoryMap.get(catId)!;
     group.totalCents = assertNoOverflow(group.totalCents + t.amountCents);
     group.items.push({
-      sequenceNumber: collectionSeq++,
+      sequenceNumber: group.items.length + 1,
       transactionId: t.id,
       transactionDate: t.transactionDate,
       documentNumber: t.documentNumber,
@@ -440,8 +441,10 @@ export function buildReportPackageDto(
     signatories: {
       treasurerTitle: "Organization Treasurer",
       auditorTitle: "Organization Auditor",
+      osaCoordinatorTitle: "OSS / OSA Coordinator",
+      organizationPresidentTitle: "Organization President",
       adviserTitle: "Faculty Adviser",
-      presidentOsaTitle: "President / OSA Representative",
+      accountantTitle: "PKM Accountant",
     },
   };
 }

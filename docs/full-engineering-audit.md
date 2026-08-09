@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document details the comprehensive full post-implementation engineering audit and remediation pass performed on the PKM e-Ledger System codebase (branch `audit/full-project-completeness-ui-docs`).
+This document details the comprehensive full post-implementation engineering audit and the subsequent financial-report-template alignment pass performed on the PKM e-Ledger System codebase (branch `feat/financial-report-template-alignment`).
 
 The audit systematically evaluated:
 1. Schema and database migrations (deterministic attachment storage key uniqueness, sidecar lifecycle).
@@ -74,26 +74,52 @@ The audit systematically evaluated:
 
 ## 2. Final Current-Head Verification Results
 
-Verification executed on `2026-08-09T12:28:23+08:00` from executable Git HEAD `a6cc3ad3c304d8cb3599e44e9647511be6793ddf` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
+Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `68b057d` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
 
 - `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
 - `npm run lint`: exit status 0; 0 errors and 0 warnings.
 - `npm run typecheck`: exit status 0.
 - `npm run db:generate`: exit status 0.
 - `npx prisma validate`: exit status 0; schema valid.
-- `npm run test:core`: 11 discovered files; 97 pass, 0 fail, 0 skip.
+- `npm run test:core`: 11 discovered files; 99 pass, 0 fail, 0 skip.
 - `npm run test:integration`: 5 discovered files; 29 pass, 0 fail, 0 skip.
 - `npm run test:migrations`: 1 discovered file; 13 pass, 0 fail, 0 skip.
-- `npm run test`: 17 discovered files; 139 pass, 0 fail, 0 skip.
+- `npm run test`: 17 discovered files; 141 pass, 0 fail, 0 skip.
 - `npm run test:db`: exit status 0; 14 organizations, 18 categories, 71 users, and 14 academic terms validated.
-- `npm run build`: exit status 0; 18 route endpoints generated. One non-fatal Turbopack NFT warning was emitted for dynamic attachment storage tracing.
+- `npm run build`: exit status 0; 18 route endpoints generated. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness`: exit status 0; all checks passed.
 - `npm run storage:reconcile`: exit status 0; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
+- Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, six role-only signature slots, grouped collections, mapped expense columns, attachment metadata, and print orientation. Schedule 1 stress coverage passed continuation-page preflight for long payor rows, category subtotals, and the final schedule total. PDF alignment and 520 pt portrait attachment-width checks passed, and synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
 
 Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
 
-## 3. Dependency-Security Triage
+## 3. Current Dependency-Security Triage (2026-08-09)
+
+Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
+`npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,
+2 moderate) with 3 findings in the production-only report (1 high, 2 moderate).
+`npm explain` and source inspection were used for dependency paths and API reachability.
+
+Class legend: A = runtime, applicable, and fix available; B = runtime, applicable,
+and no compatible fix; C = runtime dependency but vulnerable API not reachable;
+D = dev-only; E = false-positive or superseded advisory.
+
+| Package and installed version | Severity | Advisory | Directness and dependency path | Runtime / dev | API reachable? | Fix status | Class |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `brace-expansion` 1.1.15, 2.1.2, 5.0.7 | High | [GHSA-3jxr-9vmj-r5cp](https://github.com/advisories/GHSA-3jxr-9vmj-r5cp), [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg), [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) | Transitive: `exceljs -> archiver -> readdir-glob -> minimatch -> brace-expansion`; separate ESLint/TypeScript-ESLint dev paths | Runtime and dev nodes | No application-controlled glob pattern reaches `readdir-glob`; XLSX export uses ExcelJS `writeBuffer()` and does not call directory globbing | Patched releases exist (`1.1.18`, `2.1.4`, `5.0.9`); non-force dry-run made no lockfile change; no blind override applied | C |
+| `js-yaml` 4.3.0 | High | [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) | Transitive: `eslint -> @eslint/eslintrc -> js-yaml` | Dev-only | No production import or route | Patched `4.3.1+` exists; not a runtime remediation target | D |
+| `exceljs` 4.4.0 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) through `uuid` | Direct runtime dependency used by `/api/reports/[termId]/excel` | Runtime | ExcelJS is reachable, but its observed UUID call is v4 without a caller-supplied buffer | Audit suggests breaking downgrade to ExcelJS `3.4.0`; no compatible stable fix demonstrated | C |
+| `uuid` 8.3.2 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq), range `<11.1.1` | Transitive: `exceljs@4.4.0 -> uuid@8.3.2` | Runtime | ExcelJS source uses `uuidv4()` only; vulnerable v3/v5/v6 buffer API is not reachable, and application source has no direct UUID import | UUID major upgrade was not proven compatible with ExcelJS; no override introduced | C |
+
+Residual audit status: no unresolved applicable runtime HIGH vulnerability. The
+remaining audit exit status `1` is documented residual risk from class C and D
+records. ExcelJS export regression tests generate and reopen XLSX output.
+
+## 3.1 Historical Dependency-Security Triage (prior executable head)
+
+The following table records an earlier executable-head audit. It is retained for
+audit history only; the current table above is authoritative for this branch.
 
 Commands captured before and after remediation: `npm audit --json`, `npm audit --omit=dev --json`, `npm audit`, and `npm audit --omit=dev`. Baseline JSON reported 8 package findings: 6 high and 2 moderate. Production-only baseline reported 7: 5 high and 2 moderate. Npm repeats one advisory when several installed nodes or version ranges are affected; table preserves each distinct advisory ID and range.
 

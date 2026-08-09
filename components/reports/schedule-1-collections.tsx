@@ -1,5 +1,6 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { formatReportDate } from "@/lib/reports/report-layout";
 
 interface Schedule1CollectionsProps {
   report: ReportPackageDto;
@@ -7,15 +8,19 @@ interface Schedule1CollectionsProps {
 
 export function Schedule1Collections({ report }: Schedule1CollectionsProps) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
-      {/* Header */}
+    <div className="report-page report-schedule-1 bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
       <div className="text-center space-y-1 border-b pb-6">
+        <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
+          Pambayang Kolehiyo ng Mauban
+        </p>
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-          Schedule 1 — Collections Schedule
+          Summary of Collections
         </h2>
+        <p className="text-sm uppercase font-bold text-[#004aad]">Schedule 1</p>
         <p className="text-sm text-slate-600 font-semibold">
           {report.organizationName} &bull; {report.academicYear} {report.semesterLabel}
         </p>
+        <p className="text-xs text-slate-500">As of {formatReportDate(report.asOfDate)}</p>
       </div>
 
       {report.collectionGroups.length === 0 ? (
@@ -25,46 +30,41 @@ export function Schedule1Collections({ report }: Schedule1CollectionsProps) {
       ) : (
         <div className="space-y-8 text-sm">
           {report.collectionGroups.map((group) => (
-            <div key={group.categoryId} className="space-y-3">
-              <div className="flex items-center justify-between border-b-2 border-[#004aad] pb-1.5">
+            <div key={group.categoryId} className="report-group space-y-3 break-inside-avoid">
+              <div className="border-b-2 border-[#004aad] pb-1.5">
                 <h3 className="font-extrabold text-[#004aad] text-sm uppercase tracking-wide">
-                  Category: {group.categoryName}
+                  {group.categoryName}
                 </h3>
-                <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                  Subtotal: {formatPesoFromCents(group.totalCents)}
-                </span>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider">
+                <table className="report-table w-full text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider">
                     <tr>
-                      <th className="px-3 py-2 text-left w-12">Seq</th>
-                      <th className="px-3 py-2 text-left">Payor / Source Name</th>
-                      <th className="px-3 py-2 text-left">Date / Ref / Particulars</th>
-                      <th className="px-3 py-2 text-right">Amount</th>
+                      <th className="border border-slate-300 px-3 py-2 text-center w-20">Sequence number</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left">Payor / Source Name</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right w-36">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {group.items.map((item) => (
-                      <tr key={item.transactionId} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 text-slate-500 font-mono">{item.sequenceNumber}</td>
-                        <td className="px-3 py-2 font-semibold text-slate-900">{item.payorName}</td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {item.transactionDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
-                          {item.documentNumber ? ` (${item.documentNumber})` : ""}
-                          <div className="text-[11px] text-slate-500">{item.description}</div>
+                      <tr key={item.transactionId} className="break-inside-avoid">
+                        <td className="border border-slate-300 px-3 py-2 text-center text-slate-500 font-mono">
+                          {item.sequenceNumber}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-900">
+                          {item.payorName}
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right font-mono font-bold text-slate-900">
                           {formatPesoFromCents(item.amountCents)}
                         </td>
                       </tr>
                     ))}
-                    <tr className="bg-slate-50 font-bold border-t">
-                      <td colSpan={3} className="px-3 py-2 text-right uppercase tracking-wider text-slate-600 text-[11px]">
-                        Category Total ({group.categoryName}):
+                    <tr className="bg-slate-50 font-bold">
+                      <td colSpan={2} className="border border-slate-300 px-3 py-2 text-right uppercase tracking-wider text-slate-600 text-[11px]">
+                        Total per schedule
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-emerald-700">
+                      <td className="border border-slate-300 px-3 py-2 text-right font-mono text-emerald-700">
                         {formatPesoFromCents(group.totalCents)}
                       </td>
                     </tr>
@@ -74,12 +74,9 @@ export function Schedule1Collections({ report }: Schedule1CollectionsProps) {
             </div>
           ))}
 
-          {/* Grand Total */}
-          <div className="bg-emerald-50 border-2 border-emerald-200 p-4 rounded-xl flex items-center justify-between font-extrabold text-base">
-            <span className="text-emerald-900 uppercase tracking-wide text-xs">
-              Overall Total Collections (Schedule 1)
-            </span>
-            <span className="font-mono text-emerald-800 text-lg">
+          <div className="border-t-2 border-slate-900 pt-3 flex items-center justify-between font-extrabold text-base break-inside-avoid">
+            <span className="uppercase tracking-wide text-xs">Total collections</span>
+            <span className="font-mono text-[#004aad] text-lg">
               {formatPesoFromCents(report.totalIncomeCents)}
             </span>
           </div>

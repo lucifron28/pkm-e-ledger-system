@@ -11,7 +11,14 @@ import {
   RawReportInputTransfer,
 } from "../../lib/domain/reports";
 import { buildReportExcelBuffer } from "../../lib/reports/renderers/excel-report-renderer";
-import { buildReportPdfBuffer } from "../../lib/reports/renderers/pdf-report-renderer";
+import {
+  ATTACHMENT_TABLE_ALIGNMENTS,
+  PDF_ATTACHMENT_TABLE_WIDTHS,
+  SCHEDULE1_TABLE_ALIGNMENTS,
+  buildReportPdfBuffer,
+  fitsPdfTableRow,
+  getSchedule2TableAlignments,
+} from "../../lib/reports/renderers/pdf-report-renderer";
 
 test("Reports Domain: Fixed Schedule 2 Bucket Order and Count", () => {
   assert.equal(SCHEDULE_2_BUCKETS.length, 8);
@@ -142,11 +149,13 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
     assert.equal(nonZeroBuckets[0][1], row.amountCents);
   }
 
-  // 6. Four signature labels
+  // 6. Six role-only signature labels
   assert.equal(report.signatories.treasurerTitle, "Organization Treasurer");
   assert.equal(report.signatories.auditorTitle, "Organization Auditor");
+  assert.equal(report.signatories.osaCoordinatorTitle, "OSS / OSA Coordinator");
+  assert.equal(report.signatories.organizationPresidentTitle, "Organization President");
   assert.equal(report.signatories.adviserTitle, "Faculty Adviser");
-  assert.equal(report.signatories.presidentOsaTitle, "President / OSA Representative");
+  assert.equal(report.signatories.accountantTitle, "PKM Accountant");
   assert.equal(report.asOfDate, asOfDate);
 
   // 7. Attachment DTO security: storage keys and database IDs omitted
@@ -175,7 +184,7 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
   assert.equal(transferReport.attachments[1].cashTransferId, "transfer-1");
 });
 
-test("Reports Export: official package sheets, formulas, and PDF output are present", async () => {
+test("Reports Export: aligned package sheets, formulas, and PDF output are present", async () => {
   const report = buildReportPackage(
     {
       id: "term-export-1",
@@ -203,11 +212,182 @@ test("Reports Export: official package sheets, formulas, and PDF output are pres
     "SCHEDULE 2 - EXPENSES",
     "RECEIPTS - ATTACHMENTS",
   ]);
-  const balanceForwardedFormula = workbook.getWorksheet("SUMMARY")?.getCell("B11").value;
-  const expenseTotalFormula = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")?.getCell("E2").value;
+  const summarySheet = workbook.getWorksheet("SUMMARY")!;
+  const schedule1Sheet = workbook.getWorksheet("SCHEDULE 1 - COLLECTIONS")!;
+  const schedule2Sheet = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")!;
+  const attachmentSheet = workbook.getWorksheet("RECEIPTS - ATTACHMENTS")!;
+  const findRow = (sheet: ExcelJS.Worksheet, column: number, label: string): ExcelJS.Row | undefined => {
+    for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      if (row.getCell(column).text === label) return row;
+    }
+    return undefined;
+  };
+  const balanceForwardedRow = findRow(summarySheet, 2, "Balance Forwarded");
+  const summaryExpenseRow = findRow(summarySheet, 2, "Total Expenses");
+  const expenseTotalRow = findRow(schedule2Sheet, 3, "TOTAL EXPENSES");
+  const balanceForwardedFormula = balanceForwardedRow?.getCell(3).value;
+  const expenseTotalFormula = expenseTotalRow?.getCell(5).value;
   assert.ok(balanceForwardedFormula && typeof balanceForwardedFormula === "object" && "formula" in balanceForwardedFormula);
   assert.ok(expenseTotalFormula && typeof expenseTotalFormula === "object" && "formula" in expenseTotalFormula);
+  assert.ok(summaryExpenseRow);
+  assert.equal(summarySheet.pageSetup.orientation, "portrait");
+  assert.equal(schedule1Sheet.pageSetup.orientation, "portrait");
+  assert.equal(schedule2Sheet.pageSetup.orientation, "landscape");
+  assert.equal(schedule1Sheet.columnCount, 3);
+  assert.equal(schedule2Sheet.getRow(8).getCell(5).text, "Amount");
+  assert.equal(schedule2Sheet.getRow(8).getCell(12).text, "Donation");
+  assert.equal(schedule2Sheet.getCell("M8").value, null, "Others is omitted when unused");
+  assert.equal(attachmentSheet.getCell("A3").text, "RECEIPTS / ATTACHMENTS");
+  assert.ok(summarySheet.model.merges.includes("A1:C1"));
+  const summaryValues = summarySheet.getSheetValues().flat().map((value) => String(value ?? ""));
+  for (const title of [
+    "Organization Treasurer",
+    "Organization Auditor",
+    "OSS / OSA Coordinator",
+    "Organization President",
+    "Faculty Adviser",
+    "PKM Accountant",
+  ]) {
+    assert.ok(summaryValues.includes(title), `Summary XLSX must include role-only signature slot: ${title}`);
+  }
 
   const pdf = await buildReportPdfBuffer(report);
   assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
+});
+
+test("Reports Export: grouped collections and mapped expense cells survive XLSX round-trip", async () => {
+  const report = buildReportPackage(
+    {
+      id: "term-rich-export",
+      academicYear: "2025-2026",
+      semester: Semester.FIRST_SEMESTER,
+      openingCashOnHandCents: 100000,
+      openingCashInBankCents: 200000,
+      organization: {
+        id: "org-rich-export",
+        name: "Fictional Campus Organization",
+        slug: "fictional-campus-organization",
+      },
+    },
+    [
+      {
+        id: "income-rich-1",
+        type: TransactionType.INCOME,
+        transactionDate: new Date("2025-08-01T00:00:00.000Z"),
+        amountCents: 25000,
+        cashAccount: CashAccount.CASH_ON_HAND,
+        documentNumber: "SYN-IN-01",
+        counterpartyName: "Synthetic Payor One",
+        description: "Membership collection",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "income-category-one",
+        category: { id: "income-category-one", name: "Membership Dues", type: TransactionType.INCOME },
+        attachments: [],
+      },
+      {
+        id: "income-rich-2",
+        type: TransactionType.INCOME,
+        transactionDate: new Date("2025-08-02T00:00:00.000Z"),
+        amountCents: 35000,
+        cashAccount: CashAccount.CASH_IN_BANK,
+        documentNumber: "SYN-IN-02",
+        counterpartyName: "Synthetic Payor Two",
+        description: "Donation collection",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "income-category-two",
+        category: { id: "income-category-two", name: "Donation", type: TransactionType.INCOME },
+        attachments: [],
+      },
+      {
+        id: "expense-rich-1",
+        type: TransactionType.EXPENSE,
+        transactionDate: new Date("2025-08-05T00:00:00.000Z"),
+        amountCents: 15000,
+        cashAccount: CashAccount.CASH_ON_HAND,
+        documentNumber: "SYN-EX-01",
+        counterpartyName: "Synthetic Vendor",
+        description: "Synthetic uncategorized expense",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "expense-category-one",
+        category: {
+          id: "expense-category-one",
+          name: "Custom Expense",
+          type: TransactionType.EXPENSE,
+          reportBucket: ExpenseReportBucket.OTHERS,
+        },
+        attachments: [],
+      },
+    ],
+    [],
+    new Date("2026-08-31T00:00:00.000Z")
+  );
+
+  assert.equal(report.collectionGroups[0].items[0].sequenceNumber, 1);
+  assert.equal(report.collectionGroups[1].items[0].sequenceNumber, 1);
+
+  const workbook = new ExcelJS.Workbook();
+  const excelBuffer = await buildReportExcelBuffer(report);
+  await workbook.xlsx.load(excelBuffer.buffer as unknown as ArrayBuffer);
+  const schedule1 = workbook.getWorksheet("SCHEDULE 1 - COLLECTIONS")!;
+  const schedule2 = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")!;
+  const schedule1Values = schedule1.getSheetValues().flat().map((value) => String(value ?? ""));
+  assert.ok(schedule1Values.includes("Membership Dues"));
+  assert.ok(schedule1Values.includes("Donation"));
+  assert.equal(schedule2.getRow(8).getCell(13).text, "Others");
+  assert.ok(schedule2.getCell("B9").value instanceof Date);
+  assert.equal(schedule2.getCell("E9").value, 150);
+  assert.equal(schedule2.getCell("M9").value, 150);
+  assert.equal(schedule2.getCell("F9").value, null);
+});
+
+test("Reports PDF: Schedule 1 continuation pages preflight rows and retain totals", async () => {
+  const collectionCount = 60;
+  const transactions: RawReportInputTransaction[] = Array.from({ length: collectionCount }, (_, index) => ({
+    id: `stress-income-${index + 1}`,
+    type: TransactionType.INCOME,
+    transactionDate: new Date("2025-08-01T00:00:00.000Z"),
+    amountCents: 1000,
+    cashAccount: CashAccount.CASH_ON_HAND,
+    documentNumber: `STRESS-${String(index + 1).padStart(3, "0")}`,
+    counterpartyName:
+      index === collectionCount - 1
+        ? "Synthetic Payor with a deliberately long source name that must wrap inside the Schedule 1 table cell"
+        : `Synthetic Payor ${index + 1}`,
+    description: "Synthetic collection",
+    referenceDescription: "Synthetic stress reference",
+    categoryId: "stress-income-category",
+    category: { id: "stress-income-category", name: "Synthetic Collections", type: TransactionType.INCOME },
+    attachments: [],
+  }));
+  const report = buildReportPackage(
+    {
+      id: "term-schedule1-stress",
+      academicYear: "2025-2026",
+      semester: Semester.FIRST_SEMESTER,
+      openingCashOnHandCents: 100000,
+      openingCashInBankCents: 0,
+      organization: {
+        id: "org-schedule1-stress",
+        name: "Fictional Schedule Stress Organization",
+        slug: "fictional-schedule-stress-organization",
+      },
+    },
+    transactions,
+    [],
+    new Date("2026-08-31T00:00:00.000Z")
+  );
+
+  const pdf = await buildReportPdfBuffer(report);
+  const pdfPageCount = pdf.toString("latin1").split("/Type /Page\n").length - 1;
+
+  assert.ok(pdfPageCount >= 5, `Expected continuation pages, received ${pdfPageCount} PDF pages`);
+  assert.equal(report.collectionGroups[0].totalCents, collectionCount * 1000);
+  assert.equal(report.totalIncomeCents, collectionCount * 1000);
+  assert.equal(fitsPdfTableRow(680, 20, 700), true);
+  assert.equal(fitsPdfTableRow(681, 20, 700), false);
+  assert.deepEqual(SCHEDULE1_TABLE_ALIGNMENTS, ["center", "left", "right"]);
+  assert.deepEqual(getSchedule2TableAlignments(2), ["left", "left", "left", "left", "right", "right", "right"]);
+  assert.deepEqual(ATTACHMENT_TABLE_ALIGNMENTS, ["left", "left", "left", "left", "left", "left", "right"]);
+  assert.ok(PDF_ATTACHMENT_TABLE_WIDTHS.reduce((total, width) => total + width, 0) <= 540);
 });
