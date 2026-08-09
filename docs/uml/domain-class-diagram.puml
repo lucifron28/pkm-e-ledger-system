@@ -1,0 +1,103 @@
+@startuml
+title PKM e-Ledger System - Simplified Domain Model
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #004AAD
+  ArrowColor #475569
+}
+
+enum Role {
+  TREASURER
+  ADVISER
+  AUDIT
+  OFFICER
+  MEMBER
+  OSA
+}
+
+enum CashAccount {
+  CASH_ON_HAND
+  CASH_IN_BANK
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+class Organization {
+  id
+  name
+}
+
+class User {
+  id
+  fullName
+  username
+  role: Role
+}
+
+class AcademicTerm {
+  academicYear
+  semester
+  active
+  openingCashOnHandCents
+  openingCashInBankCents
+}
+
+class TransactionCategory {
+  id
+  name
+  type: TransactionType
+  reportBucket
+  active
+}
+
+class Transaction {
+  id
+  type: TransactionType
+  amountCents
+  cashAccount: CashAccount
+  transactionDate
+  documentNumber
+  deletedAt
+}
+
+class CashTransfer {
+  id
+  amountCents
+  fromAccount: CashAccount
+  toAccount: CashAccount
+  deletedAt
+}
+
+class Attachment {
+  id
+  originalName
+  mimeType
+  storageKey
+}
+
+class AuditLog {
+  id
+  action
+  entityType
+  createdAt
+}
+
+Organization "1" -- "*" User
+Organization "1" -- "*" AcademicTerm
+Organization "1" -- "*" Transaction
+Organization "1" -- "*" CashTransfer
+Organization "1" -- "*" AuditLog
+AcademicTerm "1" -- "*" Transaction
+AcademicTerm "1" -- "*" CashTransfer
+TransactionCategory "1" -- "*" Transaction
+User "1" -- "*" Transaction : records
+User "1" -- "*" CashTransfer : records
+Transaction "1" -- "*" Attachment
+CashTransfer "1" -- "*" Attachment
+User "1" -- "*" AuditLog : actor
+@enduml

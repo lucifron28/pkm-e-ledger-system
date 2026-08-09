@@ -1,0 +1,88 @@
+@startuml
+title PKM e-Ledger System - Use Case Diagram
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam actorStyle awesome
+
+actor Treasurer
+actor Adviser
+actor Audit
+actor Officer
+actor Member
+actor OSA
+
+rectangle "PKM e-Ledger System" {
+  usecase "Authenticate" as UC_Auth
+  usecase "View Dashboard" as UC_Dashboard
+  usecase "Manage Academic Term" as UC_Term
+  usecase "Record Income" as UC_Income
+  usecase "Record Expense" as UC_Expense
+  usecase "Record Cash Transfer" as UC_Transfer
+  usecase "Manage Attachments" as UC_Attachments
+  usecase "View Treasurer Log" as UC_Log
+  usecase "View Reports" as UC_Reports
+  usecase "Export PDF" as UC_PDF
+  usecase "Export XLSX" as UC_XLSX
+  usecase "View Organization Transparency" as UC_Transparency
+  usecase "Monitor Organizations" as UC_Monitor
+}
+
+Treasurer --> UC_Auth
+Treasurer --> UC_Dashboard
+Treasurer --> UC_Term
+Treasurer --> UC_Income
+Treasurer --> UC_Expense
+Treasurer --> UC_Transfer
+Treasurer --> UC_Attachments
+Treasurer --> UC_Log
+Treasurer --> UC_Reports
+Treasurer --> UC_PDF
+Treasurer --> UC_XLSX
+
+Adviser --> UC_Auth
+Adviser --> UC_Dashboard
+Adviser --> UC_Term
+Adviser --> UC_Income
+Adviser --> UC_Expense
+Adviser --> UC_Transfer
+Adviser --> UC_Attachments
+Adviser --> UC_Log
+Adviser --> UC_Reports
+Adviser --> UC_PDF
+Adviser --> UC_XLSX
+
+Audit --> UC_Auth
+Audit --> UC_Dashboard
+Audit --> UC_Term
+Audit --> UC_Income
+Audit --> UC_Expense
+Audit --> UC_Transfer
+Audit --> UC_Attachments
+Audit --> UC_Log
+Audit --> UC_Reports
+Audit --> UC_PDF
+Audit --> UC_XLSX
+
+Officer --> UC_Auth
+Officer --> UC_Dashboard
+Officer --> UC_Reports
+Officer --> UC_Transparency
+
+Member --> UC_Auth
+Member --> UC_Dashboard
+Member --> UC_Reports
+Member --> UC_Transparency
+
+OSA --> UC_Auth
+OSA --> UC_Dashboard
+OSA --> UC_Monitor
+OSA --> UC_Transparency
+OSA --> UC_Reports
+
+UC_Income .> UC_Attachments : <<include>>
+UC_Expense .> UC_Attachments : <<include>>
+UC_Transfer .> UC_Attachments : <<include>>
+UC_PDF .> UC_Reports : <<extend>>
+UC_XLSX .> UC_Reports : <<extend>>
+@enduml

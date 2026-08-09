@@ -1,0 +1,47 @@
+@startuml
+title PKM e-Ledger System - Transaction Entry Sequence
+autonumber
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #004AAD
+  LifeLineBorderColor #64748B
+  ParticipantBorderColor #004AAD
+  ParticipantBackgroundColor #EFF6FF
+}
+
+actor "Management User" as User
+participant "Browser / Next.js UI" as UI
+participant "Server Action" as Action
+participant "Domain Validation" as Validation
+database "Prisma" as Prisma
+database "SQLite" as SQLite
+participant "Attachment Storage" as Storage
+participant "Audit Log" as Audit
+
+User -> UI: Submit income, expense, or transfer form
+UI -> Action: FormData + idempotency key + attachment
+Action -> Validation: Parse fields and validate business input
+Validation --> Action: Validated transaction command
+Action -> Storage: Stage upload
+Storage --> Action: Temporary storage key
+Action -> Prisma: Execute idempotent command
+Prisma -> SQLite: Read term, categories,\nbalances, and active entries
+SQLite --> Prisma: Snapshot data
+Prisma -> SQLite: Persist movement and attachment metadata
+SQLite --> Prisma: Commit result
+Prisma -> Audit: Append immutable audit entries
+Audit --> Prisma: Audit append result
+Prisma --> Action: Transaction DTO
+Action -> Storage: Commit staged upload
+Storage --> Action: Active storage key
+Action --> UI: Revalidate ledger and redirect
+UI --> User: Updated balances and ledger row
+
+alt Validation or authorization failure
+  Validation --> Action: Error details
+  Action --> UI: Field or domain error
+  UI --> User: Corrective message
+else Transient database conflict
+  Prisma -> SQLite: Retry with bounded backoff
+end
+@enduml
