@@ -8,7 +8,7 @@ This document details the configuration, deployment, hosting, and backup mainten
 
 Before deploying the application, ensure the following software is installed on the host machine:
 
-1. **Node.js** (v20 LTS or newer recommended) — [Download here](https://nodejs.org/)
+1. **Node.js** — Minimum supported runtime: Node >= 20.9 (LTS). Primary repository verification environment: Node 24.15.0 (Node 24 LTS). Node 18 is deprecated and no longer supported.
 2. **Git** — [Download here](https://git-scm.com/)
 3. **SQLite3** (Usually bundled automatically, but good to have CLI utility installed for low-level DB queries)
 
@@ -26,8 +26,9 @@ Follow these steps to set up the codebase on the server machine:
 
 2. **Install Dependencies**:
    ```bash
-   npm install --omit=dev
+   npm ci
    ```
+   > **Note**: Do not run `npm install --omit=dev` before building. Build, testing, and database tools (`prisma`, `tsx`, `scripts/migrate.js`) require devDependencies. If production deployment prunes devDependencies (`npm prune --omit=dev`), you MUST run `npm install` (or `npm ci`) to reinstall devDependencies prior to executing maintenance scripts, database migrations, attachment reconciliation, or seeds.
 
 3. **Configure Environment Variables**:
    * Copy the template environment file:
@@ -49,7 +50,12 @@ If setting up the system for the first time, initialize the database and tables:
 1. **Ensure the database storage folder exists**:
    If you set `DATABASE_URL="file:C:/pkm-eledger-data/production.db"`, create the `C:\pkm-eledger-data` directory.
 
-2. **Run Migrations through the Safe Orchestrator**:
+2. **Generate Prisma Client**:
+   ```bash
+   npm run db:generate
+   ```
+
+3. **Run Migrations through the Safe Orchestrator**:
    This applies the tables, schemas, indexes, and triggers to the SQLite database.
    The orchestrator inspects the `Attachment` table shape, runs the attachment
    storage-key preflight automatically for legacy databases (copying duplicated
@@ -63,10 +69,10 @@ If setting up the system for the first time, initialize the database and tables:
    > orchestrator (`scripts/migrate.js`) is the only supported migration entry
    > point so the storage-key preflight can never be bypassed.
 
-3. **Seed Initial Data**:
+4. **Seed Initial Data**:
    This seeds the default organizations, system transaction categories, and initial admin/OSA users:
    ```bash
-   npx prisma db seed
+   npm run db:seed
    ```
 
 ---

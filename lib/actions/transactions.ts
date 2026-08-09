@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireManagementUser } from "../auth/require-auth";
 import { parsePesoToCents } from "../domain/money";
-import { parseStrictDate } from "../domain/query";
+import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { CashAccount, TransactionType } from "@prisma/client";
 import {
@@ -14,6 +14,9 @@ import {
   editTransactionService,
 } from "../application/transactions";
 import { DomainError } from "../domain/errors";
+
+import { TRANSACTION_FIELD_LIMITS } from "../domain/field-limits";
+import { forceTransactionType } from "../domain/transactions";
 
 type TxActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 
@@ -25,22 +28,33 @@ function getAttachmentFile(formData: FormData): File {
   return file;
 }
 
-const transactionSchema = z.object({
+export const transactionBaseSchema = z.object({
   type: z.nativeEnum(TransactionType, { message: "Transaction type is required." }),
   transactionDate: z.string().trim().min(1, "Transaction date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
   cashAccount: z.nativeEnum(CashAccount, { message: "Cash account is required." }),
   categoryId: z.string().trim().min(1, "Category is required."),
-  documentNumber: z.string().trim().max(100, "Document number must be under 100 characters.").optional(),
-  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(200, "Payor / Payee must be under 200 characters."),
-  description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
-  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(200, "Event / Activity name must be under 200 characters."),
+  documentNumber: z.string().trim().max(TRANSACTION_FIELD_LIMITS.documentNumber, `Document number must be at most ${TRANSACTION_FIELD_LIMITS.documentNumber} characters.`).optional(),
+  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(TRANSACTION_FIELD_LIMITS.counterpartyName, `Payor / Payee must be at most ${TRANSACTION_FIELD_LIMITS.counterpartyName} characters.`),
+  description: z.string().trim().min(1, "Description is required.").max(TRANSACTION_FIELD_LIMITS.description, `Description must be at most ${TRANSACTION_FIELD_LIMITS.description} characters.`),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSACTION_FIELD_LIMITS.referenceDescription, `Reference description must be at most ${TRANSACTION_FIELD_LIMITS.referenceDescription} characters.`),
+  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(TRANSACTION_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSACTION_FIELD_LIMITS.eventActivityName} characters.`),
+});
+
+export const createTransactionSchema = transactionBaseSchema.extend({
+  termId: z.string().trim().min(1, "Term ID is required."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
+});
+
+export const editTransactionSchema = transactionBaseSchema.extend({
+  id: z.string().trim().min(1, "Transaction ID is required."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 function transactionFields(formData: FormData) {
   return {
+    termId: formData.get("termId")?.toString() || "",
     type: formData.get("type")?.toString() || "",
     transactionDate: formData.get("transactionDate")?.toString() || "",
     amount: formData.get("amount")?.toString() || "",
@@ -62,7 +76,7 @@ export async function createTransactionAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const validation = transactionSchema.safeParse(transactionFields(formData));
+  const validation = createTransactionSchema.safeParse(transactionFields(formData));
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
@@ -87,6 +101,7 @@ export async function createTransactionAction(
 
   try {
     await createTransactionService(user, {
+      termId: validation.data.termId,
       type: validation.data.type,
       transactionDate,
       amountCents,
@@ -102,7 +117,7 @@ export async function createTransactionAction(
         originalName: validatedFile.originalName,
         mimeType: validatedFile.mimeType,
         sizeBytes: validatedFile.sizeBytes,
-        buffer: validatedFile.buffer,
+        buffer: Buffer.from(validatedFile.buffer),
       },
     });
   } catch (error) {
@@ -116,10 +131,21 @@ export async function createTransactionAction(
   redirect("/ledger");
 }
 
-const editTransactionSchema = transactionSchema.extend({
-  id: z.string().trim().min(1, "Transaction ID is required."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
-});
+
+export async function createIncomeTransactionAction(
+  prevState: TxActionState,
+  formData: FormData
+): Promise<TxActionState> {
+  return createTransactionAction(prevState, forceTransactionType(formData, TransactionType.INCOME));
+}
+
+export async function createExpenseTransactionAction(
+  prevState: TxActionState,
+  formData: FormData
+): Promise<TxActionState> {
+  return createTransactionAction(prevState, forceTransactionType(formData, TransactionType.EXPENSE));
+}
+
 
 export async function editTransactionAction(
   _prevState: TxActionState,
@@ -141,13 +167,13 @@ export async function editTransactionAction(
 
   const validation = editTransactionSchema.safeParse(rawFields);
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
     const amountCents = parsePesoToCents(validation.data.amount);
     const transactionDate = parseStrictDate(validation.data.transactionDate);
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
 
     await editTransactionService(user, {
       id: validation.data.id,
@@ -178,7 +204,7 @@ export async function editTransactionAction(
 const deleteTransactionSchema = z.object({
   id: z.string().trim().min(1, "Transaction ID is required."),
   deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -201,11 +227,11 @@ export async function softDeleteTransactionAction(
     idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   });
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
     await deleteTransactionService(user, {
       id: validation.data.id,
       expectedVersion,

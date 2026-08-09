@@ -14,6 +14,7 @@ export interface TermDto {
   openingCashInBankCents: number;
   balanceForwardedCents: number;
   active: boolean;
+  version: number;
   createdAt: Date;
 }
 
@@ -24,6 +25,7 @@ function toTermDto(term: {
   openingCashOnHandCents: number;
   openingCashInBankCents: number;
   active: boolean;
+  version: number;
   createdAt: Date;
 }): TermDto {
   return {
@@ -37,6 +39,7 @@ function toTermDto(term: {
       term.openingCashInBankCents
     ),
     active: term.active,
+    version: term.version,
     createdAt: term.createdAt,
   };
 }

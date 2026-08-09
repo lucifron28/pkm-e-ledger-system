@@ -142,76 +142,76 @@ export default async function DashboardPage({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Card 1: Cash on Hand */}
+            {/* Card 1: Balance Forwarded */}
             <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-                <span>1. Cash on Hand</span>
-                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Asset</span>
-              </div>
-              <div className="text-2xl font-black text-slate-900 font-mono">
-                {formatPesoFromCents(balances.cashOnHandCents)}
-              </div>
-              <p className="text-xs text-slate-500">Physical cash stored on hand</p>
-            </div>
-
-            {/* Card 2: Cash in Bank */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-                <span>2. Cash in Bank</span>
-                <span className="bg-blue-50 text-[#004aad] px-2 py-0.5 rounded font-bold">Bank Account</span>
-              </div>
-              <div className="text-2xl font-black text-[#004aad] font-mono">
-                {formatPesoFromCents(balances.cashInBankCents)}
-              </div>
-              <p className="text-xs text-slate-500">Verified bank depository funds</p>
-            </div>
-
-            {/* Card 3: Total Income */}
-            <div className="bg-white rounded-xl p-5 border border-emerald-200 shadow-sm flex flex-col justify-between space-y-2 bg-emerald-50/30">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-800">
-                <span>3. Total Income</span>
-                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Collections</span>
-              </div>
-              <div className="text-2xl font-black text-emerald-700 font-mono">
-                {formatPesoFromCents(balances.totalIncomeCents)}
-              </div>
-              <p className="text-xs text-slate-500">Total verified collections for term</p>
-            </div>
-
-            {/* Card 4: Total Expenses */}
-            <div className="bg-white rounded-xl p-5 border border-red-200 shadow-sm flex flex-col justify-between space-y-2 bg-red-50/30">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-800">
-                <span>4. Total Expenses</span>
-                <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold">Disbursements</span>
-              </div>
-              <div className="text-2xl font-black text-red-700 font-mono">
-                {formatPesoFromCents(balances.totalExpenseCents)}
-              </div>
-              <p className="text-xs text-slate-500">Operating expenditures for term</p>
-            </div>
-
-            {/* Card 5: Net Remaining Balance */}
-            <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-900 shadow-md flex flex-col justify-between space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
-                <span>5. Net Remaining Balance</span>
-                <span className="bg-[#f9d818] text-[#004aad] px-2 py-0.5 rounded font-extrabold">Net Fund</span>
-              </div>
-              <div className="text-2xl font-black text-[#f9d818] font-mono">
-                {formatPesoFromCents(balances.remainingCents)}
-              </div>
-              <p className="text-xs text-slate-400">Opening + Income - Expenses</p>
-            </div>
-
-            {/* Card 6: Balance Forwarded */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-                <span>6. Balance Forwarded</span>
+                <span>1. Balance Forwarded</span>
                 <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Opening Fund</span>
               </div>
               <div className="text-2xl font-black text-slate-800 font-mono">
                 {formatPesoFromCents(activeTerm.balanceForwardedCents)}
               </div>
-              <p className="text-xs text-slate-500">Carried forward from previous term</p>
+              <p className="text-xs text-slate-500">Opening funds carried forward for selected term</p>
+            </div>
+
+            {/* Card 2: Cash on Hand */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                <span>2. Cash on Hand</span>
+                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Asset</span>
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {formatPesoFromCents(balances.cashOnHandCents)}
+              </div>
+              <p className="text-xs text-slate-500">Current physical cash held</p>
+            </div>
+
+            {/* Card 3: Cash in Bank */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                <span>3. Cash in Bank</span>
+                <span className="bg-blue-50 text-[#004aad] px-2 py-0.5 rounded font-bold">Bank Account</span>
+              </div>
+              <div className="text-2xl font-black text-[#004aad] font-mono">
+                {formatPesoFromCents(balances.cashInBankCents)}
+              </div>
+              <p className="text-xs text-slate-500">Current bank account balance</p>
+            </div>
+
+            {/* Card 4: Total Income */}
+            <div className="bg-white rounded-xl p-5 border border-emerald-200 shadow-sm flex flex-col justify-between space-y-2 bg-emerald-50/30">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-800">
+                <span>4. Total Income</span>
+                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Collections</span>
+              </div>
+              <div className="text-2xl font-black text-emerald-700 font-mono">
+                {formatPesoFromCents(balances.totalIncomeCents)}
+              </div>
+              <p className="text-xs text-slate-500">Recorded collections for selected term</p>
+            </div>
+
+            {/* Card 5: Total Expenses */}
+            <div className="bg-white rounded-xl p-5 border border-red-200 shadow-sm flex flex-col justify-between space-y-2 bg-red-50/30">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-red-800">
+                <span>5. Total Expenses</span>
+                <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold">Disbursements</span>
+              </div>
+              <div className="text-2xl font-black text-red-700 font-mono">
+                {formatPesoFromCents(balances.totalExpenseCents)}
+              </div>
+              <p className="text-xs text-slate-500">Recorded disbursements for selected term</p>
+            </div>
+
+            {/* Card 6: Remaining Balance */}
+            <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-900 shadow-md flex flex-col justify-between space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
+                <span>6. Remaining Balance</span>
+                <span className="bg-[#f9d818] text-[#004aad] px-2 py-0.5 rounded font-extrabold">Net Fund</span>
+              </div>
+              <div className="text-2xl font-black text-[#f9d818] font-mono">
+                {formatPesoFromCents(balances.remainingCents)}
+              </div>
+              <p className="text-xs text-slate-400">Opening Funds + Income - Expenses</p>
             </div>
           </div>
 

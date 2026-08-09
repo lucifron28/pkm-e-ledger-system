@@ -155,7 +155,25 @@ export async function uploadAttachmentAction(
       await storage.deleteActiveFile(storageKey).catch(() => undefined);
     }
   } catch (error) {
-    if (staged) await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    if (staged && !storageKey) {
+      await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    }
+    if (storageKey) {
+      let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
+      try {
+        const ref = await prisma.attachment.findFirst({
+          where: { storageKey },
+          select: { id: true },
+        });
+        lookupState = ref ? "LOOKUP_SUCCEEDED_REFERENCED" : "LOOKUP_SUCCEEDED_UNREFERENCED";
+      } catch (lookupErr) {
+        console.warn("[AttachmentAction] Ownership lookup failed; retaining active file for reconciliation:", lookupErr);
+        lookupState = "LOOKUP_FAILED";
+      }
+      if (lookupState === "LOOKUP_SUCCEEDED_UNREFERENCED") {
+        await storage.deleteActiveFile(storageKey).catch(() => undefined);
+      }
+    }
     await releaseCommandReceipt(claim).catch(() => undefined);
     if (error instanceof DomainError) return { error: error.message };
     console.error("Upload attachment error:", error);
@@ -193,13 +211,20 @@ export async function deleteAttachmentAction(
   if (receipt.status === "COMPLETED") return null;
   const claim = receipt.claim;
 
-  const attachment = await prisma.attachment.findUnique({
-    where: { id: attachmentId },
-    include: {
-      transaction: { select: { id: true, organizationId: true, deletedAt: true } },
-      cashTransfer: { select: { id: true, organizationId: true, deletedAt: true } },
-    },
-  });
+  let attachment;
+  try {
+    attachment = await prisma.attachment.findUnique({
+      where: { id: attachmentId },
+      include: {
+        transaction: { select: { id: true, organizationId: true, deletedAt: true } },
+        cashTransfer: { select: { id: true, organizationId: true, deletedAt: true } },
+      },
+    });
+  } catch {
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    return { error: "Failed to locate attachment. Please try again." };
+  }
+
   const ownerOrgId = attachment?.transaction?.organizationId || attachment?.cashTransfer?.organizationId;
   if (!attachment || !ownerOrgId || ownerOrgId !== user.organizationId || attachment.transaction?.deletedAt || attachment.cashTransfer?.deletedAt) {
     await releaseCommandReceipt(claim).catch(() => undefined);
@@ -279,7 +304,11 @@ export async function deleteAttachmentAction(
       )
     );
     databaseDeleted = true;
-    if (trashKey) await defaultAttachmentStorageService.permanentlyDelete(trashKey);
+    if (trashKey) {
+      await defaultAttachmentStorageService.permanentlyDelete(trashKey).catch((err) => {
+        console.warn("Physical trash deletion failed after DB deletion; retained DB_DELETED manifest for reconciliation:", err);
+      });
+    }
   } catch (error) {
     if (!databaseDeleted && trashKey) {
       await defaultAttachmentStorageService.restoreFromTrash(trashKey, attachment.storageKey).catch(() => undefined);

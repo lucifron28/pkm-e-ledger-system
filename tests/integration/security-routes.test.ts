@@ -90,7 +90,7 @@ test.before(async () => {
   // 2. Scaffold the isolated database with the real Prisma schema
   if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
   fs.writeFileSync(testDbPath, Buffer.alloc(0));
-  execSync(`npx prisma db push --skip-generate`, {
+  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${sandboxUploadsDir}"`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
     encoding: "utf8",
@@ -229,7 +229,7 @@ test("Security Routes Integration: Attachment download authorization and respons
   assert.equal(resOsa.status, 403, "OSA role must be denied direct attachment download");
 
   const resOtherOrg = await handler(attAId, treasurerBActor, sandboxUploadsDir);
-  assert.equal(resOtherOrg.status, 403);
+  assert.equal(resOtherOrg.status, 404);
 
   const resUnauth = await handler(attAId, null, sandboxUploadsDir);
   assert.equal(resUnauth.status, 401);
@@ -247,7 +247,7 @@ test("Security Routes Integration: Deleted-transaction attachment rejection", as
     });
 
     const resDeleted = await handler(attAId, treasurerActor, sandboxUploadsDir);
-    assert.equal(resDeleted.status, 403, "Attachment for soft-deleted transaction must return 403 Access Denied");
+    assert.equal(resDeleted.status, 404, "Attachment for soft-deleted transaction must return 404 Attachment not found");
   } finally {
     await prisma.$disconnect();
   }

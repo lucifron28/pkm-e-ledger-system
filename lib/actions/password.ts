@@ -3,10 +3,11 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { hashPassword, verifyPassword } from "../auth/password";
+import { hashPassword, validatePasswordLength, verifyPassword } from "../auth/password";
 import { getSessionResult } from "../auth/session";
-import { createSystemAuditLog } from "../data/audit-log";
+import { createAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
+import { DomainError } from "../domain/errors";
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required."),
@@ -47,6 +48,14 @@ export async function changePasswordAction(
   }
 
   const { currentPassword, newPassword, confirmNewPassword } = validation.data;
+
+  const passwordCheck = validatePasswordLength(newPassword);
+  if (!passwordCheck.valid) {
+    return {
+      error: passwordCheck.message,
+      fieldErrors: { newPassword: [passwordCheck.message!] },
+    };
+  }
 
   // New passwords match check
   if (newPassword !== confirmNewPassword) {
@@ -111,7 +120,7 @@ export async function changePasswordAction(
         throw new Error("Your password was modified in another session. Please reload and try again.");
       }
 
-      await createSystemAuditLog({
+      await createAuditLog({
         userId: user.id,
         organizationId: user.organizationId,
         role: user.role,
@@ -131,11 +140,11 @@ export async function changePasswordAction(
       });
     });
   } catch (error) {
-    if (error instanceof Error) {
+    if (error instanceof DomainError) {
       return { error: error.message };
     }
     console.error("Change password error:", error);
-    return { error: "An unexpected error occurred while updating password. Please try again." };
+    return { error: "Failed to change password. Please try again." };
   }
 
   const destination = user.role === Role.OSA ? "/osa" : "/dashboard";

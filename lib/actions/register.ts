@@ -4,19 +4,21 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { hashPassword } from "../auth/password";
+import { hashPassword, validatePasswordLength } from "../auth/password";
 import { createSystemAuditLog } from "../data/audit-log";
 import { AuditAction, Role } from "@prisma/client";
+import { DomainError } from "../domain/errors";
 
 const PUBLIC_ALLOWED_ROLES: Role[] = [Role.OFFICER, Role.MEMBER];
 
 const registerSchema = z.object({
-  fullName: z.string().trim().min(2, "Full Name must be at least 2 characters."),
+  fullName: z.string().trim().min(2, "Full Name must be at least 2 characters.").max(100, "Full Name must be under 100 characters."),
   username: z
     .string()
     .trim()
     .toLowerCase()
-    .min(3, "Username must be at least 3 characters."),
+    .min(3, "Username must be at least 3 characters.")
+    .max(50, "Username must be under 50 characters."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   confirmPassword: z.string().min(8, "Confirm Password is required."),
   organizationId: z.string().min(1, "Please select an organization."),
@@ -53,6 +55,14 @@ export async function registerAction(
   const { fullName, username, password, confirmPassword, organizationId, requestedRole } =
     validation.data;
 
+  const passwordCheck = validatePasswordLength(password);
+  if (!passwordCheck.valid) {
+    return {
+      error: passwordCheck.message,
+      fieldErrors: { password: [passwordCheck.message!] },
+    };
+  }
+
   if (!PUBLIC_ALLOWED_ROLES.includes(requestedRole)) {
     return {
       error: "Public registration is only allowed for Officer and Member roles.",
@@ -82,19 +92,17 @@ export async function registerAction(
       };
     }
 
-    const organization = await prisma.organization.findUnique({
-      where: { id: organizationId },
-    });
-
-    if (!organization || !organization.active) {
-      return {
-        error: "Selected organization is not active or does not exist.",
-      };
-    }
-
     const passwordHash = await hashPassword(password);
 
     await prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.findUnique({
+        where: { id: organizationId },
+      });
+
+      if (!organization || !organization.active) {
+        throw new DomainError("Selected organization is not active or does not exist.");
+      }
+
       const user = await tx.user.create({
         data: {
           fullName,
@@ -119,6 +127,9 @@ export async function registerAction(
       return user;
     });
   } catch (error) {
+    if (error instanceof DomainError) {
+      return { error: error.message };
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return {
         error: "Username is already in use.",

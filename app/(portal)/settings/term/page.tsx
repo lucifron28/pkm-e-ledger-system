@@ -179,6 +179,7 @@ function TermRow({ term, isActive }: { term: TermDto; isActive: boolean }) {
           {!isActive && <ActivateTermForm termId={term.id} />}
           <EditOpeningBalancesForm
             termId={term.id}
+            version={term.version}
             initialCashOnHand={formatPesoInputFromCents(
               term.openingCashOnHandCents
             )}

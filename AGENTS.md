@@ -22,9 +22,8 @@ Do not make current-status claims without inspecting the repository.
 
 ## Current Implementation Status
 
-* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), Reports and exports (`feature/reports-and-exports`), Transparency portals (`feature/transparency-portals`), and Testing, hardening, and demo (`feature/testing-hardening-and-demo`).
-* **Current / In Review**: Post-implementation business-invariant hardening (`fix/business-invariants-concurrency-and-audit`).
-* **Next**: Final external audit and merge.
+* **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), Reports and exports (`feature/reports-and-exports`), Transparency portals (`feature/transparency-portals`), Testing, hardening, and demo (`feature/testing-hardening-and-demo`), and Post-implementation business-invariant hardening (`fix/business-invariants-concurrency-and-audit` merged via PR #10).
+* **In Progress**: Full Engineering Audit & Remediation (`audit/full-project-completeness-ui-docs`).
 
 ## Business Invariants (Post-Implementation Hardening)
 

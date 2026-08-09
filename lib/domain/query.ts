@@ -1,5 +1,29 @@
 import { CashAccount, Semester, TransactionType } from "@prisma/client";
 import { normalizeAcademicYear } from "./term-labels";
+import { ValidationError } from "./errors";
+import { z } from "zod";
+
+export function parseStrictVersion(value: unknown): number {
+  if (typeof value !== "string" && typeof value !== "number") {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  const str = String(value).trim();
+  if (!/^[1-9]\d*$/.test(str)) {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) || num < 1 || num > 2_147_483_647) {
+    throw new ValidationError("Version must be a positive integer.");
+  }
+  return num;
+}
+
+export const strictVersionSchema = z
+  .string()
+  .trim()
+  .min(1, "Version is required.")
+  .regex(/^[1-9]\d*$/, "Version must be a positive integer.")
+  .refine((v) => Number.isSafeInteger(Number(v)) && Number(v) <= 2_147_483_647, "Version must be a positive integer.");
 
 export interface ParsedLedgerQuery {
   academicYear?: string;
@@ -100,18 +124,56 @@ export function parsePageSize(value: unknown, defaultSize = 50, maxSize = 100): 
   return Math.min(parsed, maxSize);
 }
 
+import crypto from "crypto";
+
+export interface LedgerCursorContext {
+  organizationId?: string;
+  termId?: string;
+  type?: string;
+  entryType?: string;
+  categoryId?: string;
+  cashAccount?: string;
+  month?: string;
+  eventActivityName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  pageSize: number;
+}
+
+export function buildLedgerCursorFingerprint(ctx: LedgerCursorContext): string {
+  const parts = [
+    "v1",
+    ctx.organizationId || "",
+    ctx.termId || "",
+    ctx.type || "",
+    ctx.entryType || "",
+    ctx.categoryId || "",
+    ctx.cashAccount || "",
+    ctx.month || "",
+    ctx.eventActivityName || "",
+    ctx.dateFrom || "",
+    ctx.dateTo || "",
+    ctx.search || "",
+    String(ctx.pageSize || 50),
+  ];
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
+}
+
 export interface LedgerCursor {
   financialDate: string;
   createdAt: string;
   kind: "TRANSACTION" | "TRANSFER";
   id: string;
+  dir?: "next" | "prev";
+  fingerprint?: string;
 }
 
 export function encodeLedgerCursor(cursor: LedgerCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-export function decodeLedgerCursor(value: unknown): LedgerCursor | null {
+export function decodeLedgerCursor(value: unknown, expectedFingerprint?: string): LedgerCursor | null {
   const scalar = parseScalarString(value);
   if (!scalar || !/^[A-Za-z0-9_-]+$/.test(scalar)) return null;
   try {
@@ -124,6 +186,13 @@ export function decodeLedgerCursor(value: unknown): LedgerCursor | null {
       Number.isNaN(Date.parse(decoded.financialDate)) ||
       Number.isNaN(Date.parse(decoded.createdAt))
     ) return null;
+
+    if (decoded.dir !== undefined && decoded.dir !== "next" && decoded.dir !== "prev") return null;
+
+    if (expectedFingerprint && decoded.fingerprint !== expectedFingerprint) {
+      return null;
+    }
+
     return decoded as LedgerCursor;
   } catch {
     return null;
@@ -345,7 +414,6 @@ export function calculateEffectiveDateRange(
     }
   }
 
-  // Intersect month range and explicit date range (latest of starts, earliest of ends)
   let finalGte: Date | undefined = undefined;
   if (monthGte && explicitGte) {
     finalGte = monthGte > explicitGte ? monthGte : explicitGte;
@@ -391,9 +459,8 @@ const LEDGER_URL_PARAM_KEYS = [
 /**
  * Builds a /ledger URL from the current query plus filter overrides.
  *
- * Changing any filter or the selected term invalidates the cursor so the
- * result set restarts from the first matching entry; changing only the
- * page size preserves the cursor so the user stays on the same page window.
+ * Changing any filter, page size, or selected term invalidates the cursor so
+ * the result set restarts from the first matching entry.
  */
 export function buildLedgerFilterUrl(
   filters: Pick<
@@ -433,9 +500,11 @@ export function buildLedgerFilterUrl(
     ...overrides,
   };
 
-  const filterChanged = Object.keys(overrides).some((key) => key !== "pageSize");
-  if (filterChanged) {
-    merged.cursor = undefined;
+  const hasFilterOrPageSizeOverride = Object.keys(overrides).some(
+    (key) => key !== "cursor"
+  );
+  if (hasFilterOrPageSizeOverride) {
+    if (!("cursor" in overrides)) merged.cursor = undefined;
   }
 
   const params = new URLSearchParams();

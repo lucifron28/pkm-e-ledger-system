@@ -74,3 +74,44 @@ export function canViewAvailableReports(role: Role): boolean {
 export function canViewCrossOrganization(role: Role): boolean {
   return isMonitoringRole(role);
 }
+
+export interface NavLinkConfig {
+  href: string;
+  label: string;
+}
+
+export function getPortalNavLinks(role: Role, orgParam?: string): NavLinkConfig[] {
+  const orgQuery = orgParam && orgParam.trim().length > 0 ? `?org=${encodeURIComponent(orgParam.trim())}` : "";
+
+  if (isMonitoringRole(role)) {
+    return [
+      { href: "/osa", label: "OSA Overview" },
+      { href: `/ledger${orgQuery}`, label: "Organization Ledger Summary" },
+      { href: `/reports${orgQuery}`, label: "Reports" },
+      { href: "/account", label: "Account" },
+    ];
+  }
+
+  if (isTransparencyRole(role)) {
+    return [
+      { href: "/dashboard", label: "Dashboard" },
+      { href: "/reports", label: "Reports" },
+      { href: "/account", label: "Account" },
+    ];
+  }
+
+  if (isManagementRole(role)) {
+    return [
+      { href: "/dashboard", label: "Dashboard" },
+      { href: "/settings/term", label: "Term Settings" },
+      { href: "/ledger", label: "Digital Ledger" },
+      { href: "/ledger/income/new", label: "New Income" },
+      { href: "/ledger/expense/new", label: "New Expense" },
+      { href: "/reports", label: "Financial Reports" },
+      { href: "/audit-log", label: "Treasurer Log" },
+      { href: "/account", label: "Account" },
+    ];
+  }
+
+  return [];
+}

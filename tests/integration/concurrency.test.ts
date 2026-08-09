@@ -56,7 +56,7 @@ test.before(async () => {
   fs.mkdirSync(storageRoot, { recursive: true });
   defaultUploadsBefore = listFiles(defaultUploadsRoot);
 
-  execSync(`npx prisma db push --skip-generate`, {
+  execSync(`node scripts/migrate.js --deploy --db-url "${dbUrl}" --uploads-root "${storageRoot}"`, {
     cwd: path.join(__dirname, "../.."),
     env: { ...process.env, DATABASE_URL: dbUrl },
     encoding: "utf8",
@@ -147,6 +147,7 @@ test("Concurrency Integration: Two simultaneous expenses against one balance - a
 
   // Fund account: 700 income -> Cash on Hand 1700 total
   await service(treasurerActor, {
+    termId,
     type: TransactionType.INCOME,
     transactionDate: new Date(),
     amountCents: 70000,
@@ -163,6 +164,7 @@ test("Concurrency Integration: Two simultaneous expenses against one balance - a
   // Both expenses try to consume the entire 1700 balance
   const results = await Promise.allSettled([
     service(treasurerActor, {
+      termId,
       type: TransactionType.EXPENSE,
       transactionDate: new Date(),
       amountCents: 100000,
@@ -176,6 +178,7 @@ test("Concurrency Integration: Two simultaneous expenses against one balance - a
       attachment: defaultAttachment,
     }, { storageService: storage }),
     service(treasurerActor, {
+      termId,
       type: TransactionType.EXPENSE,
       transactionDate: new Date(),
       amountCents: 100000,
@@ -227,6 +230,7 @@ test("Concurrency Integration: Two simultaneous stale edits - first succeeds, se
   };
 
   const created = await createSvc(treasurerActor, {
+    termId,
     type: TransactionType.INCOME,
     transactionDate: new Date(),
     amountCents: 10000,
@@ -341,6 +345,7 @@ test("Concurrency Integration: Production transaction create caches before stagi
   const fileBuffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const transactionDate = new Date();
   const input = {
+    termId,
     type: TransactionType.INCOME,
     transactionDate,
     amountCents: 11100,
@@ -387,6 +392,7 @@ test("Concurrency Integration: cash transfers require attachments and preserve o
   const storage = new AttachmentStorageService(storageRoot);
   const fileBuffer = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
   const transfer = await createCashTransferService(treasurerActor, {
+    termId,
     transferDate: new Date(),
     fromAccount: CashAccount.CASH_ON_HAND,
     toAccount: CashAccount.CASH_IN_BANK,
@@ -646,6 +652,7 @@ test("Concurrency Integration: post-commit failure retains rows and files, retry
 
   const fileBuffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const input = {
+    termId,
     type: TransactionType.INCOME,
     transactionDate: new Date(),
     amountCents: 12300,
@@ -710,6 +717,7 @@ test("Concurrency Integration: lease-stolen cached claim deletes only the losing
 
   const fileBuffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03, 0x04]);
   const input = {
+    termId,
     type: TransactionType.INCOME,
     transactionDate: new Date(),
     amountCents: 23400,
@@ -779,6 +787,7 @@ test("Concurrency Integration: failed command retains the committed file for rec
   await assert.rejects(
     () =>
       service(treasurerActor, {
+        termId,
         type: TransactionType.EXPENSE,
         transactionDate: new Date(),
         amountCents: 200000,
@@ -806,7 +815,7 @@ test("Concurrency Integration: failed command retains the committed file for rec
   }
 
   const activeFilesAfter = fs.readdirSync(storageRoot).filter((file) => fs.statSync(path.join(storageRoot, file)).isFile()).length;
-  // Fail closed: the committed file is retained for reconciliation rather than
-  // deleted based on a post-commit read. The staged file is discarded.
-  assert.equal(activeFilesAfter, activeFilesBefore + 1, "Committed file must be retained for reconciliation");
+  // After a definite database rollback, the caller verifies no Attachment row owns the key
+  // and safely cleans up its unreferenced committed active file.
+  assert.equal(activeFilesAfter, activeFilesBefore, "Unreferenced committed file must be cleaned up on DB rollback");
 });

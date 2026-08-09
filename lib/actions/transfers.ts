@@ -7,9 +7,11 @@ import { requireManagementUser } from "../auth/require-auth";
 import { createCashTransferService, editCashTransferService, deleteCashTransferService } from "../application/transfers";
 import { CashAccount } from "@prisma/client";
 import { parsePesoToCents } from "../domain/money";
-import { parseStrictDate } from "../domain/query";
+import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { DomainError } from "../domain/errors";
+
+import { TRANSFER_FIELD_LIMITS } from "../domain/field-limits";
 
 function getAttachmentFile(formData: FormData): File {
   const file = formData.get("attachment");
@@ -20,20 +22,31 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
-const transferSchema = z.object({
-  fromAccount: z.nativeEnum(CashAccount, { message: "Source account is required." }),
-  toAccount: z.nativeEnum(CashAccount, { message: "Destination account is required." }),
+export const transferBaseSchema = z.object({
+  fromAccount: z.nativeEnum(CashAccount, { message: "Source cash account is required." }),
+  toAccount: z.nativeEnum(CashAccount, { message: "Destination cash account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
-  documentNumber: z.string().trim().max(100, "Document number must be under 100 characters.").optional(),
-  description: z.string().trim().min(1, "Description is required.").max(500, "Description must be under 500 characters."),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(500, "Reference description must be under 500 characters."),
-  eventActivityName: z.string().trim().max(200, "Event / Activity name must be under 200 characters.").optional(),
+  documentNumber: z.string().trim().max(TRANSFER_FIELD_LIMITS.documentNumber, `Document number must be at most ${TRANSFER_FIELD_LIMITS.documentNumber} characters.`).optional(),
+  description: z.string().trim().min(1, "Description is required.").max(TRANSFER_FIELD_LIMITS.description, `Description must be at most ${TRANSFER_FIELD_LIMITS.description} characters.`),
+  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSFER_FIELD_LIMITS.referenceDescription, `Reference description must be at most ${TRANSFER_FIELD_LIMITS.referenceDescription} characters.`),
+  eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
+});
+
+export const createTransferSchema = transferBaseSchema.extend({
+  termId: z.string().trim().min(1, "Term ID is required."),
+  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
+});
+
+export const editTransferSchema = transferBaseSchema.extend({
+  id: z.string().trim().min(1, "Transfer ID is required."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
 function transferFields(formData: FormData) {
   return {
+    termId: formData.get("termId")?.toString() || "",
     fromAccount: formData.get("fromAccount")?.toString() || "",
     toAccount: formData.get("toAccount")?.toString() || "",
     transferDate: formData.get("transferDate")?.toString() || "",
@@ -53,7 +66,7 @@ export async function createCashTransferAction(
   const user = await requireManagementUser();
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
-  const validation = transferSchema.safeParse(transferFields(formData));
+  const validation = createTransferSchema.safeParse(transferFields(formData));
   if (!validation.success) {
     return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
   }
@@ -78,6 +91,7 @@ export async function createCashTransferAction(
 
   try {
     await createCashTransferService(user, {
+      termId: validation.data.termId,
       fromAccount: validation.data.fromAccount,
       toAccount: validation.data.toAccount,
       amountCents,
@@ -91,7 +105,7 @@ export async function createCashTransferAction(
         originalName: validatedFile.originalName,
         mimeType: validatedFile.mimeType,
         sizeBytes: validatedFile.sizeBytes,
-        buffer: validatedFile.buffer,
+        buffer: Buffer.from(validatedFile.buffer),
       },
     });
   } catch (error) {
@@ -105,11 +119,6 @@ export async function createCashTransferAction(
   revalidatePath("/ledger");
   redirect("/ledger");
 }
-
-const editTransferSchema = transferSchema.extend({
-  id: z.string().trim().min(1, "Transfer ID is required."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
-});
 
 export async function editCashTransferAction(
   _prevState: TransferActionState,
@@ -131,13 +140,13 @@ export async function editCashTransferAction(
 
   const validation = editTransferSchema.safeParse(rawFields);
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
     const amountCents = parsePesoToCents(validation.data.amount);
     const transferDate = parseStrictDate(validation.data.transferDate);
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
 
     await editCashTransferService(user, {
       id: validation.data.id,
@@ -166,7 +175,7 @@ export async function editCashTransferAction(
 const deleteTransferSchema = z.object({
   id: z.string().trim().min(1, "Transfer ID is required."),
   deleteReason: z.string().trim().min(1, "Deletion reason is required.").max(500, "Deletion reason must be under 500 characters."),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -189,11 +198,11 @@ export async function softDeleteCashTransferAction(
     idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   });
   if (!validation.success) {
-    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors };
+    return { error: "Please fix the validation errors below.", fieldErrors: validation.error.flatten().fieldErrors as Record<string, string[]> };
   }
 
   try {
-    const expectedVersion = parseInt(validation.data.version, 10);
+    const expectedVersion = parseStrictVersion(validation.data.version);
     await deleteCashTransferService(user, {
       id: validation.data.id,
       expectedVersion,

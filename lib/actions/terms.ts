@@ -13,6 +13,7 @@ import {
   updateOpeningBalancesService,
 } from "../application/terms";
 import { DomainError } from "../domain/errors";
+import { strictVersionSchema, parseStrictVersion } from "../domain/query";
 
 export type TermActionState = {
   error?: string;
@@ -159,7 +160,7 @@ const updateBalancesSchema = z.object({
   termId: z.string().min(1, "Term ID is required."),
   openingCashOnHand: z.string(),
   openingCashInBank: z.string(),
-  version: z.string().trim().min(1, "Version is required.").regex(/^\d+$/, "Version must be a positive integer."),
+  version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
@@ -173,7 +174,10 @@ export async function updateOpeningBalancesAction(
   }
 
   const rawVersion = formData.get("version")?.toString();
-  if (!rawVersion || !rawVersion.trim()) {
+  let expectedVersion: number;
+  try {
+    expectedVersion = parseStrictVersion(rawVersion);
+  } catch {
     return { error: "Missing or malformed term version." };
   }
 
@@ -181,7 +185,7 @@ export async function updateOpeningBalancesAction(
     termId: formData.get("termId")?.toString() || "",
     openingCashOnHand: formData.get("openingCashOnHand")?.toString() || "",
     openingCashInBank: formData.get("openingCashInBank")?.toString() || "",
-    version: rawVersion.trim(),
+    version: rawVersion?.trim() || "",
     idempotencyKey: formData.get("idempotencyKey")?.toString() || "",
   };
 
@@ -193,7 +197,7 @@ export async function updateOpeningBalancesAction(
     };
   }
 
-  const { termId, openingCashOnHand, openingCashInBank, version, idempotencyKey } = validation.data;
+  const { termId, openingCashOnHand, openingCashInBank, idempotencyKey } = validation.data;
 
   let openingCashOnHandCents: number;
   let openingCashInBankCents: number;
@@ -208,7 +212,6 @@ export async function updateOpeningBalancesAction(
   }
 
   try {
-    const expectedVersion = parseInt(version, 10);
     await updateOpeningBalancesService(user, {
       termId,
       expectedVersion,

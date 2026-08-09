@@ -35,7 +35,7 @@ export async function handleAttachmentDownloadRequest(
   const isDeleted = Boolean(attachment.transaction?.deletedAt || attachment.cashTransfer?.deletedAt);
 
   if (!ownerOrgId || user.organizationId !== ownerOrgId || isDeleted) {
-    return new NextResponse("Access denied", { status: 403 });
+    return new NextResponse("Attachment not found", { status: 404 });
   }
 
   const storageService = new AttachmentStorageService(customUploadsRoot);

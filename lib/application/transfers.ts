@@ -64,7 +64,7 @@ function toCashTransferDto(transfer: CashTransfer & { recordedBy?: { fullName: s
 }
 
 export interface CreateTransferInput {
-  termId?: string;
+  termId: string;
   transferDate: Date;
   fromAccount: CashAccount;
   toAccount: CashAccount;
@@ -78,7 +78,7 @@ export interface CreateTransferInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Uint8Array;
+    buffer: Uint8Array | Buffer;
   };
 }
 
@@ -110,6 +110,7 @@ export async function createCashTransferService(
   const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
 
   const payload = {
+    termId: input.termId,
     transferDate: input.transferDate.toISOString(),
     fromAccount: input.fromAccount,
     toAccount: input.toAccount,
@@ -159,13 +160,10 @@ export async function createCashTransferService(
         payload,
         async (tx) => {
           const term = await tx.academicTerm.findFirst({
-            where: { organizationId: user.organizationId!, active: true },
+            where: { id: input.termId, organizationId: user.organizationId!, active: true },
           });
           if (!term) {
-            throw new ValidationError("No active academic term configured for cash transfers.");
-          }
-          if (input.termId && input.termId !== term.id) {
-            throw new ValidationError("Supplied term is not the active academic term. New entries may only be recorded in the active term.");
+            throw new ValidationError("The selected academic term is no longer active. Reload the ledger before recording this entry.");
           }
 
           const activeTransactions = await tx.transaction.findMany({
@@ -274,7 +272,25 @@ export async function createCashTransferService(
 
     return outcome.result;
   } catch (error) {
-    if (staged) await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    if (staged && !committedName) {
+      await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
+    }
+    if (committedName) {
+      let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
+      try {
+        const ref = await prisma.attachment.findFirst({
+          where: { storageKey: committedName },
+          select: { id: true },
+        });
+        lookupState = ref ? "LOOKUP_SUCCEEDED_REFERENCED" : "LOOKUP_SUCCEEDED_UNREFERENCED";
+      } catch (lookupErr) {
+        console.warn("[CashTransfer] Attachment ownership lookup failed; retaining active file for reconciliation:", lookupErr);
+        lookupState = "LOOKUP_FAILED";
+      }
+      if (lookupState === "LOOKUP_SUCCEEDED_UNREFERENCED") {
+        await storageService.deleteActiveFile(committedName).catch(() => undefined);
+      }
+    }
     await releaseCommandReceipt(claim).catch(() => undefined);
     throw error;
   }

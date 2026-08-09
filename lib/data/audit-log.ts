@@ -1,8 +1,10 @@
 import "server-only";
+import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { AuditAction, CashAccount, Prisma, Role, Semester, TransactionType } from "@prisma/client";
 import { parseStrictDate } from "../domain/query";
+import { formatPesoFromCents } from "./money";
 
 export interface TransactionSnapshot {
   id: string;
@@ -344,14 +346,18 @@ export interface AuditLogDto {
   entityType: string | null;
   entityId: string | null;
   metadataJson: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface AuditLogPageDto {
   logs: AuditLogDto[];
   pagination: {
     hasMore: boolean;
+    hasPrevious?: boolean;
     nextCursor: string | null;
+    previousCursor?: string | null;
   };
+  invalidCursor?: boolean;
 }
 
 type AuditLogWithRelations = Prisma.AuditLogGetPayload<{
@@ -383,6 +389,7 @@ export function toAuditLogDto(log: AuditLogWithRelations): AuditLogDto {
     entityType: log.entityType,
     entityId: log.entityId,
     metadataJson: log.metadataJson,
+    metadata: meta,
   };
 }
 
@@ -395,12 +402,65 @@ export interface AuditLogFilters {
   pageSize?: number;
 }
 
+export interface AuditCursorPayload {
+  id: string;
+  createdAt: string;
+  dir: "next" | "prev";
+  fingerprint: string;
+}
+
+export function buildAuditLogCursorFingerprint(organizationId: string, filters: AuditLogFilters): string {
+  const parts = [
+    "v1",
+    organizationId,
+    filters.action || "",
+    filters.actorUserId || "",
+    filters.dateFrom || "",
+    filters.dateTo || "",
+    String(filters.pageSize || 50),
+  ];
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
+}
+
+export function encodeAuditCursor(id: string, createdAt: string, dir: "next" | "prev", fingerprint: string): string {
+  return Buffer.from(JSON.stringify({ id, createdAt, dir, fingerprint }), "utf8").toString("base64url");
+}
+
+export function decodeAuditCursor(value: string | undefined, expectedFingerprint: string): AuditCursorPayload | null {
+  if (!value || typeof value !== "string" || !value.trim()) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(value.trim(), "base64url").toString("utf8")) as Partial<AuditCursorPayload>;
+    if (
+      typeof decoded.id === "string" &&
+      typeof decoded.createdAt === "string" &&
+      !Number.isNaN(Date.parse(decoded.createdAt)) &&
+      (decoded.dir === "next" || decoded.dir === "prev") &&
+      decoded.fingerprint === expectedFingerprint
+    ) {
+      return decoded as AuditCursorPayload;
+    }
+  } catch {
+    /* Invalid cursor format */
+  }
+  return null;
+}
+
 export async function listAuditLogsForCurrentOrganization(
   filters: AuditLogFilters = {}
 ): Promise<AuditLogPageDto> {
   const user = await requireManagementUser();
   if (!user.organizationId) {
-    return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+    return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
+  }
+
+  const expectedFingerprint = buildAuditLogCursorFingerprint(user.organizationId, filters);
+  let decodedCursor: AuditCursorPayload | null = null;
+
+  if (filters.cursor) {
+    decodedCursor = decodeAuditCursor(filters.cursor, expectedFingerprint);
+    if (!decodedCursor) {
+      return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null }, invalidCursor: true };
+    }
   }
 
   const pageSize = Math.min(Math.max(filters.pageSize || 50, 1), 100);
@@ -433,15 +493,33 @@ export async function listAuditLogsForCurrentOrganization(
         lte = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
       }
 
-      if (gte && lte && gte > lte) return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+      if (gte && lte && gte > lte) return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
 
       where.createdAt = {
         ...(gte ? { gte } : {}),
         ...(lte ? { lte } : {}),
       };
     } catch {
-      return { logs: [], pagination: { hasMore: false, nextCursor: null } };
+      return { logs: [], pagination: { hasMore: false, hasPrevious: false, nextCursor: null, previousCursor: null } };
     }
+  }
+
+  const isPrev = decodedCursor?.dir === "prev";
+
+  if (decodedCursor) {
+    const cursorDate = new Date(decodedCursor.createdAt);
+    const cursorId = decodedCursor.id;
+    const cursorConditions = isPrev
+      ? [
+          { createdAt: { gt: cursorDate } },
+          { createdAt: cursorDate, id: { gt: cursorId } },
+        ]
+      : [
+          { createdAt: { lt: cursorDate } },
+          { createdAt: cursorDate, id: { lt: cursorId } },
+        ];
+    const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+    where.AND = [...existingAnd, { OR: cursorConditions }] as Prisma.AuditLogWhereInput[];
   }
 
   const logs = await prisma.auditLog.findMany({
@@ -450,20 +528,192 @@ export async function listAuditLogsForCurrentOrganization(
       user: { select: { id: true, username: true, fullName: true } },
       organization: { select: { id: true, name: true } },
     },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    orderBy: isPrev
+      ? [{ createdAt: "asc" }, { id: "asc" }]
+      : [{ createdAt: "desc" }, { id: "desc" }],
     take,
-    ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
   });
 
-  const hasMore = logs.length > pageSize;
-  const paginatedLogs = hasMore ? logs.slice(0, pageSize) : logs;
-  const nextCursor =
-    hasMore && paginatedLogs.length > 0
-      ? paginatedLogs[paginatedLogs.length - 1].id
-      : null;
+  const hasExtra = logs.length > pageSize;
+  const rawPageLogs = hasExtra ? logs.slice(0, pageSize) : logs;
+  const pageLogs = isPrev ? [...rawPageLogs].reverse() : rawPageLogs;
+
+  const firstLog = pageLogs[0];
+  const lastLog = pageLogs[pageLogs.length - 1];
+
+  const hasMore = isPrev ? true : hasExtra;
+  const hasPrevious = isPrev ? hasExtra : Boolean(decodedCursor);
+
+  const nextCursor = hasMore && lastLog ? encodeAuditCursor(lastLog.id, lastLog.createdAt.toISOString(), "next", expectedFingerprint) : null;
+  const previousCursor = hasPrevious && firstLog ? encodeAuditCursor(firstLog.id, firstLog.createdAt.toISOString(), "prev", expectedFingerprint) : null;
 
   return {
-    logs: paginatedLogs.map(toAuditLogDto),
-    pagination: { hasMore, nextCursor },
+    logs: pageLogs.map(toAuditLogDto),
+    pagination: { hasMore, hasPrevious, nextCursor, previousCursor },
   };
+}
+
+export async function listOrganizationUsers(
+  organizationId: string
+): Promise<Array<{ id: string; fullName: string; username: string }>> {
+  return prisma.user.findMany({
+    where: { organizationId, active: true },
+    orderBy: { fullName: "asc" },
+    select: { id: true, fullName: true, username: true },
+  });
+}
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  ADDED_INCOME: "Recorded Income",
+  ADDED_EXPENSE: "Recorded Expense",
+  EDITED_TRANSACTION: "Edited Transaction",
+  DELETED_TRANSACTION: "Deleted Transaction",
+  CREATED_CASH_TRANSFER: "Transferred Cash",
+  EDITED_CASH_TRANSFER: "Edited Cash Transfer",
+  DELETED_CASH_TRANSFER: "Deleted Cash Transfer",
+  CHANGED_OPENING_BALANCE: "Updated Opening Balances",
+  ACTIVATED_ACADEMIC_TERM: "Activated Academic Term",
+  UPLOADED_ATTACHMENT: "Uploaded Attachment",
+  DELETED_ATTACHMENT: "Deleted Attachment",
+  GENERATED_REPORT: "Generated Report",
+  LOGGED_IN: "User Login",
+  LOGGED_OUT: "User Logout",
+  CHANGED_PASSWORD: "Password Changed",
+  REGISTERED_USER: "User Registered",
+  CREATED_ORGANIZATION: "Created Organization",
+  TOGGLED_ORGANIZATION_STATUS: "Toggled Organization Status",
+  CREATED_CATEGORY: "Created Category",
+  UPDATED_CATEGORY: "Updated Category",
+  TOGGLED_CATEGORY_STATUS: "Toggled Category Status",
+};
+
+export function formatHumanReadableSummary(log: {
+  action: AuditAction | string;
+  metadata?: Record<string, unknown> | null;
+}): string {
+  const meta = (log.metadata || {}) as Record<string, unknown>;
+  const before = meta.before as Record<string, unknown> | undefined;
+  const after = meta.after as Record<string, unknown> | undefined;
+
+  switch (log.action) {
+    case AuditAction.ADDED_INCOME:
+      return `Recorded Income of ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) from ${meta.counterpartyName || meta.description || "payor"}`;
+
+    case AuditAction.ADDED_EXPENSE:
+      return `Recorded Expense of ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} (${meta.cashAccount || "Cash"}) to ${meta.counterpartyName || meta.description || "payee"}`;
+
+    case AuditAction.EDITED_TRANSACTION: {
+      if (before && after) {
+        const changes: string[] = [];
+        if (before.type !== after.type) changes.push(`type: ${before.type} -> ${after.type}`);
+        if (before.amountCents !== after.amountCents) changes.push(`amount: ${formatPesoFromCents(Number(before.amountCents))} -> ${formatPesoFromCents(Number(after.amountCents))}`);
+        if (before.cashAccount !== after.cashAccount) changes.push(`account: ${before.cashAccount} -> ${after.cashAccount}`);
+        if (before.transactionDate !== after.transactionDate) changes.push(`date: ${before.transactionDate} -> ${after.transactionDate}`);
+        if (before.categoryId !== after.categoryId || before.categoryName !== after.categoryName) changes.push("category updated");
+        if (before.documentNumber !== after.documentNumber) changes.push("document number updated");
+        if (before.description !== after.description) changes.push("description updated");
+        if (before.referenceDescription !== after.referenceDescription) changes.push("reference updated");
+        if (before.counterpartyName !== after.counterpartyName) changes.push("payor/payee updated");
+        if (before.eventActivityName !== after.eventActivityName) changes.push("event/activity updated");
+        if (changes.length > 0) {
+          return `Edited transaction (${changes.join(", ")})`;
+        }
+      }
+      return `Edited transaction details`;
+    }
+
+    case AuditAction.DELETED_TRANSACTION:
+      return `Soft-deleted transaction (Reason: ${meta.deleteReason || "N/A"})`;
+
+    case AuditAction.CREATED_CASH_TRANSFER:
+      return `Transferred ${meta.amountCents !== undefined ? formatPesoFromCents(Number(meta.amountCents)) : "N/A"} from ${meta.fromAccount || "account"} to ${meta.toAccount || "account"}`;
+
+    case AuditAction.EDITED_CASH_TRANSFER: {
+      if (before && after) {
+        const changes: string[] = [];
+        if (before.amountCents !== after.amountCents) changes.push(`amount: ${formatPesoFromCents(Number(before.amountCents))} -> ${formatPesoFromCents(Number(after.amountCents))}`);
+        if (before.fromAccount !== after.fromAccount || before.toAccount !== after.toAccount) {
+          changes.push(`accounts: ${before.fromAccount}->${before.toAccount} to ${after.fromAccount}->${after.toAccount}`);
+        }
+        if (before.transferDate !== after.transferDate) changes.push(`date: ${before.transferDate} -> ${after.transferDate}`);
+        if (before.documentNumber !== after.documentNumber) changes.push("document number updated");
+        if (before.description !== after.description) changes.push("description updated");
+        if (before.referenceDescription !== after.referenceDescription) changes.push("reference updated");
+        if (before.eventActivityName !== after.eventActivityName) changes.push("event/activity updated");
+        if (changes.length > 0) {
+          return `Edited cash transfer (${changes.join(", ")})`;
+        }
+      }
+      return `Edited cash transfer details`;
+    }
+
+    case AuditAction.DELETED_CASH_TRANSFER:
+      return `Soft-deleted cash transfer (Reason: ${meta.deleteReason || "N/A"})`;
+
+    case AuditAction.CHANGED_OPENING_BALANCE: {
+      const cohPrev = meta.previousCashOnHandCents ?? meta.openingCashOnHandCents;
+      const cohNew = meta.newCashOnHandCents ?? meta.openingCashOnHandCents;
+      const cibPrev = meta.previousCashInBankCents ?? meta.openingCashInBankCents;
+      const cibNew = meta.newCashInBankCents ?? meta.openingCashInBankCents;
+
+      const cohStr = cohPrev !== undefined && cohNew !== undefined && cohPrev !== cohNew
+        ? `COH: ${formatPesoFromCents(Number(cohPrev))} -> ${formatPesoFromCents(Number(cohNew))}`
+        : `COH: ${cohNew !== undefined ? formatPesoFromCents(Number(cohNew)) : "N/A"}`;
+
+      const cibStr = cibPrev !== undefined && cibNew !== undefined && cibPrev !== cibNew
+        ? `CIB: ${formatPesoFromCents(Number(cibPrev))} -> ${formatPesoFromCents(Number(cibNew))}`
+        : `CIB: ${cibNew !== undefined ? formatPesoFromCents(Number(cibNew)) : "N/A"}`;
+
+      return `Updated Opening Balances (${cohStr}, ${cibStr})`;
+    }
+
+    case AuditAction.ACTIVATED_ACADEMIC_TERM:
+      return `Activated Academic Term (${meta.academicYear || ""} ${meta.semester || ""})`;
+
+    case AuditAction.UPLOADED_ATTACHMENT:
+      return `Uploaded receipt/supporting file: ${meta.originalName || "attachment"}`;
+
+    case AuditAction.DELETED_ATTACHMENT:
+      return `Deleted attachment: ${meta.originalName || "attachment"}`;
+
+    case AuditAction.GENERATED_REPORT:
+      return `Generated official financial report package`;
+
+    case AuditAction.LOGGED_IN:
+      return `User signed into system`;
+
+    case AuditAction.LOGGED_OUT:
+      return `User signed out of system`;
+
+    case AuditAction.CHANGED_PASSWORD:
+      return `Updated account password`;
+
+    case AuditAction.REGISTERED_USER: {
+      const name = (meta.actorFullName || meta.registeredFullName || meta.fullName) as string | undefined;
+      const username = (meta.actorUsername || meta.registeredUsername || meta.username) as string | undefined;
+      const role = (meta.requestedRole || meta.role) as string | undefined;
+
+      const userDisplay = name && username ? `${name} (${username})` : username || name || "User";
+      const roleDisplay = role ? ` as ${role}` : "";
+      return `Registered new user account ${userDisplay}${roleDisplay}`;
+    }
+
+    case AuditAction.CREATED_ORGANIZATION:
+      return `Created organization (${meta.name || "organization"})`;
+
+    case AuditAction.TOGGLED_ORGANIZATION_STATUS:
+      return `Toggled organization status`;
+
+    case AuditAction.CREATED_CATEGORY:
+      return `Created category (${meta.name || "category"})`;
+
+    case AuditAction.UPDATED_CATEGORY:
+      return `Updated category (${meta.name || "category"})`;
+
+    case AuditAction.TOGGLED_CATEGORY_STATUS:
+      return `Toggled category status`;
+
+    default:
+      return AUDIT_ACTION_LABELS[log.action as AuditAction] || String(log.action);
+  }
 }

@@ -1,5 +1,5 @@
 import { requireManagementUser } from "@/lib/auth/require-auth";
-import { listAuditLogsForCurrentOrganization } from "@/lib/data/audit-log";
+import { AUDIT_ACTION_LABELS, formatHumanReadableSummary, listAuditLogsForCurrentOrganization, listOrganizationUsers } from "@/lib/data/audit-log";
 import {
   hasScalarValue,
   parseDateRangeParams,
@@ -47,26 +47,32 @@ export default async function AuditLogPage({
     );
   }
 
-  if (invalidQuery) {
+  const [page, orgUsers] = await Promise.all([
+    listAuditLogsForCurrentOrganization({
+      action,
+      dateFrom,
+      dateTo,
+      actorUserId,
+      cursor,
+      pageSize,
+    }),
+    listOrganizationUsers(user.organizationId),
+  ]);
+
+  if (invalidQuery || page.invalidCursor) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">Invalid audit-log filter. Check action, dates, cursor, and page size.</p>
+          <p className="font-semibold text-amber-800">Invalid audit-log filter or expired pagination cursor. Check action, dates, actor, cursor, or page size.</p>
         </div>
       </div>
     );
   }
-
-  const page = await listAuditLogsForCurrentOrganization({
-    action,
-    dateFrom,
-    dateTo,
-    actorUserId,
-    cursor,
-    pageSize,
-  });
   const logs = page.logs;
+
+  const currentCursor = cursor;
+  const hasCursor = Boolean(currentCursor);
 
   const buildUrl = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -75,14 +81,33 @@ export default async function AuditLogPage({
       dateFrom,
       dateTo,
       actorUserId,
+      pageSize: pageSize !== 50 ? String(pageSize) : undefined,
+      cursor,
       ...overrides,
     };
+    const hasFilterOverride = Object.keys(overrides).some(
+      (key) => key !== "cursor"
+    );
+    if (hasFilterOverride) {
+      if (!("cursor" in overrides)) merged.cursor = undefined;
+    }
+
     for (const [key, val] of Object.entries(merged)) {
       if (val && val.trim().length > 0) params.set(key, val.trim());
     }
     const query = params.toString();
     return `/audit-log${query ? `?${query}` : ""}`;
   };
+
+  const firstPageUrl = buildUrl({ cursor: undefined });
+
+  const prevPageUrl = page.pagination.previousCursor
+    ? buildUrl({ cursor: page.pagination.previousCursor })
+    : null;
+
+  const nextPageUrl = page.pagination.nextCursor
+    ? buildUrl({ cursor: page.pagination.nextCursor })
+    : null;
 
   return (
     <div className="space-y-6">
@@ -99,15 +124,26 @@ export default async function AuditLogPage({
       </div>
 
       {/* Filters */}
-      <form method="GET" action="/audit-log" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <form method="GET" action="/audit-log" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="action-filter">
             Action
           </label>
-          <select id="action-filter" name="action" defaultValue={action || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5">
+          <select id="action-filter" name="action" defaultValue={action || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
             <option value="">All Actions</option>
             {Object.values(AuditAction).map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a}>{AUDIT_ACTION_LABELS[a] || a}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="actor-filter">
+            Actor User
+          </label>
+          <select id="actor-filter" name="actorUserId" defaultValue={actorUserId || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
+            <option value="">All Users</option>
+            {orgUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.fullName} ({u.username})</option>
             ))}
           </select>
         </div>
@@ -115,18 +151,21 @@ export default async function AuditLogPage({
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-from">
             Date From
           </label>
-          <input id="date-from" type="date" name="dateFrom" defaultValue={dateFrom || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5" />
+          <input id="date-from" type="date" name="dateFrom" defaultValue={dateFrom || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-to">
             Date To
           </label>
-          <input id="date-to" type="date" name="dateTo" defaultValue={dateTo || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5" />
+          <input id="date-to" type="date" name="dateTo" defaultValue={dateTo || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white" />
         </div>
-        <div className="flex items-end">
-          <button type="submit" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition w-full">
+        <div className="flex gap-2">
+          <button type="submit" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex-1">
             Apply Filters
           </button>
+          <Link href="/audit-log" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs transition text-center flex-1">
+            Clear
+          </Link>
         </div>
       </form>
 
@@ -136,6 +175,20 @@ export default async function AuditLogPage({
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <h2 className="font-bold text-slate-900 text-sm">Audit Log Entries — showing {logs.length} entries on this page</h2>
+            <div className="flex items-center gap-3 text-xs font-bold">
+              {hasCursor && (
+                <Link href={firstPageUrl} className="text-[#004aad] hover:underline">&laquo; First Page</Link>
+              )}
+              {prevPageUrl && (
+                <Link href={prevPageUrl} className="text-[#004aad] hover:underline">&lsaquo; Previous Page</Link>
+              )}
+              {nextPageUrl && (
+                <Link href={nextPageUrl} className="text-[#004aad] hover:underline">Next Page &rsaquo;</Link>
+              )}
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
@@ -144,9 +197,7 @@ export default async function AuditLogPage({
                   <th className="px-4 py-3 text-left">Action</th>
                   <th className="px-4 py-3 text-left">User</th>
                   <th className="px-4 py-3 text-left">Role</th>
-                  <th className="px-4 py-3 text-left">Organization</th>
-                  <th className="px-4 py-3 text-left">Entity</th>
-                  <th className="px-4 py-3 text-left">Metadata</th>
+                  <th className="px-4 py-3 text-left">Summary & Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -162,36 +213,33 @@ export default async function AuditLogPage({
                       })}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-900">
-                      {log.action}
+                      {AUDIT_ACTION_LABELS[log.action] || log.action}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
                       {log.fullName || log.username || log.userId || "System"}
                       {log.username && <div className="text-xs text-slate-500">{log.username}</div>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.role || "—"}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.organizationName || "—"}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                      {log.entityType || "—"}
-                      {log.entityId && <div className="text-xs text-slate-500 font-mono">{log.entityId}</div>}
-                    </td>
-                    <td className="px-4 py-3 max-w-sm text-xs text-slate-600 break-words">
-                      {log.metadataJson || "—"}
+                    <td className="px-4 py-3 text-xs text-slate-700">
+                      <div className="font-semibold text-slate-900 mb-1">
+                        {formatHumanReadableSummary(log)}
+                      </div>
+                      {log.metadataJson && (
+                        <details className="cursor-pointer mt-1">
+                          <summary className="text-[11px] font-medium text-slate-500 hover:text-[#004aad] underline decoration-dotted">
+                            Technical Payload ({log.entityType || "Audit"})
+                          </summary>
+                          <pre className="mt-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 font-mono text-[11px] text-slate-800 whitespace-pre-wrap max-w-lg">
+                            {log.metadataJson}
+                          </pre>
+                        </details>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {page.pagination.hasMore && (
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
-              <Link
-                href={buildUrl({ cursor: page.pagination.nextCursor || undefined })}
-                className="text-sm text-[#004aad] font-bold hover:underline"
-              >
-                Load Next Page →
-              </Link>
-            </div>
-          )}
         </div>
       )}
     </div>

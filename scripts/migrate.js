@@ -142,6 +142,26 @@ async function main() {
     process.exit(1);
   }
 
+  try {
+    const finalizeOutput = execFileSync(process.execPath, [...preflightArgs, "--finalize"], {
+      cwd: ROOT_DIR,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    if (
+      !finalizeOutput.includes("[preflight] Migration finalized (MIGRATED)") &&
+      !finalizeOutput.includes("already MIGRATED") &&
+      !finalizeOutput.includes("No sidecar mapping found")
+    ) {
+      console.error(finalizeOutput);
+      console.error("[migrate] FAILED: sidecar finalization did not complete.");
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error("[migrate] FAILED: sidecar finalization encountered an error:", error.message || error);
+    process.exit(1);
+  }
+
   console.log("[migrate] SUCCESS");
 }
 

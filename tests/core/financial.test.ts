@@ -7,7 +7,7 @@ import {
 } from "../../lib/domain/financial";
 import { MAX_MONEY_CENTS, parsePesoToCents, validateMoneyAmount } from "../../lib/domain/money";
 import { normalizeAcademicYear, validateAcademicYear } from "../../lib/domain/term-labels";
-import { calculateEffectiveDateRange, buildLedgerFilterUrl, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
+import { calculateEffectiveDateRange, buildLedgerFilterUrl, buildLedgerCursorFingerprint, decodeLedgerCursor, encodeLedgerCursor, parseLedgerQueryParams, parsePageSize, parseScalarString } from "../../lib/domain/query";
 import { CashAccount, ExpenseReportBucket, TransactionType } from "@prisma/client";
 import { reportBucketToSchedule2Bucket } from "../../lib/domain/reports";
 
@@ -345,9 +345,9 @@ test("Query Domain: changing filters from page 2 drops the cursor and restarts f
   assert.ok(clearedUrl.includes("academicYear=2026-2027"), "Clear Filters keeps the selected term");
   assert.ok(clearedUrl.includes("semester=FIRST_SEMESTER"), "Clear Filters keeps the selected term");
 
-  // A pageSize-only change keeps the cursor.
+  // A pageSize change clears the cursor because pageSize is part of the fingerprint.
   const pageSizeOnlyUrl = buildLedgerFilterUrl(pageTwoQuery, { pageSize: "50" });
-  assert.ok(pageSizeOnlyUrl.includes("cursor="), "Page-size-only change preserves the cursor");
+  assert.ok(!pageSizeOnlyUrl.includes("cursor="), "Page-size change must clear the cursor");
   assert.ok(pageSizeOnlyUrl.includes("pageSize=50"));
 
   // Term change also drops the cursor.
@@ -359,3 +359,232 @@ test("Query Domain: changing filters from page 2 drops the cursor and restarts f
   assert.ok(termChangedUrl.includes("academicYear=2025-2026"));
   assert.ok(termChangedUrl.includes("semester=SECOND_SEMESTER"));
 });
+
+test("Query Domain: decodeLedgerCursor strictly enforces fingerprint matching", () => {
+  const baseCtx = {
+    organizationId: "org-1",
+    termId: "term-1",
+    type: "EXPENSE",
+    entryType: "ALL",
+    pageSize: 50,
+  };
+  const validFp = buildLedgerCursorFingerprint(baseCtx);
+
+  const cursorWithFp = encodeLedgerCursor({
+    financialDate: "2026-08-01T00:00:00.000Z",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    kind: "TRANSACTION",
+    id: "tx-100",
+    fingerprint: validFp,
+  });
+
+  const cursorWithoutFp = encodeLedgerCursor({
+    financialDate: "2026-08-01T00:00:00.000Z",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    kind: "TRANSACTION",
+    id: "tx-100",
+  });
+
+  // 1. Correct fingerprint succeeds
+  const decoded = decodeLedgerCursor(cursorWithFp, validFp);
+  assert.ok(decoded);
+  assert.equal(decoded.id, "tx-100");
+
+  // 2. Missing fingerprint is REJECTED when expectedFingerprint is supplied
+  assert.equal(decodeLedgerCursor(cursorWithoutFp, validFp), null, "Missing fingerprint must be rejected");
+
+  // 3. Wrong fingerprint is REJECTED
+  assert.equal(decodeLedgerCursor(cursorWithFp, "wrong-fingerprint"), null, "Mismatched fingerprint must be rejected");
+
+  // 4. Copied across organization -> different fingerprint -> REJECTED
+  const org2Fp = buildLedgerCursorFingerprint({ ...baseCtx, organizationId: "org-2" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, org2Fp), null, "Cursor copied across organization must be rejected");
+
+  // 5. Copied across term -> different fingerprint -> REJECTED
+  const term2Fp = buildLedgerCursorFingerprint({ ...baseCtx, termId: "term-2" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, term2Fp), null, "Cursor copied across term must be rejected");
+
+  // 6. Filter change -> different fingerprint -> REJECTED
+  const filterFp = buildLedgerCursorFingerprint({ ...baseCtx, type: "INCOME" });
+  assert.equal(decodeLedgerCursor(cursorWithFp, filterFp), null, "Cursor used after filter change must be rejected");
+
+  // 7. Page-size change -> different fingerprint -> REJECTED
+  const sizeFp = buildLedgerCursorFingerprint({ ...baseCtx, pageSize: 25 });
+  assert.equal(decodeLedgerCursor(cursorWithFp, sizeFp), null, "Cursor used after page-size change must be rejected");
+});
+
+test("Financial Domain: buildLedgerFilterUrl direction-aware cursor pagination and filter reset", () => {
+  const baseFilters = {
+    academicYear: "2026-2027",
+    semester: "FIRST_SEMESTER" as const,
+    type: undefined,
+    entryType: undefined,
+    categoryId: undefined,
+    cashAccount: undefined,
+    month: undefined,
+    eventActivityName: undefined,
+    dateFrom: undefined,
+    dateTo: undefined,
+    search: undefined,
+    org: undefined,
+    cursor: "C3_next",
+    pageSize: 50,
+    invalidTermSelection: false,
+    invalidDateRange: false,
+    invalidMonth: false,
+    invalidCursor: false,
+    invalidPageSize: false,
+    invalidAcademicYear: false,
+    invalidSemester: false,
+    invalidType: false,
+    invalidEntryType: false,
+    invalidCashAccount: false,
+    invalidCategoryId: false,
+    invalidScalarFilter: false,
+    invalidOrganization: false,
+  };
+
+  // 1. Next Page URL adds cursor
+  const nextUrl = buildLedgerFilterUrl(baseFilters, { cursor: "C4_next" });
+  assert.match(nextUrl, /cursor=C4_next/);
+
+  // 2. Previous Page URL sets cursor
+  const prevUrl = buildLedgerFilterUrl(baseFilters, { cursor: "C2_prev" });
+  assert.match(prevUrl, /cursor=C2_prev/);
+
+  // 3. Filter override (e.g. type=INCOME) clears cursor
+  const filterUrl = buildLedgerFilterUrl(baseFilters, { type: "INCOME" });
+  assert.match(filterUrl, /type=INCOME/);
+  assert.equal(filterUrl.includes("cursor="), false);
+
+  // 4. Page size change clears cursor
+  const pageSizeUrl = buildLedgerFilterUrl(baseFilters, { pageSize: "25" });
+  assert.match(pageSizeUrl, /pageSize=25/);
+  assert.equal(pageSizeUrl.includes("cursor="), false);
+});
+
+test("Real Transaction Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
+  const { createTransactionSchema, editTransactionSchema } = await import("../../lib/actions/transactions");
+  const { TRANSACTION_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
+
+  const validBase = {
+    termId: "term-1",
+    id: "tx-1",
+    version: "1",
+    idempotencyKey: "key-1",
+    type: "INCOME",
+    transactionDate: "2026-08-01",
+    amount: "100.00",
+    cashAccount: "CASH_ON_HAND",
+    categoryId: "cat-1",
+    documentNumber: "a".repeat(TRANSACTION_FIELD_LIMITS.documentNumber),
+    counterpartyName: "b".repeat(TRANSACTION_FIELD_LIMITS.counterpartyName),
+    description: "c".repeat(TRANSACTION_FIELD_LIMITS.description),
+    referenceDescription: "d".repeat(TRANSACTION_FIELD_LIMITS.referenceDescription),
+    eventActivityName: "e".repeat(TRANSACTION_FIELD_LIMITS.eventActivityName),
+  };
+
+  // Boundary N accepted on create and edit schemas
+  assert.equal(createTransactionSchema.safeParse(validBase).success, true);
+  assert.equal(editTransactionSchema.safeParse(validBase).success, true);
+
+  // Field N+1 rejections
+  const fields: Array<{ field: keyof typeof TRANSACTION_FIELD_LIMITS; limit: number; expectedMsg: string }> = [
+    { field: "documentNumber", limit: 100, expectedMsg: "Document number must be at most 100 characters." },
+    { field: "counterpartyName", limit: 200, expectedMsg: "Payor / Payee must be at most 200 characters." },
+    { field: "description", limit: 500, expectedMsg: "Description must be at most 500 characters." },
+    { field: "referenceDescription", limit: 500, expectedMsg: "Reference description must be at most 500 characters." },
+    { field: "eventActivityName", limit: 200, expectedMsg: "Event / Activity name must be at most 200 characters." },
+  ];
+
+  for (const { field, limit, expectedMsg } of fields) {
+    const invalidPayload = { ...validBase, [field]: "x".repeat(limit + 1) };
+
+    const createResult = createTransactionSchema.safeParse(invalidPayload);
+    assert.equal(createResult.success, false);
+    if (!createResult.success) {
+      const issue = createResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+
+    const editResult = editTransactionSchema.safeParse(invalidPayload);
+    assert.equal(editResult.success, false);
+    if (!editResult.success) {
+      const issue = editResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+  }
+});
+
+test("Real Cash Transfer Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
+  const { createTransferSchema, editTransferSchema } = await import("../../lib/actions/transfers");
+  const { TRANSFER_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
+
+  const validBase = {
+    termId: "term-1",
+    id: "tr-1",
+    version: "1",
+    idempotencyKey: "key-1",
+    fromAccount: "CASH_ON_HAND",
+    toAccount: "CASH_IN_BANK",
+    transferDate: "2026-08-01",
+    amount: "100.00",
+    documentNumber: "a".repeat(TRANSFER_FIELD_LIMITS.documentNumber),
+    description: "b".repeat(TRANSFER_FIELD_LIMITS.description),
+    referenceDescription: "c".repeat(TRANSFER_FIELD_LIMITS.referenceDescription),
+    eventActivityName: "d".repeat(TRANSFER_FIELD_LIMITS.eventActivityName),
+  };
+
+  // Boundary N accepted on create and edit schemas
+  assert.equal(createTransferSchema.safeParse(validBase).success, true);
+  assert.equal(editTransferSchema.safeParse(validBase).success, true);
+
+  // Field N+1 rejections
+  const fields: Array<{ field: keyof typeof TRANSFER_FIELD_LIMITS; limit: number; expectedMsg: string }> = [
+    { field: "documentNumber", limit: 100, expectedMsg: "Document number must be at most 100 characters." },
+    { field: "description", limit: 500, expectedMsg: "Description must be at most 500 characters." },
+    { field: "referenceDescription", limit: 500, expectedMsg: "Reference description must be at most 500 characters." },
+    { field: "eventActivityName", limit: 200, expectedMsg: "Event / Activity name must be at most 200 characters." },
+  ];
+
+  for (const { field, limit, expectedMsg } of fields) {
+    const invalidPayload = { ...validBase, [field]: "x".repeat(limit + 1) };
+
+    const createResult = createTransferSchema.safeParse(invalidPayload);
+    assert.equal(createResult.success, false);
+    if (!createResult.success) {
+      const issue = createResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+
+    const editResult = editTransferSchema.safeParse(invalidPayload);
+    assert.equal(editResult.success, false);
+    if (!editResult.success) {
+      const issue = editResult.error.issues.find((i) => i.path.includes(field));
+      assert.equal(issue?.message, expectedMsg);
+    }
+  }
+});
+
+test("Form Data Tampering Protection: forceTransactionType forces TransactionType.INCOME for income action", async () => {
+  const { forceTransactionType } = await import("../../lib/domain/transactions");
+  const formData = new FormData();
+  formData.set("type", "EXPENSE");
+  formData.set("amount", "100.00");
+
+  const forced = forceTransactionType(formData, TransactionType.INCOME);
+  assert.equal(forced.get("type"), TransactionType.INCOME);
+  assert.equal(forced.get("amount"), "100.00");
+});
+
+test("Form Data Tampering Protection: forceTransactionType forces TransactionType.EXPENSE for expense action", async () => {
+  const { forceTransactionType } = await import("../../lib/domain/transactions");
+  const formData = new FormData();
+  formData.set("type", "INCOME");
+  formData.set("amount", "50.00");
+
+  const forced = forceTransactionType(formData, TransactionType.EXPENSE);
+  assert.equal(forced.get("type"), TransactionType.EXPENSE);
+  assert.equal(forced.get("amount"), "50.00");
+});
+

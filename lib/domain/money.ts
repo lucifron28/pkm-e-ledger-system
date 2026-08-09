@@ -56,10 +56,11 @@ export function validateMoneyAmount(cents: number, allowZero = false, fieldName 
   }
 }
 
-export function assertNoOverflow(totalCents: number, label = "Aggregate amount"): void {
+export function assertNoOverflow(totalCents: number, label = "Aggregate amount"): number {
   if (!Number.isSafeInteger(totalCents) || totalCents > MAX_MONEY_CENTS || totalCents < -MAX_MONEY_CENTS) {
     throw new ValidationError(`${label} exceeds maximum allowed precision range.`);
   }
+  return totalCents;
 }
 
 export function formatPesoFromCents(cents: number): string {

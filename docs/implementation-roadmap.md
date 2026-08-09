@@ -17,7 +17,8 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 5** | `feature/reports-and-exports` | HTML report package viewer (Summary, S1, S2), print CSS stylesheets, PDF generator, and Excel export (`exceljs`). | **Completed** |
 | **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Completed** |
 | **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Completed** |
-| **Phase 8** | `fix/business-invariants-concurrency-and-audit` | Post-implementation business-invariant hardening: cash transfer workflow, database invariants, idempotency, optimistic concurrency, crash-recoverable attachment storage, snapshot reads, immutable paginated audit history, and concurrency/recovery tests. | **In Review** |
+| **Phase 8** | `fix/business-invariants-concurrency-and-audit` | Post-implementation business-invariant hardening: cash transfer workflow, database invariants, idempotency, optimistic concurrency, crash-recoverable attachment storage, snapshot reads, immutable paginated audit history, and concurrency/recovery tests. | **Completed** (Merged via PR #10) |
+| **Audit** | `audit/full-project-completeness-ui-docs` | Full post-merge engineering audit, UI/UX polish, test-suite expansion, and repository documentation alignment. | **Completed / Ready for Review** |
 
 ---
 
@@ -127,5 +128,20 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   6. `fix(reads): use snapshot queries pagination and validated filters`
   7. `fix(audit): add immutable typed and paginated audit history`
   8. `test(hardening): add business concurrency recovery and regression coverage`
-* **Status**: **In Review**
-* **Next Phase**: Final external audit and merge
+* **Status**: **Completed** (Merged into `main` via PR #10)
+
+### Audit Phase: Full Engineering Audit & Remediation
+* **Branch**: `audit/full-project-completeness-ui-docs`
+* **Dependencies**: Phase 8
+* **Goal**: Comprehensive post-merge audit and remediation covering functional completeness, business invariants, authorization, concurrency, storage safety, reports/exports, accessibility, responsive UI, test suite reliability, and documentation accuracy.
+* **Grouped Commits**:
+  1. `financial and term consistency`
+  2. `migration/storage safety`
+  3. `authorization/security hardening`
+  4. `report/export correctness`
+  5. `query and pagination hardening`
+  6. `UI/accessibility remediation`
+  7. `regression-test expansion`
+  8. `documentation and verification alignment`
+  9. `fix: generate Prisma Client after install`
+* **Status**: **Completed / Ready for Review**
