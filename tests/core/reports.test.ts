@@ -175,7 +175,7 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
   assert.equal(transferReport.attachments[1].cashTransferId, "transfer-1");
 });
 
-test("Reports Export: official package sheets, formulas, and PDF output are present", async () => {
+test("Reports Export: aligned package sheets, formulas, and PDF output are present", async () => {
   const report = buildReportPackage(
     {
       id: "term-export-1",
@@ -203,11 +203,120 @@ test("Reports Export: official package sheets, formulas, and PDF output are pres
     "SCHEDULE 2 - EXPENSES",
     "RECEIPTS - ATTACHMENTS",
   ]);
-  const balanceForwardedFormula = workbook.getWorksheet("SUMMARY")?.getCell("B11").value;
-  const expenseTotalFormula = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")?.getCell("E2").value;
+  const summarySheet = workbook.getWorksheet("SUMMARY")!;
+  const schedule1Sheet = workbook.getWorksheet("SCHEDULE 1 - COLLECTIONS")!;
+  const schedule2Sheet = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")!;
+  const attachmentSheet = workbook.getWorksheet("RECEIPTS - ATTACHMENTS")!;
+  const findRow = (sheet: ExcelJS.Worksheet, column: number, label: string): ExcelJS.Row | undefined => {
+    for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      if (row.getCell(column).text === label) return row;
+    }
+    return undefined;
+  };
+  const balanceForwardedRow = findRow(summarySheet, 2, "Balance Forwarded");
+  const summaryExpenseRow = findRow(summarySheet, 2, "Total Expenses");
+  const expenseTotalRow = findRow(schedule2Sheet, 3, "TOTAL EXPENSES");
+  const balanceForwardedFormula = balanceForwardedRow?.getCell(3).value;
+  const expenseTotalFormula = expenseTotalRow?.getCell(5).value;
   assert.ok(balanceForwardedFormula && typeof balanceForwardedFormula === "object" && "formula" in balanceForwardedFormula);
   assert.ok(expenseTotalFormula && typeof expenseTotalFormula === "object" && "formula" in expenseTotalFormula);
+  assert.ok(summaryExpenseRow);
+  assert.equal(summarySheet.pageSetup.orientation, "portrait");
+  assert.equal(schedule1Sheet.pageSetup.orientation, "portrait");
+  assert.equal(schedule2Sheet.pageSetup.orientation, "landscape");
+  assert.equal(schedule1Sheet.columnCount, 3);
+  assert.equal(schedule2Sheet.getRow(8).getCell(5).text, "Amount");
+  assert.equal(schedule2Sheet.getRow(8).getCell(12).text, "Donation");
+  assert.equal(schedule2Sheet.getCell("M8").value, null, "Others is omitted when unused");
+  assert.equal(attachmentSheet.getCell("A3").text, "RECEIPTS / ATTACHMENTS");
+  assert.ok(summarySheet.model.merges.includes("A1:C1"));
 
   const pdf = await buildReportPdfBuffer(report);
   assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
+});
+
+test("Reports Export: grouped collections and mapped expense cells survive XLSX round-trip", async () => {
+  const report = buildReportPackage(
+    {
+      id: "term-rich-export",
+      academicYear: "2025-2026",
+      semester: Semester.FIRST_SEMESTER,
+      openingCashOnHandCents: 100000,
+      openingCashInBankCents: 200000,
+      organization: {
+        id: "org-rich-export",
+        name: "Fictional Campus Organization",
+        slug: "fictional-campus-organization",
+      },
+    },
+    [
+      {
+        id: "income-rich-1",
+        type: TransactionType.INCOME,
+        transactionDate: new Date("2025-08-01T00:00:00.000Z"),
+        amountCents: 25000,
+        cashAccount: CashAccount.CASH_ON_HAND,
+        documentNumber: "SYN-IN-01",
+        counterpartyName: "Synthetic Payor One",
+        description: "Membership collection",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "income-category-one",
+        category: { id: "income-category-one", name: "Membership Dues", type: TransactionType.INCOME },
+        attachments: [],
+      },
+      {
+        id: "income-rich-2",
+        type: TransactionType.INCOME,
+        transactionDate: new Date("2025-08-02T00:00:00.000Z"),
+        amountCents: 35000,
+        cashAccount: CashAccount.CASH_IN_BANK,
+        documentNumber: "SYN-IN-02",
+        counterpartyName: "Synthetic Payor Two",
+        description: "Donation collection",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "income-category-two",
+        category: { id: "income-category-two", name: "Donation", type: TransactionType.INCOME },
+        attachments: [],
+      },
+      {
+        id: "expense-rich-1",
+        type: TransactionType.EXPENSE,
+        transactionDate: new Date("2025-08-05T00:00:00.000Z"),
+        amountCents: 15000,
+        cashAccount: CashAccount.CASH_ON_HAND,
+        documentNumber: "SYN-EX-01",
+        counterpartyName: "Synthetic Vendor",
+        description: "Synthetic uncategorized expense",
+        referenceDescription: "Synthetic test reference",
+        categoryId: "expense-category-one",
+        category: {
+          id: "expense-category-one",
+          name: "Custom Expense",
+          type: TransactionType.EXPENSE,
+          reportBucket: ExpenseReportBucket.OTHERS,
+        },
+        attachments: [],
+      },
+    ],
+    [],
+    new Date("2026-08-31T00:00:00.000Z")
+  );
+
+  assert.equal(report.collectionGroups[0].items[0].sequenceNumber, 1);
+  assert.equal(report.collectionGroups[1].items[0].sequenceNumber, 1);
+
+  const workbook = new ExcelJS.Workbook();
+  const excelBuffer = await buildReportExcelBuffer(report);
+  await workbook.xlsx.load(excelBuffer.buffer as unknown as ArrayBuffer);
+  const schedule1 = workbook.getWorksheet("SCHEDULE 1 - COLLECTIONS")!;
+  const schedule2 = workbook.getWorksheet("SCHEDULE 2 - EXPENSES")!;
+  const schedule1Values = schedule1.getSheetValues().flat().map((value) => String(value ?? ""));
+  assert.ok(schedule1Values.includes("Membership Dues"));
+  assert.ok(schedule1Values.includes("Donation"));
+  assert.equal(schedule2.getRow(8).getCell(13).text, "Others");
+  assert.ok(schedule2.getCell("B9").value instanceof Date);
+  assert.equal(schedule2.getCell("E9").value, 150);
+  assert.equal(schedule2.getCell("M9").value, 150);
+  assert.equal(schedule2.getCell("F9").value, null);
 });
