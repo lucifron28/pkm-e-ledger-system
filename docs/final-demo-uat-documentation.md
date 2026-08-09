@@ -66,6 +66,7 @@ navigation and mutation controls were not available in their portal.
 - [Officer desktop dashboard](evidence/screenshots/18-officer-dashboard-desktop.jpg)
 - [Officer desktop report view](evidence/screenshots/19-officer-reports-desktop.jpg)
 - [Member desktop dashboard](evidence/screenshots/21-member-dashboard-desktop.jpg)
+- [Member desktop report view](evidence/screenshots/22-member-reports-desktop.jpg)
 
 ## OSA Monitoring Workflow
 
