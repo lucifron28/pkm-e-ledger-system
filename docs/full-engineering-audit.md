@@ -57,7 +57,7 @@ The audit systematically evaluated:
 - **Fix**: Derived navigation matrices strictly from authenticated server-side role (`getPortalNavLinks`). Formatted Treasurer Log entries with human-readable action summaries, user filtering, clear buttons, and expandable technical JSON blocks.
 
 ### 1.10 Final P2/P3 Remediation Pass (Security Pinning, Modal Focus, Keyset Pagination, Authoritative Field Limits)
-- **Security Pinning**: Next.js & `eslint-config-next` exact-pinned to `16.2.11` to address security advisories.
+- **Security Pinning**: Next.js & `eslint-config-next` exact-pinned to `16.3.0`; the release resolves the applicable PostCSS, Sharp, and NanoID advisory chain.
 - **Authoritative Field Limits & Error Visibility**: Render top-level validation error unconditionally in create forms; unified input field limits across server Zod schemas and HTML forms via `TRANSACTION_FIELD_LIMITS` (`documentNumber`: 100, `counterpartyName`: 200, `description`: 500, `referenceDescription`: 500, `eventActivityName`: 200) and `TRANSFER_FIELD_LIMITS` (`documentNumber`: 100, `description`: 500, `referenceDescription`: 500, `eventActivityName`: 200).
 - **Dedicated Income/Expense Server Actions**: Added `createIncomeTransactionAction` and `createExpenseTransactionAction` wrappers using production `forceTransactionType` helper to guarantee server-enforced transaction types on `/ledger/income/new` and `/ledger/expense/new`.
 - **Direction-Aware Keyset Pagination**: Replaced `cstack` URL history with bi-directional keyset pagination returning `nextCursor` and `previousCursor` in `lib/data/transactions.ts` and `lib/data/audit-log.ts` (supporting Page 1 -> 2 -> 3 -> 4 -> 3 -> 2 -> 1 without URL inflation).
@@ -74,7 +74,7 @@ The audit systematically evaluated:
 
 ## 2. Final Current-Head Verification Results
 
-Verification executed on `2026-08-09T10:43:06+08:00` from Git HEAD `a6e78c418bed72df4054ac6cb6cd391a29f32692` using Node.js v24.15.0, npm 11.12.1, Next.js 16.2.11, SQLite 3, Windows 11, and `cmd.exe` command execution.
+Verification executed on `2026-08-09T12:28:23+08:00` from executable Git HEAD `a6cc3ad3c304d8cb3599e44e9647511be6793ddf` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
 
 - `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
 - `npm run lint`: exit status 0; 0 errors and 0 warnings.
@@ -91,4 +91,30 @@ Verification executed on `2026-08-09T10:43:06+08:00` from Git HEAD `a6e78c418bed
 - `npm run storage:reconcile`: exit status 0; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
 
-`npm ci` also reported 8 dependency audit findings (2 moderate, 6 high). No automatic dependency remediation was performed because it was outside confirmed audit findings. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
+Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
+
+## 3. Dependency-Security Triage
+
+Commands captured before and after remediation: `npm audit --json`, `npm audit --omit=dev --json`, `npm audit`, and `npm audit --omit=dev`. Baseline JSON reported 8 package findings: 6 high and 2 moderate. Production-only baseline reported 7: 5 high and 2 moderate. Npm repeats one advisory when several installed nodes or version ranges are affected; table preserves each distinct advisory ID and range.
+
+Class legend: A = runtime, applicable, and fix available; B = runtime, applicable, and no compatible fix; C = runtime dependency but vulnerable API not reachable; D = dev-only; E = false-positive or superseded advisory.
+
+| Package and baseline version | Severity | Advisory IDs and affected ranges | Directness and dependency path | Runtime or dev-only | Vulnerable API reachable? | Fix status | Class |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `brace-expansion` 1.1.15, 2.1.2, 5.0.7 | High | [GHSA-3jxr-9vmj-r5cp](https://github.com/advisories/GHSA-3jxr-9vmj-r5cp) `<1.1.16`; [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg) `<1.1.17`, `2.0.0-2.1.2`, `4.0.0-5.0.7`; [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) `<1.1.18`, `2.0.0-2.1.3`, `4.0.0-5.0.8` | Transitive: `exceljs -> archiver -> archiver-utils/readdir-glob -> glob/minimatch`; separate dev path through `eslint-config-next -> typescript-eslint` | Runtime and dev nodes | No application-controlled brace pattern reaches these helpers; report export calls `ExcelJS.Workbook.xlsx.writeBuffer()` | `npm audit fix` reports a fix; no blind transitive rewrite applied | C |
+| `js-yaml` 4.3.0 | High | [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj), range `4.0.0-4.3.0` | Transitive: `eslint -> @eslint/eslintrc -> js-yaml` | Dev-only | No production import or runtime route | Fix available through audit tooling; not a runtime remediation target | D |
+| `nanoid` 3.3.15 | High | [GHSA-28wg-ghj8-5hjv](https://github.com/advisories/GHSA-28wg-ghj8-5hjv) and [GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8), range `<=3.3.16` | Transitive: `next -> postcss -> nanoid`; root `@tailwindcss/postcss -> postcss -> nanoid` is dev | Runtime dependency tree and dev | PostCSS uses fixed-size `nanoid(6)` during CSS processing; application has no direct NanoID/PostCSS request path | Fixed by compatible Next upgrade; final NanoID is 3.3.18 | C |
+| `next` 16.2.11 | High | Aggregate finding through the PostCSS and Sharp records below; npm JSON supplied no separate Next GHSA | Direct runtime dependency used by all App Router routes | Runtime | Framework is active in application routes; affected transitive packages upgraded together | Safe compatible update to Next 16.3.0; React 19.2.4 and Node 24.15.0 peers remain compatible | A |
+| `postcss` 8.5.16 and nested 8.4.31 | High | [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93) `<8.5.10`; [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q) `<=8.5.11`; [GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849) `<=8.5.17`; [GHSA-fxqj-rqcc-2cmp](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp) `<=8.5.22` | Transitive under direct `next`; root copy also under `@tailwindcss/postcss` | Runtime dependency tree and dev | Build-time CSS and source-map processing; no application request accepts PostCSS source input | Fixed by Next 16.3.0, which resolves PostCSS 8.5.23 | A |
+| `sharp` 0.34.5 | High | [GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj), including CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, and CVE-2026-35591 | Transitive optional dependency: `next -> sharp` | Runtime optional dependency | No `next/image` use exists in application source; framework image optimization can load Sharp | Fixed by Next 16.3.0, which resolves Sharp 0.35.3 | A |
+| `exceljs` 4.4.0 | Moderate | Aggregate report entry via [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) on `uuid` | Direct runtime dependency used by Excel export | Runtime | ExcelJS export is reachable, but its observed UUID call is v4 without a caller buffer | Only audit force-fix is ExcelJS 3.4.0, a breaking downgrade; no compatible stable ExcelJS fix | C |
+| `uuid` 8.3.2 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq), range `<11.1.1` | Transitive: `exceljs@4.4.0 -> uuid@8.3.2` | Runtime dependency | ExcelJS source uses `uuidv4()` only; no v3/v5/v6 call with `buf` is reachable | Direct UUID override was not proven compatible with ExcelJS; no compatible upstream ExcelJS fix | C |
+
+### Remediation and Final State
+
+- Updated `next` and `eslint-config-next` from `16.2.11` to `16.3.0` without `npm audit fix --force`.
+- This resolved the applicable framework chain: PostCSS `8.5.23`, Sharp `0.35.3`, and NanoID `3.3.18`.
+- Final `npm audit --json`: 4 findings, 2 high and 2 moderate. Final `npm audit --omit=dev --json`: 3 findings, 1 high and 2 moderate.
+- Remaining high finding is `brace-expansion` class C; remaining high `js-yaml` is class D. Remaining moderate `exceljs` and `uuid` records are class C.
+- `npm audit` and `npm audit --omit=dev` exit with status 1 because documented residual records remain. No unresolved applicable runtime high vulnerability remains.
+- ExcelJS regression coverage generated an XLSX buffer, reopened it with `workbook.xlsx.load`, and passed the report export test. Stable ExcelJS is still 4.4.0; the only audit-suggested fix is breaking ExcelJS 3.4.0, so no UUID major override was introduced.
