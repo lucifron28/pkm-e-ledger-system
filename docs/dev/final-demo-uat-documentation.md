@@ -24,73 +24,73 @@ Treasurer, Adviser, and Audit users share the management workflow.
 
 ### Step 1 - Sign in
 
-![Login screen](evidence/screenshots/01-login.png)
+![Login screen](../evidence/screenshots/01-login.png)
 
 Fictional management account reaches authenticated portal after sign-in.
 
 ### Step 2 - Dashboard
 
-![Management dashboard](evidence/screenshots/02-treasurer-dashboard.png)
+![Management dashboard](../evidence/screenshots/02-treasurer-dashboard.png)
 
 Dashboard shows term selector, split cash balances, income, expenses, and
 remaining balance.
 
 ### Step 3 - Term and opening balances
 
-![Term settings and opening balances](evidence/screenshots/03-term-settings-balances.png)
+![Term settings and opening balances](../evidence/screenshots/03-term-settings-balances.png)
 
 Opening Cash on Hand, Opening Cash in Bank, and Balance Forwarded are visible
 for active term.
 
 ### Step 4 - Ledger entry surface
 
-![Digital ledger entry surface](evidence/screenshots/04-digital-ledger-desktop.jpg)
+![Digital ledger entry surface](../evidence/screenshots/04-digital-ledger-desktop.jpg)
 
 Ledger page exposes transaction fields, cash account, category, document
 number, counterparty, reference, attachment, and activity fields.
 
 ### Step 5 - New income
 
-![New income form](evidence/screenshots/05-new-income-desktop.jpg)
+![New income form](../evidence/screenshots/05-new-income-desktop.jpg)
 
 Income entry accepts required financial and supporting-document details.
 
 ### Step 6 - Recorded income and result
 
-![Recorded income result](evidence/screenshots/04-income-recorded.png)
+![Recorded income result](../evidence/screenshots/04-income-recorded.png)
 
 Recorded income updates the displayed cash and total-income state.
 
 ### Step 7 - New expense
 
-![New expense form](evidence/screenshots/06-new-expense-desktop.jpg)
+![New expense form](../evidence/screenshots/06-new-expense-desktop.jpg)
 
 Expense entry uses selected cash account and mapped expense category.
 
 ### Step 8 - Recorded expense and result
 
-![Recorded expense result](evidence/screenshots/05-ledger-populated.png)
+![Recorded expense result](../evidence/screenshots/05-ledger-populated.png)
 
 Recorded expense updates total expenses and remaining balance using fictional
 UAT records.
 
 ### Step 9 - Cash transfer
 
-![Cash transfer and ledger filters](evidence/screenshots/13-cash-transfer-filters-desktop.jpg)
+![Cash transfer and ledger filters](../evidence/screenshots/13-cash-transfer-filters-desktop.jpg)
 
 Cash transfer records movement between Cash on Hand and Cash in Bank without
 counting as income or expense.
 
 ### Step 10 - Transaction details
 
-![Transaction details](evidence/screenshots/10-transaction-details-desktop.jpg)
+![Transaction details](../evidence/screenshots/10-transaction-details-desktop.jpg)
 
 Details view shows date, type, amount, category, account, document number,
 counterparty, activity, reference, and attachment metadata.
 
 ### Step 11 - Edit transaction
 
-![Edit transaction dialog](evidence/screenshots/11-edit-transaction-desktop.jpg)
+![Edit transaction dialog](../evidence/screenshots/11-edit-transaction-desktop.jpg)
 
 Authorized management user can edit transaction fields through the dialog.
 
@@ -101,20 +101,20 @@ tested edit flow.
 
 ### Step 13 - Delete confirmation
 
-![Delete confirmation](evidence/screenshots/31-delete-confirmation.png)
+![Delete confirmation](../evidence/screenshots/31-delete-confirmation.png)
 
 Disposable fictional transaction `Alex Rivera` / `Fictional membership
 contribution updated` was selected for this final pass. Deletion reason
 `Disposable UAT record removed after soft-delete verification.` was entered and
 the confirmation was submitted.
 
-![Ledger after soft deletion](evidence/screenshots/32-ledger-after-soft-delete.png)
+![Ledger after soft deletion](../evidence/screenshots/32-ledger-after-soft-delete.png)
 
 The deleted entry no longer appeared in the active ledger. The page changed
 from 9 to 8 active entries, and the deleted income no longer affected the
 ledger totals.
 
-![Dashboard balances after soft deletion](evidence/screenshots/33-dashboard-after-soft-delete.png)
+![Dashboard balances after soft deletion](../evidence/screenshots/33-dashboard-after-soft-delete.png)
 
 Dashboard result showed Cash on Hand `₱1,350.00`, Cash in Bank `₱2,800.00`,
 Total Income `₱850.00`, Total Expense `₱700.00`, and Remaining Balance
@@ -122,72 +122,72 @@ Total Income `₱850.00`, Total Expense `₱700.00`, and Remaining Balance
 
 ### Step 14 - Treasurer Log
 
-![Treasurer Log](evidence/screenshots/17-audit-log-desktop.jpg)
+![Treasurer Log](../evidence/screenshots/17-audit-log-desktop.jpg)
 
 Audit history displays authentication, financial mutation, attachment, and
 cash-transfer events with actor and role context.
 
-![Treasurer Log soft-delete evidence](evidence/screenshots/34-treasurer-log-soft-delete.png)
+![Treasurer Log soft-delete evidence](../evidence/screenshots/34-treasurer-log-soft-delete.png)
 
 Final UAT log entry recorded `Deleted Transaction` with the submitted deletion
 reason.
 
 ### Step 15 - Report viewer
 
-![Reference-aligned report viewer](evidence/screenshots/15-adviser-reports-desktop.jpg)
+![Reference-aligned report viewer](../evidence/screenshots/15-adviser-reports-desktop.jpg)
 
 Generated financial view contains summary balances, collections, expenses,
 and report-package navigation.
 
 ### Step 16 - PDF and XLSX export actions
 
-![Report package export actions](evidence/screenshots/28-final-report-package.png)
+![Report package export actions](../evidence/screenshots/28-final-report-package.png)
 
 Report viewer exposes print, PDF, and Excel export actions. Generated exports
 remain local-only evidence and are not committed.
 
 Additional management-role evidence:
 
-![Adviser dashboard](evidence/screenshots/14-adviser-dashboard-desktop.jpg)
+![Adviser dashboard](../evidence/screenshots/14-adviser-dashboard-desktop.jpg)
 
-![Audit dashboard](evidence/screenshots/16-audit-dashboard-desktop.jpg)
+![Audit dashboard](../evidence/screenshots/16-audit-dashboard-desktop.jpg)
 
 ## Officer Transparency
 
 Officer users can view organization summaries and reports but cannot access
 management ledger routes.
 
-![Officer dashboard](evidence/screenshots/18-officer-dashboard-desktop.jpg)
+![Officer dashboard](../evidence/screenshots/18-officer-dashboard-desktop.jpg)
 
-![Officer report](evidence/screenshots/19-officer-reports-desktop.jpg)
+![Officer report](../evidence/screenshots/19-officer-reports-desktop.jpg)
 
-![Officer restricted ledger route](evidence/screenshots/20-officer-restricted-ledger-desktop.jpg)
+![Officer restricted ledger route](../evidence/screenshots/20-officer-restricted-ledger-desktop.jpg)
 
 ## Member Transparency
 
 Member users can view organization summaries and reports but cannot access
 management ledger routes.
 
-![Member dashboard](evidence/screenshots/21-member-dashboard-desktop.jpg)
+![Member dashboard](../evidence/screenshots/21-member-dashboard-desktop.jpg)
 
-![Member report](evidence/screenshots/22-member-reports-desktop.jpg)
+![Member report](../evidence/screenshots/22-member-reports-desktop.jpg)
 
-![Member restricted ledger route](evidence/screenshots/23-member-restricted-ledger-desktop.jpg)
+![Member restricted ledger route](../evidence/screenshots/23-member-restricted-ledger-desktop.jpg)
 
 ## OSA Monitoring
 
 OSA user can select active organizations and view read-only summaries, ledger
 summaries, and generated financial views. Export controls are not exposed.
 
-![OSA organization selector](evidence/screenshots/26-osa-organization-selector-desktop.jpg)
+![OSA organization selector](../evidence/screenshots/26-osa-organization-selector-desktop.jpg)
 
-![OSA monitoring overview](evidence/screenshots/27-osa-monitoring-overview-desktop.jpg)
+![OSA monitoring overview](../evidence/screenshots/27-osa-monitoring-overview-desktop.jpg)
 
-![Selected organization summary](evidence/screenshots/28-osa-selected-organization-summary-desktop.jpg)
+![Selected organization summary](../evidence/screenshots/28-osa-selected-organization-summary-desktop.jpg)
 
-![OSA report view](evidence/screenshots/29-osa-report-view-desktop.jpg)
+![OSA report view](../evidence/screenshots/29-osa-report-view-desktop.jpg)
 
-![Second organization summary](evidence/screenshots/30-osa-other-organization-desktop.jpg)
+![Second organization summary](../evidence/screenshots/30-osa-other-organization-desktop.jpg)
 
 ## Reference-Aligned Report Package
 
@@ -205,19 +205,19 @@ historical-workbook-reference-aligned sections:
 
 ### PDF page evidence
 
-![PDF page 1 - Summary and signatures](evidence/screenshots/pdf/report-page-1.png)
+![PDF page 1 - Summary and signatures](../evidence/screenshots/pdf/report-page-1.png)
 
 Summary Report and signature section. Portrait orientation verified.
 
-![PDF page 2 - Schedule 1 Collections](evidence/screenshots/pdf/report-page-2.png)
+![PDF page 2 - Schedule 1 Collections](../evidence/screenshots/pdf/report-page-2.png)
 
 Schedule 1 Collections. Portrait orientation verified.
 
-![PDF page 3 - Schedule 2 Expenses](evidence/screenshots/pdf/report-page-3.png)
+![PDF page 3 - Schedule 2 Expenses](../evidence/screenshots/pdf/report-page-3.png)
 
 Schedule 2 Expenses. Landscape orientation verified.
 
-![PDF page 4 - Receipts and attachments](evidence/screenshots/pdf/report-page-4.png)
+![PDF page 4 - Receipts and attachments](../evidence/screenshots/pdf/report-page-4.png)
 
 Receipts / Attachments reference. Portrait orientation verified.
 
@@ -241,13 +241,13 @@ and is not committed.
 
 Four PlantUML sources remain in scope:
 
-![Use case diagram](evidence/diagrams/use-case.png)
+![Use case diagram](../evidence/diagrams/use-case.png)
 
-![Activity diagram](evidence/diagrams/activity-ledger-workflow.png)
+![Activity diagram](../evidence/diagrams/activity-ledger-workflow.png)
 
-![Sequence diagram](evidence/diagrams/sequence-transaction-entry.png)
+![Sequence diagram](../evidence/diagrams/sequence-transaction-entry.png)
 
-![Simplified domain class diagram](evidence/diagrams/domain-class-diagram.png)
+![Simplified domain class diagram](../evidence/diagrams/domain-class-diagram.png)
 
 PlantUML CLI was run from `docs/uml` with a temporary JAR using these commands
 (temporary tool file was not committed):

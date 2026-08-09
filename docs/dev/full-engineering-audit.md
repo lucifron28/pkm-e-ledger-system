@@ -69,7 +69,7 @@ The audit systematically evaluated:
 - **Header Responsiveness & Navigation Matrix**: Refactored header breakpoint to `xl` (1280px) to prevent tablet menu overflow; extracted `getPortalNavLinks` helper and added unit tests in `tests/core/navigation.test.ts`.
 - **Modal Focus Management**: Wired `useModalFocus.handleKeyDown` to call `shouldAllowModalClose` directly, ensuring modal-focus unit tests directly protect production keyboard behavior.
 - **Real Password Boundary Tests**: Created `tests/core/password.test.ts` testing 8-char min, 72 ASCII bytes max accepted, 73 ASCII bytes rejected, multibyte UTF-8 boundary checks, and overflow login handling.
-- **Documentation Matrix Alignment**: Audited all entries in `docs/audit-coverage-matrix.md` and refreshed `docs/final-verification-checklist.md`.
+- **Documentation Matrix Alignment**: Audited all entries in `docs/dev/audit-coverage-matrix.md` and refreshed `docs/dev/final-verification-checklist.md`.
 
 ### 1.11 Clean-install Prisma Client Generation
 - **Issue**: A clean `npm ci` left the placeholder Prisma Client declarations in place, causing the mandated pre-generation typecheck to fail with missing Prisma enums and model types.
