@@ -22,7 +22,7 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
-export const transferBaseSchema = z.object({
+const transferBaseSchema = z.object({
   fromAccount: z.nativeEnum(CashAccount, { message: "Source cash account is required." }),
   toAccount: z.nativeEnum(CashAccount, { message: "Destination cash account is required." }),
   transferDate: z.string().trim().min(1, "Transfer date is required."),
@@ -33,12 +33,12 @@ export const transferBaseSchema = z.object({
   eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
 });
 
-export const createTransferSchema = transferBaseSchema.extend({
+const createTransferSchema = transferBaseSchema.extend({
   termId: z.string().trim().min(1, "Term ID is required."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
-export const editTransferSchema = transferBaseSchema.extend({
+const editTransferSchema = transferBaseSchema.extend({
   id: z.string().trim().min(1, "Transfer ID is required."),
   version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),

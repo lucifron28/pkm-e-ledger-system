@@ -28,7 +28,7 @@ function getAttachmentFile(formData: FormData): File {
   return file;
 }
 
-export const transactionBaseSchema = z.object({
+const transactionBaseSchema = z.object({
   type: z.nativeEnum(TransactionType, { message: "Transaction type is required." }),
   transactionDate: z.string().trim().min(1, "Transaction date is required."),
   amount: z.string().trim().min(1, "Amount is required."),
@@ -41,12 +41,12 @@ export const transactionBaseSchema = z.object({
   eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(TRANSACTION_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSACTION_FIELD_LIMITS.eventActivityName} characters.`),
 });
 
-export const createTransactionSchema = transactionBaseSchema.extend({
+const createTransactionSchema = transactionBaseSchema.extend({
   termId: z.string().trim().min(1, "Term ID is required."),
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
 });
 
-export const editTransactionSchema = transactionBaseSchema.extend({
+const editTransactionSchema = transactionBaseSchema.extend({
   id: z.string().trim().min(1, "Transaction ID is required."),
   version: strictVersionSchema,
   idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
