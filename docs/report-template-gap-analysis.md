@@ -10,7 +10,7 @@ fixture, test record, or demo dataset.
 
 The application remains the source of truth. Reports are generated from the
 selected academic term's active, normalized records and are live views rather
-than immutable official publications.
+than immutable institutional publications.
 
 ## Reference Characteristics
 
@@ -49,7 +49,7 @@ than immutable official publications.
 | Expense total and category columns | `amountCents`, `categoryBucketCents`, `expenseCategories` | Historical column labels and current canonical buckets need consistent mapping | Render one total Amount and one mapped category cell per expense; preserve `Others` when needed | A - Direct |
 | Historical expense category labels | `ExpenseReportBucket` and `SCHEDULE_2_BUCKETS` | The reference does not show every current fallback bucket | Keep the approved application buckets; use the reference labels where they match and add `Others` only to preserve data | C - Derivable |
 | Expense totals row | `expenseCategories` and `totalExpenseCents` | Existing export has totals but needs stronger template borders and formula coverage | Add a final totals row with formulas in Excel and matching totals in HTML/PDF | B - Presentational |
-| Signature section | Role-only titles in `report.signatories` | The reference contains signature lines; real signatories must never be copied | Render blank signature lines and role/title labels only; do not seed or hardcode personal names | B - Presentational |
+| Signature section | Six role-only titles in `report.signatories` | The reference contains six separate signature functions; real signatories must never be copied | Render blank signature lines for Organization Treasurer, Organization Auditor, OSS / OSA Coordinator, Organization President, Faculty Adviser, and PKM Accountant | B - Presentational |
 | Receipts / attachments section | Authorized attachment metadata in `report.attachments` | Historical receipt scans are not report data and cannot be copied | Generate a structured attachment index with document number, date, particulars, file name, type, and size; retain access control for files | A - Direct |
 | Embedded receipt images | Attachment storage and authorized attachment route | Exporters do not receive unrestricted file paths or image bytes | Keep image access behind authorization; image embedding is optional and out of the initial template alignment scope | E - Out of scope for initial alignment |
 | Workbook sheet order | Existing `SUMMARY`, Schedule 1, Schedule 2, and attachment sheet | Excel forbids `/` in sheet names, while the template label uses a slash | Use valid sheet name `RECEIPTS - ATTACHMENTS` with the visible title `RECEIPTS / ATTACHMENTS` | B - Presentational |
@@ -66,7 +66,7 @@ Each generated report package contains:
 2. Schedule 1 Collections in portrait orientation, grouped by income report
    bucket.
 3. Schedule 2 Expenses in landscape orientation with mapped category columns.
-4. Signature section with blank lines and role labels.
+4. Signature section with six blank lines and role labels.
 5. Receipts / Attachments reference with metadata only unless an authorized
    file-delivery feature is explicitly added later.
 

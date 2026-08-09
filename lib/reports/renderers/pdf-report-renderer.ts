@@ -13,6 +13,22 @@ const BORDER = "#CBD5E1";
 const SECTION_FILL = "#E2E8F0";
 const BLUE = "#004AAD";
 const CONTENT_WIDTH = 540;
+const SCHEDULE1_BOTTOM = 700;
+const SCHEDULE2_BOTTOM = 584;
+
+export type PdfTableAlignment = "left" | "center" | "right";
+
+export const SCHEDULE1_TABLE_ALIGNMENTS = ["center", "left", "right"] as const satisfies readonly PdfTableAlignment[];
+export const ATTACHMENT_TABLE_ALIGNMENTS = ["left", "left", "left", "left", "left", "left", "right"] as const satisfies readonly PdfTableAlignment[];
+export const PDF_ATTACHMENT_TABLE_WIDTHS = [48, 52, 64, 136, 120, 52, 48] as const;
+
+export function getSchedule2TableAlignments(bucketCount: number): PdfTableAlignment[] {
+  return ["left", "left", "left", "left", "right", ...Array.from({ length: bucketCount }, () => "right" as const)];
+}
+
+export function fitsPdfTableRow(y: number, height: number, pageBottom: number): boolean {
+  return y + height <= pageBottom;
+}
 
 function formatPdfAmount(cents: number): string {
   return formatPesoFromCents(cents).replace(/^-?\u20B1/, (prefix) => `${prefix.startsWith("-") ? "-" : ""}PHP `);
@@ -74,33 +90,48 @@ function writeSignatureSection(doc: PDFKit.PDFDocument, report: ReportPackageDto
   const columns = [
     ["Prepared by:", report.signatories.treasurerTitle],
     ["Certified Correct:", report.signatories.auditorTitle],
-    ["Approved by:", report.signatories.adviserTitle],
-    ["Noted / Approved:", report.signatories.presidentOsaTitle],
+    ["Coordinated by:", report.signatories.osaCoordinatorTitle],
+    ["Approved by:", report.signatories.organizationPresidentTitle],
+    ["Noted by:", report.signatories.adviserTitle],
+    ["Certified by:", report.signatories.accountantTitle],
   ];
   const startX = 42;
-  const columnWidth = 132;
+  const columnWidth = 174;
+  const rowHeight = 58;
   const startY = doc.y;
   columns.forEach(([label, title], index) => {
-    const x = startX + index * columnWidth;
-    doc.font("Helvetica").fontSize(7.5).fillColor(MUTED).text(label, x, startY, { width: columnWidth - 8 });
-    doc.moveTo(x, startY + 33).lineTo(x + columnWidth - 12, startY + 33).strokeColor(INK).lineWidth(0.7).stroke();
-    doc.font("Helvetica").fontSize(7.5).fillColor(INK).text(title, x, startY + 39, { width: columnWidth - 8, align: "center" });
+    const x = startX + (index % 3) * columnWidth;
+    const y = startY + Math.floor(index / 3) * rowHeight;
+    doc.font("Helvetica").fontSize(7.5).fillColor(MUTED).text(label, x, y, { width: columnWidth - 8 });
+    doc.moveTo(x, y + 33).lineTo(x + columnWidth - 12, y + 33).strokeColor(INK).lineWidth(0.7).stroke();
+    doc.font("Helvetica").fontSize(7.5).fillColor(INK).text(title, x, y + 39, { width: columnWidth - 8, align: "center" });
   });
-  doc.y = startY + 58;
+  doc.y = startY + rowHeight * 2;
 }
 
-function drawTableRow(
+function getTableRowHeight(
   doc: PDFKit.PDFDocument,
   values: string[],
-  widths: number[],
-  y: number,
+  widths: readonly number[],
   options: { header?: boolean; total?: boolean } = {}
 ): number {
   const font = options.header || options.total ? "Helvetica-Bold" : "Helvetica";
   const size = options.header ? 7 : options.total ? 7.5 : 7;
   doc.font(font).fontSize(size);
-  const heights = values.map((value, index) => doc.heightOfString(value || "", { width: Math.max(widths[index] - 8, 10) }));
-  const height = Math.max(options.header ? 28 : 18, ...heights.map((item) => item + 8));
+  const heights = values.map((value, index) =>
+    doc.heightOfString(value || "", { width: Math.max(widths[index] - 8, 10) })
+  );
+  return Math.max(options.header ? 28 : 18, ...heights.map((item) => item + 8));
+}
+
+function drawTableRow(
+  doc: PDFKit.PDFDocument,
+  values: string[],
+  widths: readonly number[],
+  y: number,
+  options: { header?: boolean; total?: boolean; alignments?: readonly PdfTableAlignment[] } = {}
+): number {
+  const height = getTableRowHeight(doc, values, widths, options);
   let x = doc.page.margins.left;
   values.forEach((value, index) => {
     if (options.header) {
@@ -116,7 +147,7 @@ function drawTableRow(
     doc.fillColor(options.total ? INK : options.header ? INK : "#334155").text(value || "", x + 4, y + 4, {
       width: Math.max(widths[index] - 8, 10),
       height: height - 6,
-      align: index >= 2 ? "right" : "left",
+      align: options.alignments?.[index] || "left",
     });
     x += widths[index];
   });
@@ -181,37 +212,76 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
       doc.font("Helvetica-Bold").fontSize(10).fillColor(BLUE).text("SCHEDULE 1", { align: "center" });
       doc.moveDown(0.6);
       const collectionWidths = [54, 350, 136];
+      const collectionHeaders = ["Sequence number", "Payor / Source Name", "Amount"];
       if (report.collectionGroups.length === 0) {
-        drawTableRow(doc, ["Sequence number", "Payor / Source Name", "Amount"], collectionWidths, doc.y, { header: true });
-        doc.y += 28;
-        drawTableRow(doc, ["", "No collections recorded", ""], collectionWidths, doc.y);
-        doc.y += 20;
+        const headerHeight = drawTableRow(doc, collectionHeaders, collectionWidths, doc.y, {
+          header: true,
+          alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+        });
+        doc.y += headerHeight;
+        const emptyRowHeight = drawTableRow(doc, ["", "No collections recorded", ""], collectionWidths, doc.y, {
+          alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+        });
+        doc.y += emptyRowHeight + 12;
       }
       for (const group of report.collectionGroups) {
-        if (doc.y > 700) addPortraitPage(doc, report, "SUMMARY OF COLLECTIONS (CONTINUED)");
+        const headerHeight = getTableRowHeight(doc, collectionHeaders, collectionWidths, { header: true });
+        if (!fitsPdfTableRow(doc.y, 25 + headerHeight, SCHEDULE1_BOTTOM)) {
+          addPortraitPage(doc, report, "SUMMARY OF COLLECTIONS (CONTINUED)");
+        }
         writeSectionHeading(doc, group.categoryName);
         let y = doc.y;
-        const headerHeight = drawTableRow(doc, ["Sequence number", "Payor / Source Name", "Amount"], collectionWidths, y, { header: true });
-        y += headerHeight;
+        y += drawTableRow(doc, collectionHeaders, collectionWidths, y, {
+          header: true,
+          alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+        });
         for (const item of group.items) {
-          const rowHeight = drawTableRow(
-            doc,
-            [String(item.sequenceNumber), item.payorName, formatPdfAmount(item.amountCents)],
-            collectionWidths,
-            y
-          );
-          y += rowHeight;
-          if (y > 700 && item !== group.items[group.items.length - 1]) {
+          const values = [String(item.sequenceNumber), item.payorName, formatPdfAmount(item.amountCents)];
+          const rowHeight = getTableRowHeight(doc, values, collectionWidths);
+          if (!fitsPdfTableRow(y, rowHeight, SCHEDULE1_BOTTOM)) {
             addPortraitPage(doc, report, "SUMMARY OF COLLECTIONS (CONTINUED)");
             writeSectionHeading(doc, `${group.categoryName} (CONTINUED)`);
             y = doc.y;
-            y += drawTableRow(doc, ["Sequence number", "Payor / Source Name", "Amount"], collectionWidths, y, { header: true });
+            y += drawTableRow(doc, collectionHeaders, collectionWidths, y, {
+              header: true,
+              alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+            });
           }
+          y += drawTableRow(doc, values, collectionWidths, y, {
+            alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+          });
         }
-        const subtotalHeight = drawTableRow(doc, ["", "Total per schedule", formatPdfAmount(group.totalCents)], collectionWidths, y, { total: true });
-        doc.y = y + subtotalHeight + 12;
+        const subtotalValues = ["", "Total per schedule", formatPdfAmount(group.totalCents)];
+        const subtotalHeight = getTableRowHeight(doc, subtotalValues, collectionWidths, { total: true });
+        if (!fitsPdfTableRow(y, subtotalHeight, SCHEDULE1_BOTTOM)) {
+          addPortraitPage(doc, report, "SUMMARY OF COLLECTIONS (CONTINUED)");
+          writeSectionHeading(doc, `${group.categoryName} (CONTINUED)`);
+          y = doc.y;
+          y += drawTableRow(doc, collectionHeaders, collectionWidths, y, {
+            header: true,
+            alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+          });
+        }
+        y += drawTableRow(doc, subtotalValues, collectionWidths, y, {
+          total: true,
+          alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+        });
+        doc.y = y + 12;
       }
-      drawTableRow(doc, ["", "TOTAL PER SCHEDULE", formatPdfAmount(report.totalIncomeCents)], collectionWidths, doc.y, { total: true });
+      const grandTotalValues = ["", "TOTAL PER SCHEDULE", formatPdfAmount(report.totalIncomeCents)];
+      const grandTotalHeight = getTableRowHeight(doc, grandTotalValues, collectionWidths, { total: true });
+      if (!fitsPdfTableRow(doc.y, grandTotalHeight, SCHEDULE1_BOTTOM)) {
+        addPortraitPage(doc, report, "SUMMARY OF COLLECTIONS (CONTINUED)");
+        writeSectionHeading(doc, "SCHEDULE 1 (CONTINUED)");
+        doc.y += drawTableRow(doc, collectionHeaders, collectionWidths, doc.y, {
+          header: true,
+          alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+        });
+      }
+      drawTableRow(doc, grandTotalValues, collectionWidths, doc.y, {
+        total: true,
+        alignments: SCHEDULE1_TABLE_ALIGNMENTS,
+      });
 
       // Schedule 2: landscape expense matrix.
       const expenseColumns = getReportExpenseColumns(report.expenseCategories);
@@ -232,9 +302,12 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
         "Amount",
         ...expenseColumns.map((column) => column.label),
       ];
-      const expenseBottom = 584;
+      const expenseAlignments = getSchedule2TableAlignments(expenseColumns.length);
       let expenseY = doc.y;
-      expenseY += drawTableRow(doc, expenseHeaders, expenseWidths, expenseY, { header: true });
+      expenseY += drawTableRow(doc, expenseHeaders, expenseWidths, expenseY, {
+        header: true,
+        alignments: expenseAlignments,
+      });
       for (const row of report.expenseRows) {
         const values = [
           row.documentNumber || "",
@@ -247,18 +320,18 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
             return cents > 0 ? formatPdfAmount(cents) : "";
           }),
         ];
-        const heightEstimate = Math.max(
-          18,
-          ...values.map((value, index) => doc.heightOfString(value, { width: Math.max(expenseWidths[index] - 8, 10) }) + 8)
-        );
-        if (expenseY + heightEstimate > expenseBottom) {
+        const rowHeight = getTableRowHeight(doc, values, expenseWidths);
+        if (!fitsPdfTableRow(expenseY, rowHeight, SCHEDULE2_BOTTOM)) {
           addLandscapePage(doc, report, "SUMMARY OF EXPENSES (CONTINUED)");
           doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text("SCHEDULE 2", { align: "center" });
           doc.moveDown(0.6);
           expenseY = doc.y;
-          expenseY += drawTableRow(doc, expenseHeaders, expenseWidths, expenseY, { header: true });
+          expenseY += drawTableRow(doc, expenseHeaders, expenseWidths, expenseY, {
+            header: true,
+            alignments: expenseAlignments,
+          });
         }
-        expenseY += drawTableRow(doc, values, expenseWidths, expenseY);
+        expenseY += drawTableRow(doc, values, expenseWidths, expenseY, { alignments: expenseAlignments });
       }
       const totals = [
         "",
@@ -271,22 +344,32 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
           return formatPdfAmount(total);
         }),
       ];
-      if (expenseY + 24 > expenseBottom) {
+      const expenseTotalHeight = getTableRowHeight(doc, totals, expenseWidths, { total: true });
+      if (!fitsPdfTableRow(expenseY, expenseTotalHeight, SCHEDULE2_BOTTOM)) {
         addLandscapePage(doc, report, "SUMMARY OF EXPENSES (CONTINUED)");
         doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text("SCHEDULE 2", { align: "center" });
         doc.moveDown(0.6);
         expenseY = doc.y;
+        expenseY += drawTableRow(doc, expenseHeaders, expenseWidths, expenseY, {
+          header: true,
+          alignments: expenseAlignments,
+        });
       }
-      drawTableRow(doc, totals, expenseWidths, expenseY, { total: true });
+      drawTableRow(doc, totals, expenseWidths, expenseY, { total: true, alignments: expenseAlignments });
 
       // Receipts / attachments reference: metadata only; files remain behind authorized routes.
       addPortraitPage(doc, report, "RECEIPTS / ATTACHMENTS");
-      const attachmentWidths = [72, 58, 68, 150, 112, 54, 56];
-      const attachmentHeaders = ["Entry", "Date", "Document No.", "Particulars", "Original File Name", "Type", "Size KB"];
+      const attachmentWidths = PDF_ATTACHMENT_TABLE_WIDTHS;
+      const attachmentHeaders = ["Entry", "Date", "Document No.", "Particulars", "File Name", "Type", "Size KB"];
       let attachmentY = doc.y;
-      attachmentY += drawTableRow(doc, attachmentHeaders, attachmentWidths, attachmentY, { header: true });
+      attachmentY += drawTableRow(doc, attachmentHeaders, attachmentWidths, attachmentY, {
+        header: true,
+        alignments: ATTACHMENT_TABLE_ALIGNMENTS,
+      });
       if (report.attachments.length === 0) {
-        drawTableRow(doc, ["", "", "", "No attachments associated with this report package.", "", "", ""], attachmentWidths, attachmentY);
+        drawTableRow(doc, ["", "", "", "No attachments associated with this report package.", "", "", ""], attachmentWidths, attachmentY, {
+          alignments: ATTACHMENT_TABLE_ALIGNMENTS,
+        });
       } else {
         for (const attachment of report.attachments) {
           const values = [
@@ -298,16 +381,16 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
             attachment.mimeType.split("/")[1] || attachment.mimeType,
             String(Math.ceil(attachment.sizeBytes / 1024)),
           ];
-          const rowHeight = Math.max(
-            18,
-            ...values.map((value, index) => doc.heightOfString(value, { width: Math.max(attachmentWidths[index] - 8, 10) }) + 8)
-          );
-          if (attachmentY + rowHeight > 700) {
+          const rowHeight = getTableRowHeight(doc, values, attachmentWidths);
+          if (!fitsPdfTableRow(attachmentY, rowHeight, SCHEDULE1_BOTTOM)) {
             addPortraitPage(doc, report, "RECEIPTS / ATTACHMENTS (CONTINUED)");
             attachmentY = doc.y;
-            attachmentY += drawTableRow(doc, attachmentHeaders, attachmentWidths, attachmentY, { header: true });
+            attachmentY += drawTableRow(doc, attachmentHeaders, attachmentWidths, attachmentY, {
+              header: true,
+              alignments: ATTACHMENT_TABLE_ALIGNMENTS,
+            });
           }
-          attachmentY += drawTableRow(doc, values, attachmentWidths, attachmentY);
+          attachmentY += drawTableRow(doc, values, attachmentWidths, attachmentY, { alignments: ATTACHMENT_TABLE_ALIGNMENTS });
         }
       }
 

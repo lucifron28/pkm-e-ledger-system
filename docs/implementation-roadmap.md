@@ -87,7 +87,7 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 ### Phase 5: Reports & Exports
 * **Branch**: `feature/reports-and-exports`
 * **Dependencies**: Phase 4
-* **Goal**: Build in-app HTML report viewer, Schedule 1 & 2 layouts, print CSS stylesheets, PDF generator, and `.xlsx` Excel exporter (`exceljs`) based on the official workbook reference.
+* **Goal**: Build in-app HTML report viewer, Schedule 1 & 2 layouts, print CSS stylesheets, PDF generator, and `.xlsx` Excel exporter (`exceljs`) based on the historical workbook reference.
 * **Grouped Commits**:
   1. `feat(reports): add shared report package and printable views`
   2. `feat(exports): add pdf and excel report downloads`

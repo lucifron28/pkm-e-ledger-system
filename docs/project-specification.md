@@ -2,7 +2,7 @@
 
 ## 1. System Overview & Theme
 
-The **PKM e-Ledger System** is a web-based Student Organization Financial Ledger System developed for **Pambayang Kolehiyo ng Mauban (PKM)**. The system digitizes financial record-keeping, cash balance tracking, attachment management, audit logging, and official report generation for all recognized student organizations under the Office of Student Affairs (OSA).
+The **PKM e-Ledger System** is a web-based Student Organization Financial Ledger System developed for **Pambayang Kolehiyo ng Mauban (PKM)**. The system digitizes financial record-keeping, cash balance tracking, attachment management, audit logging, and reference-aligned financial report generation for all recognized student organizations under the Office of Student Affairs (OSA).
 
 ### Visual Branding & Theme
 * **Primary Blue**: `#004aad`
@@ -226,11 +226,11 @@ The Treasurer Log (Audit Log) must capture complete audit trails. Requirements a
 
 ## 11. Report Package & Explicit Output Formats
 
-The report package structure is based on the provided official workbook reference:
+The report package structure is based on the provided historical workbook reference:
 1. **Summary Report**: Portrait page displaying organization header, balance forwarded, collections by category, total cash available, less: total expenses, ending balance, and signature section.
 2. **Schedule 1 Collections**: Portrait schedule grouping income collections by category/payor with sequence numbers and totals.
 3. **Schedule 2 Expenses**: Landscape schedule with categorical expense columns (Supplies, Equipment, Transportation, Meals, Service, Misc, Donation, Others) and document numbers.
-4. **Signature Section**: Formatted signature blocks for Treasurer, Adviser, Auditor, and President / OSA Representative.
+4. **Signature Section**: Formatted role-only signature blocks for Organization Treasurer, Organization Auditor, OSS / OSA Coordinator, Organization President, Faculty Adviser, and PKM Accountant.
 
 ### Explicitly Listed Report Outputs
 The system must explicitly support all of the following report outputs:
@@ -300,9 +300,9 @@ The end-to-end operational lifecycle of the PKM e-Ledger System follows this com
 * **FR-014: Soft Deletion** — The system must allow management users to soft-delete transactions upon providing a mandatory deletion reason, excluding deleted records from active balances and logging the action.
 * **FR-015: Attachments** — The system must mandate receipt attachment uploads (JPEG, PNG, PDF up to 10 MB) and Reference/Attachment Descriptions for all transactions, serving files via secure authenticated routes.
 * **FR-016: Treasurer Logs** — The system must maintain immutable audit logs capturing Login History, Transaction History, Logged In, Logged Out, Changed Password, Added Income, Added Expense, Edited Transaction, Deleted Transaction, Changed Opening Balance, Uploaded Attachment, Deleted Attachment, User, Role, Organization, Date/Time, and Entity Details.
-* **FR-017: Financial Report Generation** — The system must allow Treasurer, Adviser, and Audit to generate official Summary Reports, Schedule 1 Collections, and Schedule 2 Expenses based on active ledger data. Reports are live generated financial views built from current non-deleted financial data; generated HTML/PDF/XLSX exports are not immutable publications and cannot be reproduced byte-for-byte after ledger edits. `GENERATED_REPORT` audit entries represent export generation, not publication/approval.
+* **FR-017: Financial Report Generation** — The system must allow Treasurer, Adviser, and Audit to generate Summary Reports, Schedule 1 Collections, and Schedule 2 Expenses based on active ledger data. Reports are live generated financial views built from current non-deleted financial data; generated HTML/PDF/XLSX exports are not immutable institutional publications and cannot be reproduced byte-for-byte after ledger edits. `GENERATED_REPORT` audit entries represent export generation, not publication/approval.
 * **FR-018: Print Output** — The system must render reports with print-optimized styling (`@media print`) for physical document generation.
-* **FR-019: PDF Export** — The system must provide explicit PDF export functionality for downloading official report packages.
+* **FR-019: PDF Export** — The system must provide explicit PDF export functionality for downloading reference-aligned report packages.
 * **FR-020: Excel Export** — The system must generate multi-sheet `.xlsx` Excel workbooks via `exceljs` containing Summary, Schedule 1, Schedule 2, and Attachment reference sheets.
 * **FR-021: Member Transparency** — The system must allow Officers and Members to view organization dashboard summaries and available published reports while restricting transaction mutation and ledger editing.
 * **FR-022: OSA Monitoring** — The system must allow OSA to switch across all 14 student organizations to view reports, financial summaries, and ledger summaries without report generation or financial mutation privileges.

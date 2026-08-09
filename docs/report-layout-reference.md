@@ -1,8 +1,8 @@
-# Official Report Layout Reference
+# Historical Report Layout Reference
 
 This document describes the expected PKM e-Ledger financial report structure
-based on a local-only official workbook reference. The reference workbook is not
-application data and must not be imported, seeded, copied, or committed.
+based on a local-only historical workbook reference. The reference workbook is
+not application data and must not be imported, seeded, copied, or committed.
 
 Do not copy personal names, student names, signatories, exact sample amounts, or
 sample transaction rows from the reference workbook into this repository.
@@ -36,7 +36,8 @@ The summary report is a portrait-oriented page with:
 - Total cash available
 - Less: expenses from Schedule 2
 - Ending balance
-- Signature blocks
+- Six role-only signature blocks: Organization Treasurer, Organization Auditor,
+  OSS / OSA Coordinator, Organization President, Faculty Adviser, and PKM Accountant
 
 Opening balance must be split into Cash on Hand and Cash in Bank. Balance
 forwarded is the sum of both opening balance accounts.
@@ -82,7 +83,7 @@ expense category column.
 
 ## Exports
 
-PDF export should preserve the official package structure:
+PDF export should preserve the reference package structure:
 
 - Summary Report in portrait
 - Schedule 1 pages in portrait
@@ -100,8 +101,8 @@ Use spreadsheet formulas for totals where practical.
 
 ## Privacy Rules
 
-- Do not seed real names from the official workbook.
-- Do not commit official workbook data to public repositories.
+- Do not seed real names from the historical workbook reference.
+- Do not commit historical workbook data to public repositories.
 - Do not hardcode personal names from the sample.
 - Do not copy exact sample amounts or sample transaction rows.
 - Generated demo data must use fake/demo names only.

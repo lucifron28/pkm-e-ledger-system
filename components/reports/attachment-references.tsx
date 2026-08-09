@@ -35,7 +35,7 @@ export function AttachmentReferences({ report }: AttachmentReferencesProps) {
                 <th className="px-3 py-2 text-left">Date</th>
                 <th className="px-3 py-2 text-left">Doc No.</th>
                 <th className="px-3 py-2 text-left">Particulars</th>
-                <th className="px-3 py-2 text-left">Original File Name</th>
+                <th className="px-3 py-2 text-left">File Name</th>
                 <th className="px-3 py-2 text-left">File Type</th>
                 <th className="px-3 py-2 text-right">Size</th>
               </tr>

@@ -1,6 +1,6 @@
 # PKM e-Ledger System
 
-**PKM e-Ledger System** is a web-based Student Organization Financial Ledger System for **Pambayang Kolehiyo ng Mauban (PKM)**. It digitizes financial record-keeping, balance tracking, attachments, audit trails, and official report generation across all 14 recognized student organizations under the Office of Student Affairs (OSA).
+**PKM e-Ledger System** is a web-based Student Organization Financial Ledger System for **Pambayang Kolehiyo ng Mauban (PKM)**. It digitizes financial record-keeping, balance tracking, attachments, audit trails, and reference-aligned financial report generation across all 14 recognized student organizations under the Office of Student Affairs (OSA).
 
 ---
 
@@ -17,7 +17,7 @@
 
 * [Project Specification](docs/project-specification.md) — Complete source of truth for functional rules, RBAC, domain rules, and security specifications.
 * [Implementation Roadmap](docs/implementation-roadmap.md) — Multi-phase implementation plan, branch names, grouped commits, and status tracking.
-* [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided official workbook reference.
+* [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided historical workbook reference.
 * [Repository Agent Guidelines](AGENTS.md) — Coding agent rules, financial invariants, architecture constraints, and testing expectations.
 * [Deployment Manual](DEPLOYMENT.md) — Reference guide for local Windows hosting using PM2 and automated Task Scheduler backups.
 

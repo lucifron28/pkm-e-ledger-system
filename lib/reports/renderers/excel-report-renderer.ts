@@ -232,8 +232,10 @@ export async function buildReportExcelBuffer(report: ReportPackageDto): Promise<
   const signatureRows = [
     ["Prepared by:", report.signatories.treasurerTitle],
     ["Certified Correct:", report.signatories.auditorTitle],
-    ["Approved by:", report.signatories.adviserTitle],
-    ["Noted / Approved:", report.signatories.presidentOsaTitle],
+    ["Coordinated by:", report.signatories.osaCoordinatorTitle],
+    ["Approved by:", report.signatories.organizationPresidentTitle],
+    ["Noted by:", report.signatories.adviserTitle],
+    ["Certified by:", report.signatories.accountantTitle],
   ];
   for (const [label, title] of signatureRows) {
     const row = summarySheet.addRow(["", `${label} __________________________`, sanitizeExcelCellString(title)]);
@@ -397,7 +399,7 @@ export async function buildReportExcelBuffer(report: ReportPackageDto): Promise<
     "Date",
     "Document No.",
     "Particulars",
-    "Original File Name",
+    "File Name",
     "MIME Type",
     "Size (KB)",
   ]);

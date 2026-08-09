@@ -141,8 +141,10 @@ export interface ReportPackageDto {
   signatories: {
     treasurerTitle: string;
     auditorTitle: string;
+    osaCoordinatorTitle: string;
+    organizationPresidentTitle: string;
     adviserTitle: string;
-    presidentOsaTitle: string;
+    accountantTitle: string;
   };
 }
 
@@ -439,8 +441,10 @@ export function buildReportPackageDto(
     signatories: {
       treasurerTitle: "Organization Treasurer",
       auditorTitle: "Organization Auditor",
+      osaCoordinatorTitle: "OSS / OSA Coordinator",
+      organizationPresidentTitle: "Organization President",
       adviserTitle: "Faculty Adviser",
-      presidentOsaTitle: "President / OSA Representative",
+      accountantTitle: "PKM Accountant",
     },
   };
 }

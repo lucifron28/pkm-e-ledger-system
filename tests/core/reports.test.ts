@@ -11,7 +11,14 @@ import {
   RawReportInputTransfer,
 } from "../../lib/domain/reports";
 import { buildReportExcelBuffer } from "../../lib/reports/renderers/excel-report-renderer";
-import { buildReportPdfBuffer } from "../../lib/reports/renderers/pdf-report-renderer";
+import {
+  ATTACHMENT_TABLE_ALIGNMENTS,
+  PDF_ATTACHMENT_TABLE_WIDTHS,
+  SCHEDULE1_TABLE_ALIGNMENTS,
+  buildReportPdfBuffer,
+  fitsPdfTableRow,
+  getSchedule2TableAlignments,
+} from "../../lib/reports/renderers/pdf-report-renderer";
 
 test("Reports Domain: Fixed Schedule 2 Bucket Order and Count", () => {
   assert.equal(SCHEDULE_2_BUCKETS.length, 8);
@@ -142,11 +149,13 @@ test("Reports Domain: Real report package builder calculations and DTO invariant
     assert.equal(nonZeroBuckets[0][1], row.amountCents);
   }
 
-  // 6. Four signature labels
+  // 6. Six role-only signature labels
   assert.equal(report.signatories.treasurerTitle, "Organization Treasurer");
   assert.equal(report.signatories.auditorTitle, "Organization Auditor");
+  assert.equal(report.signatories.osaCoordinatorTitle, "OSS / OSA Coordinator");
+  assert.equal(report.signatories.organizationPresidentTitle, "Organization President");
   assert.equal(report.signatories.adviserTitle, "Faculty Adviser");
-  assert.equal(report.signatories.presidentOsaTitle, "President / OSA Representative");
+  assert.equal(report.signatories.accountantTitle, "PKM Accountant");
   assert.equal(report.asOfDate, asOfDate);
 
   // 7. Attachment DTO security: storage keys and database IDs omitted
@@ -231,6 +240,17 @@ test("Reports Export: aligned package sheets, formulas, and PDF output are prese
   assert.equal(schedule2Sheet.getCell("M8").value, null, "Others is omitted when unused");
   assert.equal(attachmentSheet.getCell("A3").text, "RECEIPTS / ATTACHMENTS");
   assert.ok(summarySheet.model.merges.includes("A1:C1"));
+  const summaryValues = summarySheet.getSheetValues().flat().map((value) => String(value ?? ""));
+  for (const title of [
+    "Organization Treasurer",
+    "Organization Auditor",
+    "OSS / OSA Coordinator",
+    "Organization President",
+    "Faculty Adviser",
+    "PKM Accountant",
+  ]) {
+    assert.ok(summaryValues.includes(title), `Summary XLSX must include role-only signature slot: ${title}`);
+  }
 
   const pdf = await buildReportPdfBuffer(report);
   assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
@@ -319,4 +339,55 @@ test("Reports Export: grouped collections and mapped expense cells survive XLSX 
   assert.equal(schedule2.getCell("E9").value, 150);
   assert.equal(schedule2.getCell("M9").value, 150);
   assert.equal(schedule2.getCell("F9").value, null);
+});
+
+test("Reports PDF: Schedule 1 continuation pages preflight rows and retain totals", async () => {
+  const collectionCount = 60;
+  const transactions: RawReportInputTransaction[] = Array.from({ length: collectionCount }, (_, index) => ({
+    id: `stress-income-${index + 1}`,
+    type: TransactionType.INCOME,
+    transactionDate: new Date("2025-08-01T00:00:00.000Z"),
+    amountCents: 1000,
+    cashAccount: CashAccount.CASH_ON_HAND,
+    documentNumber: `STRESS-${String(index + 1).padStart(3, "0")}`,
+    counterpartyName:
+      index === collectionCount - 1
+        ? "Synthetic Payor with a deliberately long source name that must wrap inside the Schedule 1 table cell"
+        : `Synthetic Payor ${index + 1}`,
+    description: "Synthetic collection",
+    referenceDescription: "Synthetic stress reference",
+    categoryId: "stress-income-category",
+    category: { id: "stress-income-category", name: "Synthetic Collections", type: TransactionType.INCOME },
+    attachments: [],
+  }));
+  const report = buildReportPackage(
+    {
+      id: "term-schedule1-stress",
+      academicYear: "2025-2026",
+      semester: Semester.FIRST_SEMESTER,
+      openingCashOnHandCents: 100000,
+      openingCashInBankCents: 0,
+      organization: {
+        id: "org-schedule1-stress",
+        name: "Fictional Schedule Stress Organization",
+        slug: "fictional-schedule-stress-organization",
+      },
+    },
+    transactions,
+    [],
+    new Date("2026-08-31T00:00:00.000Z")
+  );
+
+  const pdf = await buildReportPdfBuffer(report);
+  const pdfPageCount = pdf.toString("latin1").split("/Type /Page\n").length - 1;
+
+  assert.ok(pdfPageCount >= 5, `Expected continuation pages, received ${pdfPageCount} PDF pages`);
+  assert.equal(report.collectionGroups[0].totalCents, collectionCount * 1000);
+  assert.equal(report.totalIncomeCents, collectionCount * 1000);
+  assert.equal(fitsPdfTableRow(680, 20, 700), true);
+  assert.equal(fitsPdfTableRow(681, 20, 700), false);
+  assert.deepEqual(SCHEDULE1_TABLE_ALIGNMENTS, ["center", "left", "right"]);
+  assert.deepEqual(getSchedule2TableAlignments(2), ["left", "left", "left", "left", "right", "right", "right"]);
+  assert.deepEqual(ATTACHMENT_TABLE_ALIGNMENTS, ["left", "left", "left", "left", "left", "left", "right"]);
+  assert.ok(PDF_ATTACHMENT_TABLE_WIDTHS.reduce((total, width) => total + width, 0) <= 540);
 });
