@@ -464,7 +464,7 @@ test("Financial Domain: buildLedgerFilterUrl direction-aware cursor pagination a
 });
 
 test("Real Transaction Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
-  const { createTransactionSchema, editTransactionSchema } = await import("../../lib/actions/transactions");
+  const { createTransactionSchema, editTransactionSchema } = await import("../../lib/domain/financial-schemas");
   const { TRANSACTION_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
 
   const validBase = {
@@ -517,7 +517,7 @@ test("Real Transaction Zod Schema Validation: N accepted, N+1 rejected for all f
 });
 
 test("Real Cash Transfer Zod Schema Validation: N accepted, N+1 rejected for all fields (create and edit schemas)", async () => {
-  const { createTransferSchema, editTransferSchema } = await import("../../lib/actions/transfers");
+  const { createTransferSchema, editTransferSchema } = await import("../../lib/domain/financial-schemas");
   const { TRANSFER_FIELD_LIMITS } = await import("../../lib/domain/field-limits");
 
   const validBase = {

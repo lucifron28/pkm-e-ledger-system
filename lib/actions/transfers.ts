@@ -5,13 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireManagementUser } from "../auth/require-auth";
 import { createCashTransferService, editCashTransferService, deleteCashTransferService } from "../application/transfers";
-import { CashAccount } from "@prisma/client";
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { DomainError } from "../domain/errors";
-
-import { TRANSFER_FIELD_LIMITS } from "../domain/field-limits";
+import { createTransferSchema, editTransferSchema } from "../domain/financial-schemas";
 
 function getAttachmentFile(formData: FormData): File {
   const file = formData.get("attachment");
@@ -22,28 +20,6 @@ function getAttachmentFile(formData: FormData): File {
 }
 
 type TransferActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
-const transferBaseSchema = z.object({
-  fromAccount: z.nativeEnum(CashAccount, { message: "Source cash account is required." }),
-  toAccount: z.nativeEnum(CashAccount, { message: "Destination cash account is required." }),
-  transferDate: z.string().trim().min(1, "Transfer date is required."),
-  amount: z.string().trim().min(1, "Amount is required."),
-  documentNumber: z.string().trim().max(TRANSFER_FIELD_LIMITS.documentNumber, `Document number must be at most ${TRANSFER_FIELD_LIMITS.documentNumber} characters.`).optional(),
-  description: z.string().trim().min(1, "Description is required.").max(TRANSFER_FIELD_LIMITS.description, `Description must be at most ${TRANSFER_FIELD_LIMITS.description} characters.`),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSFER_FIELD_LIMITS.referenceDescription, `Reference description must be at most ${TRANSFER_FIELD_LIMITS.referenceDescription} characters.`),
-  eventActivityName: z.string().trim().max(TRANSFER_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSFER_FIELD_LIMITS.eventActivityName} characters.`).optional(),
-});
-
-const createTransferSchema = transferBaseSchema.extend({
-  termId: z.string().trim().min(1, "Term ID is required."),
-  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
-});
-
-const editTransferSchema = transferBaseSchema.extend({
-  id: z.string().trim().min(1, "Transfer ID is required."),
-  version: strictVersionSchema,
-  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
-});
-
 function transferFields(formData: FormData) {
   return {
     termId: formData.get("termId")?.toString() || "",
