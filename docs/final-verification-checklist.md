@@ -6,8 +6,8 @@ This document details the final verification checklist for validating the **PKM 
 
 ## Verification Execution Evidence Log
 
-- **Execution Timestamp**: `2026-08-09T12:28:23+08:00`
-- **Verified executable Git HEAD**: `a6cc3ad3c304d8cb3599e44e9647511be6793ddf`
+- **Execution Timestamp**: `2026-08-09T13:53:00+08:00`
+- **Verified executable Git HEAD**: `9891d1b` (report-template implementation commit; documentation follows)
 - **Execution Environment**: Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11 / PowerShell with `cmd.exe` command execution.
 - **Clean install**: `npm ci` exit status `0`; root `postinstall` generated Prisma Client v6.19.3.
 - **Execution note**: Direct PowerShell `npm` and `npx` wrappers were blocked by local execution policy. Final validation ran the literal commands through `cmd.exe`; project command exit statuses below are from that run.
@@ -22,20 +22,46 @@ This document details the final verification checklist for validating the **PKM 
 - `npm run typecheck` — **exit status 0**.
 - `npm run db:generate` — **exit status 0**; Prisma Client v6.19.3 generated.
 - `npx prisma validate` — **exit status 0**; schema valid.
-- `npm run test:core` — **11 files, 97 cases, 97 pass / 0 fail / 0 skip**.
+- `npm run test:core` — **11 files, 98 cases, 98 pass / 0 fail / 0 skip**.
 - `npm run test:integration` — **5 files, 29 cases, 29 pass / 0 fail / 0 skip**.
 - `npm run test:migrations` — **1 file, 13 cases, 13 pass / 0 fail / 0 skip**.
-- `npm run test` (full suite) — **17 files, 139 cases, 139 pass / 0 fail / 0 skip**.
+- `npm run test` (full suite) — **17 files, 140 cases, 140 pass / 0 fail / 0 skip**.
 - `npm run test:db` — **exit status 0**; 14 organizations, 18 categories, 71 users, and 14 academic terms verified.
 - `npm run build` — **exit status 0**; Next.js 16.3.0 App Router production bundle generated with **18 route endpoints**. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness` — **exit status 0**; all readiness checks passed.
 - `npm run storage:reconcile` — **exit status 0**; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
 - Isolated fictional storage reconciliation dry-run test (`tests/core/storage-reconciliation.test.ts`) — **pass**; zero-mutation assertion passed.
+- Report-template verification — **pass**; synthetic anonymized XLSX round-trip verified `SUMMARY`, `SCHEDULE 1 - COLLECTIONS`, `SCHEDULE 2 - EXPENSES`, and `RECEIPTS - ATTACHMENTS` sheets, formulas, portrait/landscape print setup, grouped collections, mapped expense columns, and attachment metadata. Synthetic PDF output was visually inspected across summary, collections, expenses, and attachment pages.
 - Final dependency audit retained 4 package findings (2 moderate, 2 high); production-only audit retained 3 (2 moderate, 1 high). All remaining findings are classified below as unreachable runtime dependency paths or dev-only.
 
 ---
 
-## Dependency-Security Triage
+## Current Dependency-Security Triage (2026-08-09)
+
+Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
+`npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,
+2 moderate) with 3 findings in the production-only report (1 high, 2 moderate).
+`npm explain` and source inspection were used for dependency paths and API reachability.
+
+Class legend: A = runtime, applicable, and fix available; B = runtime, applicable,
+and no compatible fix; C = runtime dependency but vulnerable API not reachable;
+D = dev-only; E = false-positive or superseded advisory.
+
+| Package and installed version | Severity | Advisory | Directness and dependency path | Runtime / dev | API reachable? | Fix status | Class |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `brace-expansion` 1.1.15, 2.1.2, 5.0.7 | High | [GHSA-3jxr-9vmj-r5cp](https://github.com/advisories/GHSA-3jxr-9vmj-r5cp), [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg), [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) | Transitive: `exceljs -> archiver -> readdir-glob -> minimatch -> brace-expansion`; separate ESLint/TypeScript-ESLint dev paths | Runtime and dev nodes | No application-controlled glob pattern reaches `readdir-glob`; XLSX export uses ExcelJS `writeBuffer()` and does not call directory globbing | Patched releases exist (`1.1.18`, `2.1.4`, `5.0.9`); non-force dry-run made no lockfile change; no blind override applied | C |
+| `js-yaml` 4.3.0 | High | [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) | Transitive: `eslint -> @eslint/eslintrc -> js-yaml` | Dev-only | No production import or route | Patched `4.3.1+` exists; not a runtime remediation target | D |
+| `exceljs` 4.4.0 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) through `uuid` | Direct runtime dependency used by `/api/reports/[termId]/excel` | Runtime | ExcelJS is reachable, but its observed UUID call is v4 without a caller-supplied buffer | Audit suggests breaking downgrade to ExcelJS `3.4.0`; no compatible stable fix demonstrated | C |
+| `uuid` 8.3.2 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq), range `<11.1.1` | Transitive: `exceljs@4.4.0 -> uuid@8.3.2` | Runtime | ExcelJS source uses `uuidv4()` only; vulnerable v3/v5/v6 buffer API is not reachable, and application source has no direct UUID import | UUID major upgrade was not proven compatible with ExcelJS; no override introduced | C |
+
+Residual audit status: no unresolved applicable runtime HIGH vulnerability. The
+remaining audit exit status `1` is documented residual risk from class C and D
+records. ExcelJS export regression tests generate and reopen XLSX output.
+
+## Historical Dependency-Security Triage (prior executable head)
+
+The following table records an earlier executable-head audit. It is retained for
+audit history only; the current table above is authoritative for this branch.
 
 Commands captured before and after remediation: `npm audit --json`, `npm audit --omit=dev --json`, `npm audit`, and `npm audit --omit=dev`. Baseline JSON reported 8 package findings: 6 high and 2 moderate. Production-only baseline reported 7: 5 high and 2 moderate. Npm repeats one advisory when several installed nodes or version ranges are affected; table preserves each distinct advisory ID and range.
 
@@ -74,10 +100,10 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 ### 2. Automated Test Suite Execution
 - [x] `npm run lint` passes with 0 errors and 0 warnings (`eslint`, exit status 0).
 - [x] `npm run typecheck` passes with 0 TypeScript compilation errors (`tsc --noEmit`, exit status 0).
-- [x] `npm run test:core` passes 97 core unit tests across 11 test files (`attachments.test.ts`, `audit.test.ts`, `financial.test.ts`, `modal-focus.test.ts`, `money.test.ts`, `navigation.test.ts`, `password.test.ts`, `rbac.test.ts`, `reports.test.ts`, `storage-reconciliation.test.ts`, `transfers.test.ts`).
+- [x] `npm run test:core` passes 98 core unit tests across 11 test files (`attachments.test.ts`, `audit.test.ts`, `financial.test.ts`, `modal-focus.test.ts`, `money.test.ts`, `navigation.test.ts`, `password.test.ts`, `rbac.test.ts`, `reports.test.ts`, `storage-reconciliation.test.ts`, `transfers.test.ts`).
 - [x] `npm run test:integration` passes 29 integration tests across 5 test files (`concurrency.test.ts`, `organization-isolation.test.ts`, `recovery.test.ts`, `security-routes.test.ts`, `seed.test.ts`), including production-Prisma-singleton isolation assertions (`PRAGMA database_list` targets the temporary test database), restore CLI confirmation tests, real concurrency/idempotency scenarios, migration-orchestrator storage-key tests, and seed idempotency.
 - [x] `npm run test:migrations` passes 13 migration tests across 1 test file (`migration.test.ts`), including empty-DB deploy, legacy upgrade with real-file storage-key resolution, missing-file preflight abort, sidecar validation fail-closed, PREPARED resume hash/size verification, and the migration-orchestrator scenarios.
-- [x] `npm run test` passes full test suite (139/139 passing across 17 test files; 0 fail, 0 skip).
+- [x] `npm run test` passes full test suite (140/140 passing across 17 test files; 0 fail, 0 skip).
 - [x] `npm run test:db` passes database smoke test against an isolated fictional seeded database (14 organizations, 18 categories, 71 users, 14 academic terms; verifies single active term per org, canonical YYYY-YYYY academic year format, typed category buckets, all six roles, and unique demo usernames).
 - [x] `npm run build` succeeds with one non-fatal Turbopack NFT warning and generates Next.js App Router production bundle (18 route endpoints).
 
