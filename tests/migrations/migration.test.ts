@@ -100,8 +100,8 @@ function runOrchestrator(
   }
 }
 
-function deployMigrations(schemaPath: string, dbUrl: string, uploadsRoot: string): void {
-  runOrchestrator(dbUrl, uploadsRoot, schemaPath);
+function deployMigrations(schemaPath: string, dbUrl: string, uploadsRoot: string): string {
+  return runOrchestrator(dbUrl, uploadsRoot, schemaPath);
 }
 
 test("Migration Test Suite: deploy all migrations on an empty DB", async () => {
@@ -151,7 +151,12 @@ test("Migration Test Suite: hardening completes when legacy Report table is alre
   }
 
   const hardenedSchemaPath = prepareMigrationFixture("without-report-hardened", HARDENED_MIGRATIONS);
-  deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  const hardeningOutput = deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  assert.match(
+    hardeningOutput,
+    /Created temporary Report compatibility table for pending hardening migration/,
+    "Missing legacy Report compatibility state must be handled by orchestrator preflight"
+  );
 
   const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
   try {
@@ -296,7 +301,8 @@ test("Migration Test Suite: upgrade an authentic Phase 7 fixture through hardeni
   }
 
   const hardenedSchemaPath = prepareMigrationFixture("hardened", HARDENED_MIGRATIONS);
-  deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  const hardeningOutput = deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  assert.match(hardeningOutput, /Legacy Report table exists; skipping temporary Report compatibility table/);
 
   const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
   try {
@@ -499,7 +505,8 @@ test("Migration Orchestrator: legacy migration runs preflight and migrates dupli
   ]);
   const hardenedSchemaPath = prepareMigrationFixture("orchestrator-legacy-hardened", HARDENED_MIGRATIONS);
   try {
-    runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
+    const firstOutput = runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
+    assert.match(firstOutput, /Legacy Report table exists; skipping temporary Report compatibility table/);
 
     const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
     try {
@@ -544,6 +551,7 @@ test("Migration Orchestrator: rerun after the hardening migration is a safe no-o
     // Rerun: preflight must no-op (no legacy columns) and deploy must find no pending migrations.
     const output = runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
     assert.ok(output.includes("skipping storage-key preflight"), "Rerun must skip the preflight");
+    assert.match(output, /Hardening migration already applied; skipping temporary Report compatibility table/);
 
     const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
     try {

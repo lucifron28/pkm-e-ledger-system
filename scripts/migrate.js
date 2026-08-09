@@ -31,6 +31,21 @@ const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
+const HARDENING_MIGRATION_NAME = "20260731160613_enforce_financial_invariants";
+const LAST_PHASE_7_MIGRATION_NAME = "20260731000001_audit_log_immutability";
+const TEMPORARY_REPORT_COMPATIBILITY_SQL = `
+CREATE TABLE "Report" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "organizationId" TEXT NOT NULL,
+  "termId" TEXT,
+  "generatedById" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "filtersJson" TEXT NOT NULL,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL
+);
+`;
 
 function parseArgs(argv) {
   const args = {};
@@ -63,6 +78,82 @@ async function inspectAttachmentState(prisma) {
   if (names.has("storageKey")) return "MIGRATED";
   if (names.has("storedName") || names.has("storagePath")) return "LEGACY";
   return "FRESH";
+}
+
+async function sqliteTableExists(prisma, tableName) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
+    tableName
+  );
+  return rows.length > 0;
+}
+
+async function inspectHardeningMigrationState(prisma) {
+  const migrationTableExists = await sqliteTableExists(prisma, "_prisma_migrations");
+  if (!migrationTableExists) {
+    return {
+      migrationTableExists: false,
+      hardeningApplied: false,
+      phase7Complete: false,
+    };
+  }
+
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT "migration_name", "finished_at"
+     FROM "_prisma_migrations"
+     WHERE "migration_name" IN (?, ?)`
+    , HARDENING_MIGRATION_NAME, LAST_PHASE_7_MIGRATION_NAME
+  );
+  const applied = new Set(
+    rows
+      .filter((row) => row.finished_at !== null)
+      .map((row) => row.migration_name)
+  );
+
+  return {
+    migrationTableExists: true,
+    hardeningApplied: applied.has(HARDENING_MIGRATION_NAME),
+    phase7Complete: applied.has(LAST_PHASE_7_MIGRATION_NAME),
+  };
+}
+
+async function prepareReportCompatibility(dbUrl) {
+  const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    const migrationState = await inspectHardeningMigrationState(prisma);
+    if (migrationState.hardeningApplied) {
+      console.log("[migrate] Hardening migration already applied; skipping temporary Report compatibility table.");
+      return false;
+    }
+    if (!migrationState.phase7Complete) {
+      console.log("[migrate] No completed Phase 7 migration history; skipping temporary Report compatibility table.");
+      return false;
+    }
+    if (await sqliteTableExists(prisma, "Report")) {
+      console.log("[migrate] Legacy Report table exists; skipping temporary Report compatibility table.");
+      return false;
+    }
+
+    await prisma.$executeRawUnsafe(TEMPORARY_REPORT_COMPATIBILITY_SQL);
+    console.log("[migrate] Created temporary Report compatibility table for pending hardening migration.");
+    return true;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function cleanupReportCompatibility(dbUrl) {
+  const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    if (await sqliteTableExists(prisma, "Report")) {
+      await prisma.$executeRawUnsafe(`DROP TABLE "Report"`);
+      console.error("[migrate] Removed temporary Report compatibility table created by this run.");
+    } else {
+      console.error("[migrate] Temporary Report compatibility table already absent; no cleanup needed.");
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 function runPrismaMigration(dbUrl, mode, schemaArg) {
@@ -127,9 +218,32 @@ async function main() {
     console.log("[migrate] No legacy attachment columns; skipping storage-key preflight.");
   }
 
+  let reportCompatibilityCreatedByRun = false;
+  try {
+    reportCompatibilityCreatedByRun = await prepareReportCompatibility(dbUrl);
+  } catch (error) {
+    if (preflightRan) {
+      console.error("[migrate] Report compatibility preflight failed; rolling back CREATED_BY_RUN preflight files.");
+      execFileSync(process.execPath, [...preflightArgs, "--rollback"], {
+        cwd: ROOT_DIR,
+        encoding: "utf8",
+        stdio: "inherit",
+      });
+    }
+    console.error("[migrate] FAILED: Report compatibility preflight encountered an error:", error.message || error);
+    process.exit(1);
+  }
+
   try {
     runPrismaMigration(dbUrl, mode, schemaArg);
   } catch (error) {
+    if (reportCompatibilityCreatedByRun) {
+      try {
+        await cleanupReportCompatibility(dbUrl);
+      } catch (cleanupError) {
+        console.error("[migrate] FAILED: could not clean up temporary Report compatibility table:", cleanupError.message || cleanupError);
+      }
+    }
     if (preflightRan) {
       console.error("[migrate] Migration failed; rolling back CREATED_BY_RUN preflight files.");
       execFileSync(process.execPath, [...preflightArgs, "--rollback"], {
