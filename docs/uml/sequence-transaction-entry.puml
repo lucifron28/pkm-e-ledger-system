@@ -23,17 +23,20 @@ UI -> Action: FormData + idempotency key + attachment
 Action -> Validation: Parse fields and validate business input
 Validation --> Action: Validated transaction command
 Action -> Storage: Stage upload
-Storage --> Action: Temporary storage key
+Storage --> Action: Staged upload handle
+Action -> Storage: Commit staged upload to active storage
+Storage --> Action: Committed storage key
 Action -> Prisma: Execute idempotent command
 Prisma -> SQLite: Read term, categories,\nbalances, and active entries
 SQLite --> Prisma: Snapshot data
-Prisma -> SQLite: Persist movement and attachment metadata
-SQLite --> Prisma: Commit result
-Prisma -> Audit: Append immutable audit entries
+Prisma -> Prisma: Validate projected account balances
+Prisma -> SQLite: Persist movement
+Prisma -> SQLite: Persist Attachment metadata\nwith committed storage key
+Prisma -> Audit: Append immutable audit entries\ninside transaction
 Audit --> Prisma: Audit append result
+Prisma -> SQLite: Commit database transaction
+SQLite --> Prisma: Commit result
 Prisma --> Action: Transaction DTO
-Action -> Storage: Commit staged upload
-Storage --> Action: Active storage key
 Action --> UI: Revalidate ledger and redirect
 UI --> User: Updated balances and ledger row
 
@@ -41,6 +44,13 @@ alt Validation or authorization failure
   Validation --> Action: Error details
   Action --> UI: Field or domain error
   UI --> User: Corrective message
+else Database command failure after file commit
+  Action -> Prisma: Check committed-file ownership
+  alt Ownership proven absent
+    Action -> Storage: Delete unreferenced active file
+  else Lookup uncertain or referenced
+    Action -> Storage: Retain file for reconciliation
+  end
 else Transient database conflict
   Prisma -> SQLite: Retry with bounded backoff
 end

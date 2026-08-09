@@ -2,7 +2,12 @@
 
 ## Executive Summary
 
-This document details the comprehensive full post-implementation engineering audit and the subsequent financial-report-template alignment pass performed on the PKM e-Ledger System codebase (branch `qa/manual-uat-demo-readiness`).
+This document preserves the historical Full Engineering Audit & Remediation and
+financial-report-template alignment work performed on their respective phase
+branches (`audit/full-project-completeness-ui-docs` and
+`feat/financial-report-template-alignment`). Branch
+`qa/manual-uat-demo-readiness` records the later manual UAT and demo-readiness
+verification/evidence phase.
 
 The audit systematically evaluated:
 1. Schema and database migrations (deterministic attachment storage key uniqueness, sidecar lifecycle).
@@ -92,7 +97,7 @@ Verification executed on `2026-08-10` from executable Git HEAD `e892500` using N
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
 - Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, six role-only signature slots, grouped collections, mapped expense columns, attachment metadata, and print orientation. Schedule 1 stress coverage passed continuation-page preflight for long payor rows, category subtotals, and the final schedule total. PDF alignment and 520 pt portrait attachment-width checks passed, and synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
 
-Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
+Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser and desktop viewport evidence are recorded in the later UAT documentation. Full keyboard-only traversal and OS/browser print-preview remain **NOT VERIFIED**; XLSX visual inspection also remains **NOT VERIFIED**.
 
 ## 3. Current Dependency-Security Triage (2026-08-10)
 

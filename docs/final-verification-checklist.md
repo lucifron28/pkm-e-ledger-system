@@ -131,15 +131,15 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 - [x] **Tested service/handler portions**: Officer/Member access to same-organization term and HTML report services verified; rejection from management services (detailed ledger, term management, transaction edit, exports) verified.
 - [x] **Tested service/handler portions**: OSA access to monitoring services (active organization selection, inactive/nonexistent rejection, ledger summary) verified; OSA rejection from org-portal and management services verified even with a hypothetical `organizationId`.
 - [x] **Tested service/handler portions**: Attachment and export route handlers return correct status codes (200/401/403/404) with security headers; test uploads isolated in a temporary sandbox directory.
-- [x] **Complete Management browser/action workflow**: dashboard, term settings, opening balances, income/expense/cash-transfer forms, attachments, details, edit dialog, delete confirmation, Treasurer Log, report viewer, PDF request, and XLSX request exercised. See [final UAT documentation](final-demo-uat-documentation.md).
+- [x] **Complete Management browser/action workflow**: dashboard, term settings, opening balances, income/expense/cash-transfer forms, attachments, details, edit dialog, completed soft-delete workflow, Treasurer Log, report viewer, PDF request, and XLSX request exercised. See [final UAT documentation](final-demo-uat-documentation.md#management-workflow).
 - [x] **Complete Transparency (Officer/Member) browser/action workflow**: same-organization read-only dashboards and report views exercised for Officer and Member; management controls were absent. See [Officer desktop evidence](evidence/screenshots/18-officer-dashboard-desktop.jpg), [Member desktop evidence](evidence/screenshots/21-member-dashboard-desktop.jpg), and the restricted-ledger redirects in screenshots `20` and `23`.
-- [x] **Complete OSA browser flow**: overview, organization selection, two selected organization summaries, ledger views, and report view exercised. OSA export controls were absent. See [OSA evidence](final-demo-uat-documentation.md#osa-monitoring-workflow).
+- [x] **Complete OSA browser flow**: overview, organization selection, two selected organization summaries, ledger views, and report view exercised. OSA export controls were absent. See [OSA evidence](final-demo-uat-documentation.md#osa-monitoring).
 
 ### 5. Desktop UI & Accessibility Scan
-- [x] Final requested screenshot pass captured the public, management, transparency, and OSA screens at a wide `1920x1080` desktop viewport. See [desktop evidence](final-demo-uat-documentation.md#desktop-screenshot-manifest).
+- [x] Final requested screenshot pass captured the public, management, transparency, and OSA screens at a wide `1920x1080` desktop viewport. See [desktop evidence](final-demo-uat-documentation.md#desktop-responsive-and-accessibility-limits).
 - [x] Prior 360 px, 768 px, and mobile-navigation checks remain recorded as historical responsive evidence; they were intentionally not recaptured in this desktop-focused pass.
 - [x] `PortalNav` desktop navigation (`hidden xl:flex`) and mobile menu toggle (`xl:hidden`) with `aria-expanded` and `aria-controls="mobile-menu"` (markup-level check only).
-- [x] Interactive buttons and inputs have focus styling (source-reviewed and dialog controls exercised); full keyboard-only traversal was attempted but remains `NOT VERIFIED` because browser focus diagnostics were inconclusive.
+- [x] Interactive buttons and inputs have focus styling; modal initial focus, Escape close, and trigger-focus restoration were exercised. Full keyboard-only traversal, Tab/Shift+Tab trapping, and mobile-menu keyboard behavior remain `NOT VERIFIED` because browser focus dispatch was inconclusive.
 - [x] Official PKM color palette (`#004aad` primary, `#f9d818` accent) used consistently (markup-level check only).
 - [ ] Print CSS verified: Summary & S1 in portrait, Schedule 2 in landscape, toolbar and headers hidden on print. Browser print action was exercised, but system print preview was unavailable; PDF orientation was independently verified with `pdfinfo`. `NOT VERIFIED` for print-preview-only behavior.
 
@@ -147,8 +147,9 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 
 - [x] Retained numbered desktop screenshot evidence and supporting responsive/accessibility captures use fictional/demo data only. Current desktop screenshots are wide images; no mobile-sized image is used as final current evidence.
 - [x] Fictional local UAT records created for income, expenses, transfers, attachments, edit flow, and audit history. No official workbook data imported.
-- [x] Report package viewer verified: Summary, Schedule 1 Collections, Schedule 2 Expenses, signatures, and Receipts / Attachments reference. See [report evidence](final-demo-uat-documentation.md#report-package-and-exports).
-- [x] PDF export verified as four pages: Summary portrait, Schedule 1 portrait, Schedule 2 landscape, and Attachments portrait. See [rendered PDF pages](final-demo-uat-documentation.md#report-package-and-exports).
+- [x] Disposable fictional transaction soft-delete completed: deletion reason submitted, active ledger count changed from 9 to 8, balances updated, and Treasurer Log recorded the deletion reason. See [soft-delete evidence](final-demo-uat-documentation.md#step-13---delete-confirmation).
+- [x] Report package viewer verified: Summary, Schedule 1 Collections, Schedule 2 Expenses, signatures, and Receipts / Attachments reference. See [report evidence](final-demo-uat-documentation.md#reference-aligned-report-package).
+- [x] PDF export verified as four pages: Summary portrait, Schedule 1 portrait, Schedule 2 landscape, and Attachments portrait. See [rendered PDF pages](final-demo-uat-documentation.md#reference-aligned-report-package).
 - [x] XLSX export reopened with ExcelJS; expected four sheets and formulas verified. Manual spreadsheet visual screenshot remains `NOT VERIFIED` because no spreadsheet viewer was available.
 - [x] Four PlantUML source diagrams passed CLI parsing and rendered to PNG and SVG. See [UML evidence](final-demo-uat-documentation.md#uml-evidence).
 - [x] Generated PDF, XLSX, and temporary attachment remain local-only and are excluded from the commit.

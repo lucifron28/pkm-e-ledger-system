@@ -101,10 +101,23 @@ tested edit flow.
 
 ### Step 13 - Delete confirmation
 
-![Delete confirmation](evidence/screenshots/12-delete-transaction-desktop.jpg)
+![Delete confirmation](evidence/screenshots/31-delete-confirmation.png)
 
-Soft deletion requires a deletion reason and confirmation; UAT record was not
-deleted during evidence capture.
+Disposable fictional transaction `Alex Rivera` / `Fictional membership
+contribution updated` was selected for this final pass. Deletion reason
+`Disposable UAT record removed after soft-delete verification.` was entered and
+the confirmation was submitted.
+
+![Ledger after soft deletion](evidence/screenshots/32-ledger-after-soft-delete.png)
+
+The deleted entry no longer appeared in the active ledger. The page changed
+from 9 to 8 active entries, and the deleted income no longer affected the
+ledger totals.
+
+![Dashboard balances after soft deletion](evidence/screenshots/33-dashboard-after-soft-delete.png)
+
+Dashboard result showed Cash on Hand `₱1,350.00`, Total Income `₱850.00`, and
+Remaining Balance `₱4,150.00` after soft deletion.
 
 ### Step 14 - Treasurer Log
 
@@ -112,6 +125,11 @@ deleted during evidence capture.
 
 Audit history displays authentication, financial mutation, attachment, and
 cash-transfer events with actor and role context.
+
+![Treasurer Log soft-delete evidence](evidence/screenshots/34-treasurer-log-soft-delete.png)
+
+Final UAT log entry recorded `Deleted Transaction` for the fictional
+management account with the submitted deletion reason.
 
 ### Step 15 - Report viewer
 
@@ -248,8 +266,9 @@ and OSA as visible concrete roles.
 - Older responsive captures remain supporting evidence for 360px, 768px, and
   mobile navigation states.
 - Visible keyboard focus styling was captured. Full keyboard-only traversal
-  remains **not verified** because browser focus diagnostics were
-  inconclusive.
+  remains **not verified** because in-app browser Tab/Shift+Tab dispatch was
+  inconclusive. Modal Escape close and trigger-focus restoration were observed
+  during the disposable deletion check.
 - Browser operating-system print preview was unavailable. Toolbar/header
   hiding in system print preview remains **not verified**; PDF orientation was
   verified independently.
@@ -262,15 +281,16 @@ Retained supporting captures not embedded above:
   `26-ledger-768px.png`, `27-mobile-navigation.png`.
 - Accessibility and print state: `25-keyboard-focus-desktop.jpg`,
   `15-report-print-state.png`.
+- Historical delete-dialog state: `12-delete-transaction-desktop.jpg`.
 - Public registration: `24-register-desktop.jpg`.
 - OSA ledger summary: `22-osa-selected-ledger.png`.
 
 ## UAT Result
 
-Core manual workflows passed for fictional records. Remaining verification
-limits are recorded above and are not presented as passed checks. No
-institutional approval, production deployment, security certification, or
-immutable publication is claimed.
+Core management workflows, including completed soft deletion, passed for
+fictional records. Remaining verification limits are recorded above and are
+not presented as passed checks. No institutional approval, production
+deployment, security certification, or immutable publication is claimed.
 
 ## Privacy and Artifact Handling
 

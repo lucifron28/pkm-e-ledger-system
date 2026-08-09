@@ -20,12 +20,27 @@ if (Management role?) then (yes)
   category, account, and attachment;
   if (Input valid?) then (yes)
     :Stage attachment;
-    :Persist ledger movement
-    in one database transaction;
-    :Commit attachment storage key;
-    :Recalculate Cash on Hand,
-    Cash in Bank, and balance;
-    :Append immutable audit record;
+    :Commit attachment to
+    active storage;
+    :Execute idempotent
+    database transaction;
+    :Validate active term, category,
+    and projected account balances;
+    if (Financial command valid?) then (yes)
+      :Persist ledger movement,
+      Attachment metadata, and
+      audit records in one transaction;
+      :Derive displayed balances from
+      persisted active entries;
+    else (no)
+      :Check committed-file ownership;
+      if (Ownership proven absent?) then (yes)
+        :Delete unreferenced active file;
+      else (no)
+        :Retain file for reconciliation;
+      endif
+      stop
+    endif
     :Open live report package;
     if (Export authorized?) then (yes)
       :Generate PDF or XLSX export;
