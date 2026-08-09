@@ -290,7 +290,7 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
       doc.moveDown(0.6);
 
       const desiredWidths = [42, 52, 72, 100, 52, ...expenseColumns.map((column) =>
-        column.key === "Transportation" ? 72 : column.key === "Misc" ? 64 : column.key === "Others" ? 60 : 48
+        column.key === "Transportation" ? 72 : column.key === "Misc" ? 64 : column.key === "Others" ? 60 : 56
       )];
       const scale = Math.min(1, 736 / desiredWidths.reduce((total, width) => total + width, 0));
       const expenseWidths = desiredWidths.map((width) => width * scale);
