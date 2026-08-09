@@ -66,19 +66,29 @@ The audit systematically evaluated:
 - **Real Password Boundary Tests**: Created `tests/core/password.test.ts` testing 8-char min, 72 ASCII bytes max accepted, 73 ASCII bytes rejected, multibyte UTF-8 boundary checks, and overflow login handling.
 - **Documentation Matrix Alignment**: Audited all entries in `docs/audit-coverage-matrix.md` and refreshed `docs/final-verification-checklist.md`.
 
+### 1.11 Clean-install Prisma Client Generation
+- **Issue**: A clean `npm ci` left the placeholder Prisma Client declarations in place, causing the mandated pre-generation typecheck to fail with missing Prisma enums and model types.
+- **Fix**: Added the root `postinstall` script (`prisma generate`) so clean dependency installation produces the typed Prisma Client before validation and build commands run.
+
 ---
 
-## 2. Verification Suite Results
+## 2. Final Current-Head Verification Results
 
-All automated verification gates passed successfully:
-- `npm run lint`: Clean (0 errors, 0 warnings).
-- `npm run typecheck`: Clean (0 errors).
-- `npm run build`: Production build succeeded (18 route endpoints).
-- `npx prisma validate`: Schema valid.
-- `npm run test:core`: 97/97 core unit tests passed across 11 test files.
-- `npm run test:integration`: 29/29 integration tests passed across 5 test files.
-- `npm run test:migrations`: 13/13 migration tests passed across 1 test file.
-- `npm run test`: Full test suite 139/139 passed across 17 test files (0 fail, 0 skip).
-- `npm run test:db`: Database smoke test passed (14 organizations, 18 categories, 71 users, 14 academic terms).
-- `npm run verify-readiness`: All system readiness checks passed.
-- `npm run storage:reconcile`: Dry-run storage reconciliation completed cleanly.
+Verification executed on `2026-08-09T10:43:06+08:00` from Git HEAD `a6e78c418bed72df4054ac6cb6cd391a29f32692` using Node.js v24.15.0, npm 11.12.1, Next.js 16.2.11, SQLite 3, Windows 11, and `cmd.exe` command execution.
+
+- `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
+- `npm run lint`: exit status 0; 0 errors and 0 warnings.
+- `npm run typecheck`: exit status 0.
+- `npm run db:generate`: exit status 0.
+- `npx prisma validate`: exit status 0; schema valid.
+- `npm run test:core`: 11 discovered files; 97 pass, 0 fail, 0 skip.
+- `npm run test:integration`: 5 discovered files; 29 pass, 0 fail, 0 skip.
+- `npm run test:migrations`: 1 discovered file; 13 pass, 0 fail, 0 skip.
+- `npm run test`: 17 discovered files; 139 pass, 0 fail, 0 skip.
+- `npm run test:db`: exit status 0; 14 organizations, 18 categories, 71 users, and 14 academic terms validated.
+- `npm run build`: exit status 0; 18 route endpoints generated. One non-fatal Turbopack NFT warning was emitted for dynamic attachment storage tracing.
+- `npm run verify-readiness`: exit status 0; all checks passed.
+- `npm run storage:reconcile`: exit status 0; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
+- Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
+
+`npm ci` also reported 8 dependency audit findings (2 moderate, 6 high). No automatic dependency remediation was performed because it was outside confirmed audit findings. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.

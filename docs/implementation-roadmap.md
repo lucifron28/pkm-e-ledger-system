@@ -18,7 +18,7 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
 | **Phase 6** | `feature/transparency-portals` | Member transparency view, OSA multi-organization monitoring overview, and organization switcher. | **Completed** |
 | **Phase 7** | `feature/testing-hardening-and-demo` | Focused automated unit tests, security hardening, responsive UI polish, demo preparation, and FRD traceability. | **Completed** |
 | **Phase 8** | `fix/business-invariants-concurrency-and-audit` | Post-implementation business-invariant hardening: cash transfer workflow, database invariants, idempotency, optimistic concurrency, crash-recoverable attachment storage, snapshot reads, immutable paginated audit history, and concurrency/recovery tests. | **Completed** (Merged via PR #10) |
-| **Audit** | `audit/full-project-completeness-ui-docs` | Full post-merge engineering audit, UI/UX polish, test-suite expansion, and repository documentation alignment. | **In Progress** |
+| **Audit** | `audit/full-project-completeness-ui-docs` | Full post-merge engineering audit, UI/UX polish, test-suite expansion, and repository documentation alignment. | **Completed / Ready for Review** |
 
 ---
 
@@ -143,4 +143,5 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   6. `UI/accessibility remediation`
   7. `regression-test expansion`
   8. `documentation and verification alignment`
+  9. `fix: generate Prisma Client after install`
 * **Status**: **Completed / Ready for Review**
