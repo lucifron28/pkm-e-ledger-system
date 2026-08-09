@@ -126,6 +126,8 @@ and is not committed.
   horizontal overflow.
 - [Mobile navigation](evidence/screenshots/27-mobile-navigation.png): menu
   toggle and expanded state exercised.
+- [Keyboard focus state](evidence/screenshots/25-keyboard-focus-desktop.jpg):
+  visible focus styling captured on the login form.
 - [Desktop report state](evidence/screenshots/15-report-print-state.png):
   print action exercised from the report viewer.
 
