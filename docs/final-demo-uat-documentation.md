@@ -80,6 +80,7 @@ controls.
 - [OSA overview](evidence/screenshots/13-osa-overview.png)
 - [First organization ledger](evidence/screenshots/22-osa-selected-ledger.png)
 - [Second organization ledger](evidence/screenshots/23-osa-second-organization.png)
+- [OSA second organization desktop view](evidence/screenshots/30-osa-other-organization-desktop.jpg)
 - [OSA report view](evidence/screenshots/24-osa-report-view.png)
 
 ## Report Package and Exports
