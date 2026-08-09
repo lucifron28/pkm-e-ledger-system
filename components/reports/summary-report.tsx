@@ -1,5 +1,6 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { formatReportDate } from "@/lib/reports/report-layout";
 
 interface SummaryReportProps {
   report: ReportPackageDto;
@@ -7,7 +8,7 @@ interface SummaryReportProps {
 
 export function SummaryReport({ report }: SummaryReportProps) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-8 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
+    <div className="report-page report-summary bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-8 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
       {/* Header */}
       <div className="text-center space-y-1 border-b pb-6">
         <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
@@ -16,14 +17,14 @@ export function SummaryReport({ report }: SummaryReportProps) {
         <h1 className="text-2xl font-black tracking-tight text-[#004aad]">
           {report.organizationName}
         </h1>
-        <h2 className="text-lg font-bold text-slate-800">
+        <h2 className="text-lg font-bold text-slate-800 uppercase">
           Financial Summary Report
         </h2>
         <p className="text-sm text-slate-600 font-medium">
           {report.academicYear} &bull; {report.semesterLabel}
         </p>
         <p className="text-xs text-slate-500">
-          As of {report.asOfDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+          As of {formatReportDate(report.asOfDate)}
         </p>
       </div>
 

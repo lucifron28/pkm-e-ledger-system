@@ -1,4 +1,5 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
+import { formatReportDate } from "@/lib/reports/report-layout";
 
 interface AttachmentReferencesProps {
   report: ReportPackageDto;
@@ -6,14 +7,19 @@ interface AttachmentReferencesProps {
 
 export function AttachmentReferences({ report }: AttachmentReferencesProps) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
+    <div className="report-page report-attachments bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
       <div className="text-center space-y-1 border-b pb-6">
+        <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
+          Pambayang Kolehiyo ng Mauban
+        </p>
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-          Supporting Receipts &amp; Attachments Reference
+          Receipts / Attachments
         </h2>
+        <p className="text-sm uppercase font-bold text-[#004aad]">Reference index</p>
         <p className="text-sm text-slate-600 font-semibold">
           {report.organizationName} &bull; {report.academicYear} {report.semesterLabel}
         </p>
+        <p className="text-xs text-slate-500">As of {formatReportDate(report.asOfDate)}</p>
       </div>
 
       {report.attachments.length === 0 ? (
@@ -41,7 +47,7 @@ export function AttachmentReferences({ report }: AttachmentReferencesProps) {
                     {att.entryType === "CASH_TRANSFER" ? "Transfer" : "Transaction"}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-slate-700">
-                    {att.transactionDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                    {formatReportDate(att.transactionDate)}
                   </td>
                   <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">
                     {att.documentNumber || "-"}
