@@ -74,23 +74,23 @@ The audit systematically evaluated:
 
 ## 2. Final Current-Head Verification Results
 
-Verification executed on `2026-08-09T13:53:00+08:00` from executable Git HEAD `9891d1b` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
+Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `68b057d` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
 
 - `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
 - `npm run lint`: exit status 0; 0 errors and 0 warnings.
 - `npm run typecheck`: exit status 0.
 - `npm run db:generate`: exit status 0.
 - `npx prisma validate`: exit status 0; schema valid.
-- `npm run test:core`: 11 discovered files; 98 pass, 0 fail, 0 skip.
+- `npm run test:core`: 11 discovered files; 99 pass, 0 fail, 0 skip.
 - `npm run test:integration`: 5 discovered files; 29 pass, 0 fail, 0 skip.
 - `npm run test:migrations`: 1 discovered file; 13 pass, 0 fail, 0 skip.
-- `npm run test`: 17 discovered files; 140 pass, 0 fail, 0 skip.
+- `npm run test`: 17 discovered files; 141 pass, 0 fail, 0 skip.
 - `npm run test:db`: exit status 0; 14 organizations, 18 categories, 71 users, and 14 academic terms validated.
 - `npm run build`: exit status 0; 18 route endpoints generated. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness`: exit status 0; all checks passed.
 - `npm run storage:reconcile`: exit status 0; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
-- Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, grouped collections, mapped expense columns, attachment metadata, and print orientation. Synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
+- Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, six role-only signature slots, grouped collections, mapped expense columns, attachment metadata, and print orientation. Schedule 1 stress coverage passed continuation-page preflight for long payor rows, category subtotals, and the final schedule total. PDF alignment and 520 pt portrait attachment-width checks passed, and synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
 
 Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
 

@@ -6,8 +6,8 @@ This document details the final verification checklist for validating the **PKM 
 
 ## Verification Execution Evidence Log
 
-- **Execution Timestamp**: `2026-08-09T13:53:00+08:00`
-- **Verified executable Git HEAD**: `9891d1b` (report-template implementation commit; documentation follows)
+- **Execution Timestamp**: `2026-08-09T14:41:34+08:00`
+- **Verified executable Git HEAD**: `68b057d` (final report-template correction commit; documentation follows)
 - **Execution Environment**: Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11 / PowerShell with `cmd.exe` command execution.
 - **Clean install**: `npm ci` exit status `0`; root `postinstall` generated Prisma Client v6.19.3.
 - **Execution note**: Direct PowerShell `npm` and `npx` wrappers were blocked by local execution policy. Final validation ran the literal commands through `cmd.exe`; project command exit statuses below are from that run.
@@ -22,16 +22,16 @@ This document details the final verification checklist for validating the **PKM 
 - `npm run typecheck` — **exit status 0**.
 - `npm run db:generate` — **exit status 0**; Prisma Client v6.19.3 generated.
 - `npx prisma validate` — **exit status 0**; schema valid.
-- `npm run test:core` — **11 files, 98 cases, 98 pass / 0 fail / 0 skip**.
+- `npm run test:core` — **11 files, 99 cases, 99 pass / 0 fail / 0 skip**.
 - `npm run test:integration` — **5 files, 29 cases, 29 pass / 0 fail / 0 skip**.
 - `npm run test:migrations` — **1 file, 13 cases, 13 pass / 0 fail / 0 skip**.
-- `npm run test` (full suite) — **17 files, 140 cases, 140 pass / 0 fail / 0 skip**.
+- `npm run test` (full suite) — **17 files, 141 cases, 141 pass / 0 fail / 0 skip**.
 - `npm run test:db` — **exit status 0**; 14 organizations, 18 categories, 71 users, and 14 academic terms verified.
 - `npm run build` — **exit status 0**; Next.js 16.3.0 App Router production bundle generated with **18 route endpoints**. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness` — **exit status 0**; all readiness checks passed.
 - `npm run storage:reconcile` — **exit status 0**; dry run modified zero files. Plan reported 27 active orphan candidates, 0 stale staging files, 0 trash items, 0 missing database files, and 0 retained-for-review items.
 - Isolated fictional storage reconciliation dry-run test (`tests/core/storage-reconciliation.test.ts`) — **pass**; zero-mutation assertion passed.
-- Report-template verification — **pass**; synthetic anonymized XLSX round-trip verified `SUMMARY`, `SCHEDULE 1 - COLLECTIONS`, `SCHEDULE 2 - EXPENSES`, and `RECEIPTS - ATTACHMENTS` sheets, formulas, portrait/landscape print setup, grouped collections, mapped expense columns, and attachment metadata. Synthetic PDF output was visually inspected across summary, collections, expenses, and attachment pages.
+- Report-template verification — **pass**; synthetic anonymized XLSX round-trip verified `SUMMARY`, `SCHEDULE 1 - COLLECTIONS`, `SCHEDULE 2 - EXPENSES`, and `RECEIPTS - ATTACHMENTS` sheets, formulas, six role-only signature slots, portrait/landscape print setup, grouped collections, mapped expense columns, and attachment metadata. Schedule 1 stress coverage generated continuation pages with long payor text and preflighted item, subtotal, and grand-total rows. PDF alignment helpers verified left textual columns, right numeric columns, and a 520 pt attachment table within the 540 pt portrait area. Synthetic PDF output was visually inspected across summary, collections, expenses, and attachment pages.
 - Final dependency audit retained 4 package findings (2 moderate, 2 high); production-only audit retained 3 (2 moderate, 1 high). All remaining findings are classified below as unreachable runtime dependency paths or dev-only.
 
 ---
@@ -100,10 +100,10 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 ### 2. Automated Test Suite Execution
 - [x] `npm run lint` passes with 0 errors and 0 warnings (`eslint`, exit status 0).
 - [x] `npm run typecheck` passes with 0 TypeScript compilation errors (`tsc --noEmit`, exit status 0).
-- [x] `npm run test:core` passes 98 core unit tests across 11 test files (`attachments.test.ts`, `audit.test.ts`, `financial.test.ts`, `modal-focus.test.ts`, `money.test.ts`, `navigation.test.ts`, `password.test.ts`, `rbac.test.ts`, `reports.test.ts`, `storage-reconciliation.test.ts`, `transfers.test.ts`).
+- [x] `npm run test:core` passes 99 core unit tests across 11 test files (`attachments.test.ts`, `audit.test.ts`, `financial.test.ts`, `modal-focus.test.ts`, `money.test.ts`, `navigation.test.ts`, `password.test.ts`, `rbac.test.ts`, `reports.test.ts`, `storage-reconciliation.test.ts`, `transfers.test.ts`).
 - [x] `npm run test:integration` passes 29 integration tests across 5 test files (`concurrency.test.ts`, `organization-isolation.test.ts`, `recovery.test.ts`, `security-routes.test.ts`, `seed.test.ts`), including production-Prisma-singleton isolation assertions (`PRAGMA database_list` targets the temporary test database), restore CLI confirmation tests, real concurrency/idempotency scenarios, migration-orchestrator storage-key tests, and seed idempotency.
 - [x] `npm run test:migrations` passes 13 migration tests across 1 test file (`migration.test.ts`), including empty-DB deploy, legacy upgrade with real-file storage-key resolution, missing-file preflight abort, sidecar validation fail-closed, PREPARED resume hash/size verification, and the migration-orchestrator scenarios.
-- [x] `npm run test` passes full test suite (140/140 passing across 17 test files; 0 fail, 0 skip).
+- [x] `npm run test` passes full test suite (141/141 passing across 17 test files; 0 fail, 0 skip).
 - [x] `npm run test:db` passes database smoke test against an isolated fictional seeded database (14 organizations, 18 categories, 71 users, 14 academic terms; verifies single active term per org, canonical YYYY-YYYY academic year format, typed category buckets, all six roles, and unique demo usernames).
 - [x] `npm run build` succeeds with one non-fatal Turbopack NFT warning and generates Next.js App Router production bundle (18 route endpoints).
 
