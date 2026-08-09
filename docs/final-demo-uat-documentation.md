@@ -42,6 +42,7 @@ Evidence:
 
 - [Login](evidence/screenshots/01-login.png)
 - [Management dashboard](evidence/screenshots/02-treasurer-dashboard.png)
+- [Adviser desktop dashboard](evidence/screenshots/14-adviser-dashboard-desktop.jpg)
 - [Term settings and balances](evidence/screenshots/03-term-settings-balances.png)
 - [Populated ledger](evidence/screenshots/05-ledger-populated.png)
 - [Cash transfers](evidence/screenshots/16-ledger-transfers.png)
