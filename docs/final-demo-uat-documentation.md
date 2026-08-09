@@ -5,7 +5,7 @@
 This document records manual user-acceptance testing for the PKM e-Ledger
 System on `qa/manual-uat-demo-readiness`. Testing covered the six application
 roles, financial management workflows, transparency views, OSA monitoring,
-report generation, responsive layouts, and evidence capture.
+report generation, desktop layout review, keyboard focus, and evidence capture.
 
 Testing used the existing fictional seed data plus fictional local UAT
 records. No official workbook was imported. No official names, signatories,
@@ -16,7 +16,10 @@ data.
 
 - Local Next.js development server at `http://127.0.0.1:3000`.
 - Node.js `v24.15.0`, npm `11.12.1`, Next.js `16.3.0`, SQLite.
-- Browser verification used desktop, 768 px, 390 px, and 360 px viewports.
+- Current evidence capture used a wide desktop viewport of `1920x1080`, as
+  requested for the final demo pass. Older narrow viewport artifacts remain in
+  the repository for historical responsive-audit traceability, but they are not
+  presented as the current screenshot set.
 - UAT accounts were fictional role-specific seed accounts. Credentials are
   intentionally omitted from committed documentation.
 - No deployment or production environment was used.
@@ -38,22 +41,25 @@ following path:
 6. Review the detailed ledger and Treasurer Log.
 7. Open the report package and request PDF and Excel exports.
 
-Evidence:
+Evidence (all current UI captures are `1920x1080` desktop screenshots):
 
-- [Login](evidence/screenshots/01-login.png)
-- [Management dashboard](evidence/screenshots/02-treasurer-dashboard.png)
-- [Adviser desktop dashboard](evidence/screenshots/14-adviser-dashboard-desktop.jpg)
+- [Login](evidence/screenshots/01-login-desktop.jpg)
+- [Treasurer dashboard](evidence/screenshots/02-management-dashboard-desktop.jpg)
+- [Term settings and balances](evidence/screenshots/03-term-settings-desktop.jpg)
+- [Digital ledger](evidence/screenshots/04-digital-ledger-desktop.jpg)
+- [New income form](evidence/screenshots/05-new-income-desktop.jpg)
+- [New expense form](evidence/screenshots/06-new-expense-desktop.jpg)
+- [Financial reports](evidence/screenshots/07-financial-reports-desktop.jpg)
+- [Treasurer Log](evidence/screenshots/08-treasurer-log-desktop.jpg)
+- [Account](evidence/screenshots/09-account-desktop.jpg)
+- [Transaction details](evidence/screenshots/10-transaction-details-desktop.jpg)
+- [Edit transaction dialog](evidence/screenshots/11-edit-transaction-desktop.jpg)
+- [Delete confirmation](evidence/screenshots/12-delete-transaction-desktop.jpg)
+- [Cash transfer filters](evidence/screenshots/13-cash-transfer-filters-desktop.jpg)
+- [Adviser dashboard](evidence/screenshots/14-adviser-dashboard-desktop.jpg)
 - [Adviser reports](evidence/screenshots/15-adviser-reports-desktop.jpg)
 - [Audit dashboard](evidence/screenshots/16-audit-dashboard-desktop.jpg)
 - [Audit Log](evidence/screenshots/17-audit-log-desktop.jpg)
-- [Term settings and balances](evidence/screenshots/03-term-settings-balances.png)
-- [Populated ledger](evidence/screenshots/05-ledger-populated.png)
-- [Cash transfers](evidence/screenshots/16-ledger-transfers.png)
-- [Transaction details](evidence/screenshots/17-transaction-details.png)
-- [Edit transaction dialog](evidence/screenshots/18-edit-transaction-dialog.png)
-- [Updated ledger](evidence/screenshots/19-ledger-updated.png)
-- [Delete confirmation](evidence/screenshots/20-delete-dialog.png)
-- [Treasurer Log](evidence/screenshots/21-treasurer-log.png)
 
 ## Transparency Workflow
 
@@ -61,12 +67,12 @@ Officer and Member accounts were tested as same-organization, read-only users.
 Both could view dashboard balances and the report package. Management-only
 navigation and mutation controls were not available in their portal.
 
-- [Officer transparency dashboard](evidence/screenshots/11-officer-transparency.png)
-- [Member transparency dashboard](evidence/screenshots/12-member-transparency.png)
 - [Officer desktop dashboard](evidence/screenshots/18-officer-dashboard-desktop.jpg)
 - [Officer desktop report view](evidence/screenshots/19-officer-reports-desktop.jpg)
+- [Officer restricted ledger redirect](evidence/screenshots/20-officer-restricted-ledger-desktop.jpg)
 - [Member desktop dashboard](evidence/screenshots/21-member-dashboard-desktop.jpg)
 - [Member desktop report view](evidence/screenshots/22-member-reports-desktop.jpg)
+- [Member restricted ledger redirect](evidence/screenshots/23-member-restricted-ledger-desktop.jpg)
 
 ## OSA Monitoring Workflow
 
@@ -77,11 +83,11 @@ changes the read-only view. OSA could not use organization management or
 transaction mutation actions, and the OSA report view did not expose export
 controls.
 
-- [OSA overview](evidence/screenshots/13-osa-overview.png)
-- [First organization ledger](evidence/screenshots/22-osa-selected-ledger.png)
-- [Second organization ledger](evidence/screenshots/23-osa-second-organization.png)
-- [OSA second organization desktop view](evidence/screenshots/30-osa-other-organization-desktop.jpg)
-- [OSA report view](evidence/screenshots/24-osa-report-view.png)
+- [OSA organization selector](evidence/screenshots/26-osa-organization-selector-desktop.jpg)
+- [OSA monitoring overview](evidence/screenshots/27-osa-monitoring-overview-desktop.jpg)
+- [Selected organization summary](evidence/screenshots/28-osa-selected-organization-summary-desktop.jpg)
+- [OSA report view](evidence/screenshots/29-osa-report-view-desktop.jpg)
+- [Secondary organization summary](evidence/screenshots/30-osa-other-organization-desktop.jpg)
 
 ## Report Package and Exports
 
@@ -96,7 +102,7 @@ The HTML report viewer displayed the complete official-style package:
   amount, and mapped expense category columns.
 - Receipts / Attachments reference.
 
-- [Final report package viewer](evidence/screenshots/28-final-report-package.png)
+- [Final report package viewer](evidence/screenshots/07-financial-reports-desktop.jpg)
 - [PDF page 1: Summary and signatures](evidence/screenshots/pdf/report-page-1.png)
 - [PDF page 2: Schedule 1 Collections](evidence/screenshots/pdf/report-page-2.png)
 - [PDF page 3: Schedule 2 Expenses](evidence/screenshots/pdf/report-page-3.png)
@@ -119,18 +125,17 @@ Manual spreadsheet visual inspection was **not verified** because no local
 spreadsheet viewer was available. The generated XLSX is local-only evidence
 and is not committed.
 
-## Responsive and Accessibility Checks
+## Desktop and Accessibility Checks
 
-- [360 px dashboard](evidence/screenshots/25-dashboard-360px.png): checked
-  with no horizontal overflow.
-- [768 px ledger](evidence/screenshots/26-ledger-768px.png): checked with no
-  horizontal overflow.
-- [Mobile navigation](evidence/screenshots/27-mobile-navigation.png): menu
-  toggle and expanded state exercised.
-- [Keyboard focus state](evidence/screenshots/25-keyboard-focus-desktop.jpg):
-  visible focus styling captured on the login form.
-- [Desktop report state](evidence/screenshots/15-report-print-state.png):
-  print action exercised from the report viewer.
+- The current final screenshot set uses `1920x1080` desktop dimensions across
+  public, management, transparency, and OSA screens.
+- [Registration](evidence/screenshots/24-register-desktop.jpg) confirms the
+  public account-creation screen at desktop size.
+- [Keyboard focus state](evidence/screenshots/25-keyboard-focus-desktop.jpg)
+  captures visible focus styling on the login form.
+- The older 360 px, 768 px, and mobile-navigation captures are retained as
+  historical responsive evidence, but were intentionally not repeated for this
+  desktop-focused final pass.
 
 Focus styling and dialog controls were inspected. Full keyboard traversal was
 attempted, but browser focus diagnostics did not produce a conclusive tab
@@ -139,6 +144,16 @@ sequence; a complete keyboard-only pass remains **not verified**.
 The browser automation did not expose the operating-system print preview.
 Therefore toolbar/header hiding in print preview remains **not verified**;
 PDF page orientation was verified independently from the generated artifact.
+
+## Desktop Screenshot Manifest
+
+The final UI evidence folder contains the numbered desktop capture sequence
+`01` through `30`. Screenshots `01` through `25` cover public, management,
+transparency, account, transaction, access-boundary, registration, and keyboard
+states. Screenshots `26` through `30` cover the OSA organization selector,
+overview, selected summaries, report view, and a secondary organization. All
+new captures are wide desktop images; no mobile-sized image is used as current
+final evidence.
 
 ## UML Evidence
 

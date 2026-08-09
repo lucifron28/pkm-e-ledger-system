@@ -131,11 +131,12 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 - [x] **Tested service/handler portions**: OSA access to monitoring services (active organization selection, inactive/nonexistent rejection, ledger summary) verified; OSA rejection from org-portal and management services verified even with a hypothetical `organizationId`.
 - [x] **Tested service/handler portions**: Attachment and export route handlers return correct status codes (200/401/403/404) with security headers; test uploads isolated in a temporary sandbox directory.
 - [x] **Complete Management browser/action workflow**: dashboard, term settings, opening balances, income/expense/cash-transfer forms, attachments, details, edit dialog, delete confirmation, Treasurer Log, report viewer, PDF request, and XLSX request exercised. See [final UAT documentation](final-demo-uat-documentation.md).
-- [x] **Complete Transparency (Officer/Member) browser/action workflow**: same-organization read-only dashboards and report views exercised for Officer and Member; management controls were absent. See [Officer evidence](evidence/screenshots/11-officer-transparency.png) and [Member evidence](evidence/screenshots/12-member-transparency.png).
+- [x] **Complete Transparency (Officer/Member) browser/action workflow**: same-organization read-only dashboards and report views exercised for Officer and Member; management controls were absent. See [Officer desktop evidence](evidence/screenshots/18-officer-dashboard-desktop.jpg), [Member desktop evidence](evidence/screenshots/21-member-dashboard-desktop.jpg), and the restricted-ledger redirects in screenshots `20` and `23`.
 - [x] **Complete OSA browser flow**: overview, organization selection, two selected organization summaries, ledger views, and report view exercised. OSA export controls were absent. See [OSA evidence](final-demo-uat-documentation.md#osa-monitoring-workflow).
 
-### 5. Responsive Design & Accessibility Scan
-- [x] Viewport navigation checked at 360 px, 768 px, and desktop viewports; captured layouts had no horizontal overflow at 360 px or 768 px. See [responsive evidence](final-demo-uat-documentation.md#responsive-and-accessibility-checks).
+### 5. Desktop UI & Accessibility Scan
+- [x] Final requested screenshot pass captured the public, management, transparency, and OSA screens at a wide `1920x1080` desktop viewport. See [desktop evidence](final-demo-uat-documentation.md#desktop-screenshot-manifest).
+- [x] Prior 360 px, 768 px, and mobile-navigation checks remain recorded as historical responsive evidence; they were intentionally not recaptured in this desktop-focused pass.
 - [x] `PortalNav` desktop navigation (`hidden xl:flex`) and mobile menu toggle (`xl:hidden`) with `aria-expanded` and `aria-controls="mobile-menu"` (markup-level check only).
 - [x] Interactive buttons and inputs have focus styling (source-reviewed and dialog controls exercised); full keyboard-only traversal was attempted but remains `NOT VERIFIED` because browser focus diagnostics were inconclusive.
 - [x] Official PKM color palette (`#004aad` primary, `#f9d818` accent) used consistently (markup-level check only).
@@ -143,6 +144,7 @@ Class legend: A = runtime, applicable, and fix available; B = runtime, applicabl
 
 ## Manual UAT Evidence (2026-08-09)
 
+- [x] Numbered desktop screenshot evidence `01` through `30` captured with fictional/demo data only. Current screenshots are wide desktop images; no mobile-sized image is used as final current evidence.
 - [x] Fictional local UAT records created for income, expenses, transfers, attachments, edit flow, and audit history. No official workbook data imported.
 - [x] Report package viewer verified: Summary, Schedule 1 Collections, Schedule 2 Expenses, signatures, and Receipts / Attachments reference. See [report evidence](final-demo-uat-documentation.md#report-package-and-exports).
 - [x] PDF export verified as four pages: Summary portrait, Schedule 1 portrait, Schedule 2 landscape, and Attachments portrait. See [rendered PDF pages](final-demo-uat-documentation.md#report-package-and-exports).
