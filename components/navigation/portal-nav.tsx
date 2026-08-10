@@ -25,6 +25,7 @@ interface PortalNavProps {
   role: Role;
   userName?: string;
   userOrgName?: string;
+  mode: "desktop" | "mobile";
 }
 
 const iconsByPath: Record<string, TablerIcon> = {
@@ -43,7 +44,7 @@ function getIcon(path: string): TablerIcon {
   return iconsByPath[path] || Archive;
 }
 
-export function PortalNav({ role, userName, userOrgName }: PortalNavProps) {
+export function PortalNav({ role, userName, userOrgName, mode }: PortalNavProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
@@ -86,41 +87,45 @@ export function PortalNav({ role, userName, userOrgName }: PortalNavProps) {
 
   return (
     <>
-      <nav aria-label="Portal navigation" className="hidden lg:flex lg:flex-col lg:gap-1">
-        {links}
-      </nav>
+      {mode === "desktop" && (
+        <nav aria-label="Portal navigation" className="hidden lg:flex lg:flex-col lg:gap-1">
+          {links}
+        </nav>
+      )}
 
-      <div className="lg:hidden portal-mobile-nav">
-        <button
-          ref={buttonRef}
-          type="button"
-          onClick={() => setIsOpen((open) => !open)}
-          aria-expanded={isOpen}
-          aria-controls="portal-mobile-menu"
-          className="portal-mobile-toggle"
-        >
-          {isOpen ? <X size={19} aria-hidden="true" /> : <Menu2 size={19} aria-hidden="true" />}
-          <span>{isOpen ? "Close navigation" : "Open navigation"}</span>
-        </button>
+      {mode === "mobile" && (
+        <div className="lg:hidden portal-mobile-nav">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => setIsOpen((open) => !open)}
+            aria-expanded={isOpen}
+            aria-controls="portal-mobile-menu"
+            className="portal-mobile-toggle"
+          >
+            {isOpen ? <X size={19} aria-hidden="true" /> : <Menu2 size={19} aria-hidden="true" />}
+            <span>{isOpen ? "Close navigation" : "Open navigation"}</span>
+          </button>
 
-        {isOpen && (
-          <div id="portal-mobile-menu" className="portal-mobile-menu">
-            {userName && (
-              <div className="portal-mobile-user">
-                <span className="portal-mobile-user-name">{userName}</span>
-                <span>{role} - {userOrgName || "Office of Student Affairs"}</span>
-              </div>
-            )}
-            {links}
-            <form action={logoutAction} className="mt-2 border-t border-blue-800 pt-2">
-              <button type="submit" className="portal-mobile-logout">
-                <Lock size={18} aria-hidden="true" />
-                <span>Log out</span>
-              </button>
-            </form>
-          </div>
-        )}
-      </div>
+          {isOpen && (
+            <div id="portal-mobile-menu" className="portal-mobile-menu">
+              {userName && (
+                <div className="portal-mobile-user">
+                  <span className="portal-mobile-user-name">{userName}</span>
+                  <span>{role} - {userOrgName || "Office of Student Affairs"}</span>
+                </div>
+              )}
+              {links}
+              <form action={logoutAction} className="mt-2 border-t border-blue-800 pt-2">
+                <button type="submit" className="portal-mobile-logout">
+                  <Lock size={18} aria-hidden="true" />
+                  <span>Log out</span>
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

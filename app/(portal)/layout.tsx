@@ -59,7 +59,7 @@ export default async function PortalLayout({
             <span>{user.role} access</span>
           </div>
           <Suspense fallback={<div className="portal-nav-loading">Loading navigation...</div>}>
-            <PortalNav role={user.role} userName={user.fullName} userOrgName={user.organizationName || undefined} />
+            <PortalNav mode="desktop" role={user.role} userName={user.fullName} userOrgName={user.organizationName || undefined} />
           </Suspense>
           <div className="portal-sidebar-note">
             <span>PKM e-Ledger System</span>
@@ -69,7 +69,7 @@ export default async function PortalLayout({
 
         <div className="portal-main-column">
           <Suspense fallback={null}>
-            <PortalNav role={user.role} userName={user.fullName} userOrgName={user.organizationName || undefined} />
+            <PortalNav mode="mobile" role={user.role} userName={user.fullName} userOrgName={user.organizationName || undefined} />
           </Suspense>
           <main id="main-content" className="portal-main-content">
             {children}
