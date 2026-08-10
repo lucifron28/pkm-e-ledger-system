@@ -1,5 +1,6 @@
 import { getSessionResult, getPostLoginDestination } from "@/lib/auth/session";
 import { RegisterForm } from "@/components/register-form";
+import { PkmLogo } from "@/components/branding/pkm-logo";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import Link from "next/link";
@@ -22,10 +23,8 @@ export default async function RegisterPage() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-        <Link href="/" className="inline-flex items-center space-x-2">
-          <span className="bg-[#f9d818] text-[#004aad] font-extrabold w-10 h-10 rounded-lg flex items-center justify-center text-lg shadow-inner">
-            PKM
-          </span>
+        <Link href="/" className="inline-flex flex-col items-center gap-3">
+          <PkmLogo size={80} priority className="h-20 w-20" />
           <span className="font-extrabold text-2xl text-[#004aad]">e-Ledger System</span>
         </Link>
         <h2 className="text-sm font-semibold text-slate-600">

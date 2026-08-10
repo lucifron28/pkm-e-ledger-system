@@ -1,6 +1,7 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { formatReportDate } from "@/lib/reports/report-layout";
+import { PkmLogo } from "@/components/branding/pkm-logo";
 
 interface SummaryReportProps {
   report: ReportPackageDto;
@@ -20,6 +21,7 @@ export function SummaryReport({ report }: SummaryReportProps) {
     <div className="report-page report-summary bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-8 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
       {/* Header */}
       <div className="text-center space-y-1 border-b pb-6">
+        <PkmLogo size={80} className="mx-auto h-20 w-20" />
         <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
           Pambayang Kolehiyo ng Mauban
         </p>
