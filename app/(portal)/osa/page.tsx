@@ -26,34 +26,31 @@ export default async function OsaOverviewPage() {
           </StatusPanel>
         ) : (
           <div className="overflow-x-auto">
-            <table className="ui-data-table min-w-[980px]">
+            <table className="ui-data-table min-w-[1080px] table-fixed">
               <caption className="sr-only">Financial position comparison for recognized student organizations</caption>
               <thead>
                 <tr>
-                  <th scope="col">Organization</th>
-                  <th scope="col">Active term</th>
-                  <th scope="col">Cash position</th>
-                  <th scope="col" className="text-right">Collections</th>
-                  <th scope="col" className="text-right">Expenses</th>
-                  <th scope="col" className="text-right">Remaining</th>
-                  <th scope="col" className="text-right">Open</th>
+                  <th scope="col" className="w-[28%]">Organization</th>
+                  <th scope="col" className="w-[14%]">Active term</th>
+                  <th scope="col" className="w-[17%]">Cash position</th>
+                  <th scope="col" className="w-[10%] text-right">Collections</th>
+                  <th scope="col" className="w-[10%] text-right">Expenses</th>
+                  <th scope="col" className="w-[10%] text-right">Remaining</th>
+                  <th scope="col" className="w-[11%] text-right">Open</th>
                 </tr>
               </thead>
               <tbody>
                 {overviewList.map((org) => (
                   <tr key={org.organizationId}>
                     <td>
-                      <div className="flex items-start gap-2">
-                        <span className="ui-status-chip ui-status-chip-brand">{org.organizationSlug}</span>
-                        <div className="min-w-0">
-                          <p className="font-extrabold text-slate-900">{org.organizationName}</p>
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            Last activity: {org.lastActivityDate ? org.lastActivityDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "No activity"}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="font-extrabold leading-snug text-slate-900">{org.organizationName}</p>
+                        <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                          Last activity: {org.lastActivityDate ? org.lastActivityDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "No activity"}
+                        </p>
                       </div>
                     </td>
-                    <td>
+                    <td className="whitespace-nowrap">
                       {org.hasActiveTerm ? (
                         <>
                           <p className="font-bold text-slate-900">{org.academicYear}</p>
@@ -63,7 +60,7 @@ export default async function OsaOverviewPage() {
                         <span className="ui-status-chip ui-status-chip-warning">No active term</span>
                       )}
                     </td>
-                    <td>
+                    <td className="whitespace-nowrap">
                       {org.hasActiveTerm ? (
                         <div className="grid gap-1 text-xs">
                           <span><strong className="text-slate-500">Hand:</strong> <span className="font-mono font-bold">{formatPesoFromCents(org.endingCashOnHandCents)}</span></span>
@@ -74,10 +71,24 @@ export default async function OsaOverviewPage() {
                     <td className="text-right font-mono font-bold text-emerald-700">{org.hasActiveTerm ? formatPesoFromCents(org.totalIncomeCents) : "-"}</td>
                     <td className="text-right font-mono font-bold text-red-700">{org.hasActiveTerm ? formatPesoFromCents(org.totalExpenseCents) : "-"}</td>
                     <td className="text-right font-mono text-base font-black text-[#004aad]">{org.hasActiveTerm ? formatPesoFromCents(org.remainingCents) : "-"}</td>
-                    <td>
+                    <td className="whitespace-nowrap">
                       <div className="flex justify-end gap-2">
-                        <ButtonLink href={`/ledger?org=${encodeURIComponent(org.organizationSlug)}`} variant="secondary" className="px-3 text-xs">Ledger</ButtonLink>
-                        <ButtonLink href={`/reports?org=${encodeURIComponent(org.organizationSlug)}`} variant="success" className="px-3 text-xs">Reports</ButtonLink>
+                        <ButtonLink
+                          href={`/ledger?org=${encodeURIComponent(org.organizationSlug)}`}
+                          variant="secondary"
+                          className="whitespace-nowrap px-3 text-xs"
+                          aria-label={`Open ledger for ${org.organizationName}`}
+                        >
+                          Ledger
+                        </ButtonLink>
+                        <ButtonLink
+                          href={`/reports?org=${encodeURIComponent(org.organizationSlug)}`}
+                          variant="success"
+                          className="whitespace-nowrap px-3 text-xs"
+                          aria-label={`Open reports for ${org.organizationName}`}
+                        >
+                          Reports
+                        </ButtonLink>
                       </div>
                     </td>
                   </tr>
