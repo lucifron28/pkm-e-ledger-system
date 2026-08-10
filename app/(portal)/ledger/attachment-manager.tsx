@@ -64,7 +64,7 @@ export function AttachmentManager({
           </div>
         ))
       )}
-      <form action={uploadAction} encType="multipart/form-data" className="pt-1">
+      <form action={uploadAction} className="pt-1">
         {transactionId && <input type="hidden" name="transactionId" value={transactionId} />}
         {cashTransferId && <input type="hidden" name="cashTransferId" value={cashTransferId} />}
         <input type="hidden" name="idempotencyKey" value={uploadIdempotencyKey} />
