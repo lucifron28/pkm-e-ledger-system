@@ -2,7 +2,12 @@
 
 ## Executive Summary
 
-This document details the comprehensive full post-implementation engineering audit and the subsequent financial-report-template alignment pass performed on the PKM e-Ledger System codebase (branch `feat/financial-report-template-alignment`).
+This document preserves the historical Full Engineering Audit & Remediation and
+financial-report-template alignment work performed on their respective phase
+branches (`audit/full-project-completeness-ui-docs` and
+`feat/financial-report-template-alignment`). Branch
+`qa/manual-uat-demo-readiness` records the later manual UAT and demo-readiness
+verification/evidence phase.
 
 The audit systematically evaluated:
 1. Schema and database migrations (deterministic attachment storage key uniqueness, sidecar lifecycle).
@@ -64,7 +69,7 @@ The audit systematically evaluated:
 - **Header Responsiveness & Navigation Matrix**: Refactored header breakpoint to `xl` (1280px) to prevent tablet menu overflow; extracted `getPortalNavLinks` helper and added unit tests in `tests/core/navigation.test.ts`.
 - **Modal Focus Management**: Wired `useModalFocus.handleKeyDown` to call `shouldAllowModalClose` directly, ensuring modal-focus unit tests directly protect production keyboard behavior.
 - **Real Password Boundary Tests**: Created `tests/core/password.test.ts` testing 8-char min, 72 ASCII bytes max accepted, 73 ASCII bytes rejected, multibyte UTF-8 boundary checks, and overflow login handling.
-- **Documentation Matrix Alignment**: Audited all entries in `docs/audit-coverage-matrix.md` and refreshed `docs/final-verification-checklist.md`.
+- **Documentation Matrix Alignment**: Audited all entries in `docs/dev/audit-coverage-matrix.md` and refreshed `docs/dev/final-verification-checklist.md`.
 
 ### 1.11 Clean-install Prisma Client Generation
 - **Issue**: A clean `npm ci` left the placeholder Prisma Client declarations in place, causing the mandated pre-generation typecheck to fail with missing Prisma enums and model types.
@@ -74,7 +79,7 @@ The audit systematically evaluated:
 
 ## 2. Final Current-Head Verification Results
 
-Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `68b057d` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
+Verification executed on `2026-08-10` from executable Git HEAD `e892500` using Node.js v24.15.0, npm 11.12.1, Next.js 16.3.0, SQLite 3, Windows 11, and `cmd.exe` command execution. Documentation changes after this commit do not alter executable sources.
 
 - `npm ci`: exit status 0; root postinstall generated Prisma Client v6.19.3.
 - `npm run lint`: exit status 0; 0 errors and 0 warnings.
@@ -83,8 +88,8 @@ Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `6
 - `npx prisma validate`: exit status 0; schema valid.
 - `npm run test:core`: 11 discovered files; 99 pass, 0 fail, 0 skip.
 - `npm run test:integration`: 5 discovered files; 29 pass, 0 fail, 0 skip.
-- `npm run test:migrations`: 1 discovered file; 13 pass, 0 fail, 0 skip.
-- `npm run test`: 17 discovered files; 141 pass, 0 fail, 0 skip.
+- `npm run test:migrations`: 1 discovered file; 14 pass, 0 fail, 0 skip.
+- `npm run test`: 17 discovered files; 142 pass, 0 fail, 0 skip.
 - `npm run test:db`: exit status 0; 14 organizations, 18 categories, 71 users, and 14 academic terms validated.
 - `npm run build`: exit status 0; 18 route endpoints generated. Six non-fatal Turbopack dynamic-filesystem tracing warnings were emitted for attachment storage.
 - `npm run verify-readiness`: exit status 0; all checks passed.
@@ -92,9 +97,9 @@ Verification executed on `2026-08-09T14:41:34+08:00` from executable Git HEAD `6
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
 - Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, six role-only signature slots, grouped collections, mapped expense columns, attachment metadata, and print orientation. Schedule 1 stress coverage passed continuation-page preflight for long payor rows, category subtotals, and the final schedule total. PDF alignment and 520 pt portrait attachment-width checks passed, and synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
 
-Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser, viewport, focus traversal, and print-preview checks remain explicitly **NOT VERIFIED** in the checklist.
+Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser and desktop viewport evidence are recorded in the later UAT documentation. Full keyboard-only traversal and OS/browser print-preview remain **NOT VERIFIED**; XLSX visual inspection also remains **NOT VERIFIED**.
 
-## 3. Current Dependency-Security Triage (2026-08-09)
+## 3. Current Dependency-Security Triage (2026-08-10)
 
 Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
 `npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,

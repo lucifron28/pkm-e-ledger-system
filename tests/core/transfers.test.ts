@@ -8,8 +8,7 @@ import {
 } from "../../lib/domain/financial";
 import { buildReportPackage, RawReportInputTerm, RawReportInputTransaction, RawReportInputTransfer } from "../../lib/domain/reports";
 import { ValidationError } from "../../lib/domain/errors";
-import { editTransactionSchema } from "../../lib/actions/transactions";
-import { editTransferSchema } from "../../lib/actions/transfers";
+import { editTransactionSchema, editTransferSchema } from "../../lib/domain/financial-schemas";
 import { parseStrictVersion, strictVersionSchema } from "../../lib/domain/query";
 
 test("CashTransfer Domain: COH to CIB transfer updates account balances while keeping remaining balance, income, expense unchanged", () => {

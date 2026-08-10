@@ -1,0 +1,64 @@
+@startuml
+title PKM e-Ledger System - Financial Ledger Activity
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F8FAFC
+  BorderColor #004AAD
+  DiamondBackgroundColor #FEF3C7
+  DiamondBorderColor #B45309
+  StartColor #15803D
+  EndColor #B91C1C
+}
+
+start
+:Authenticate user;
+if (Management role?) then (yes)
+  :Select active academic term;
+  :Enter income, expense,
+  or cash transfer details;
+  :Validate fields, amount,
+  category, account, and attachment;
+  if (Input valid?) then (yes)
+    :Stage attachment;
+    :Commit attachment to
+    active storage;
+    :Execute idempotent
+    database transaction;
+    :Validate active term, category,
+    and projected account balances;
+    if (Financial command valid?) then (yes)
+      :Persist ledger movement,
+      Attachment metadata, and
+      audit records in one transaction;
+      :Derive displayed balances from
+      persisted active entries;
+    else (no)
+      :Check committed-file ownership;
+      if (Ownership proven absent?) then (yes)
+        :Delete unreferenced active file;
+      else (no)
+        :Retain file for reconciliation;
+      endif
+      stop
+    endif
+    :Open live report package;
+    if (Export authorized?) then (yes)
+      :Generate PDF or XLSX export;
+    else (no)
+      :Continue with HTML report view;
+    endif
+  else (no)
+    :Show validation error;
+    stop
+  endif
+else (read-only role)
+  if (OSA user?) then (yes)
+    :Select organization;
+    :View cross-organization summary;
+  else (Officer or Member)
+    :View same-organization dashboard
+    and report package;
+  endif
+endif
+stop
+@enduml

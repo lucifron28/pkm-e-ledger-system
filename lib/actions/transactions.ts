@@ -7,7 +7,7 @@ import { requireManagementUser } from "../auth/require-auth";
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
-import { CashAccount, TransactionType } from "@prisma/client";
+import { TransactionType } from "@prisma/client";
 import {
   createTransactionService,
   deleteTransactionService,
@@ -15,8 +15,8 @@ import {
 } from "../application/transactions";
 import { DomainError } from "../domain/errors";
 
-import { TRANSACTION_FIELD_LIMITS } from "../domain/field-limits";
 import { forceTransactionType } from "../domain/transactions";
+import { createTransactionSchema, editTransactionSchema } from "../domain/financial-schemas";
 
 type TxActionState = { error?: string; fieldErrors?: Record<string, string[]> } | null;
 
@@ -27,30 +27,6 @@ function getAttachmentFile(formData: FormData): File {
   }
   return file;
 }
-
-export const transactionBaseSchema = z.object({
-  type: z.nativeEnum(TransactionType, { message: "Transaction type is required." }),
-  transactionDate: z.string().trim().min(1, "Transaction date is required."),
-  amount: z.string().trim().min(1, "Amount is required."),
-  cashAccount: z.nativeEnum(CashAccount, { message: "Cash account is required." }),
-  categoryId: z.string().trim().min(1, "Category is required."),
-  documentNumber: z.string().trim().max(TRANSACTION_FIELD_LIMITS.documentNumber, `Document number must be at most ${TRANSACTION_FIELD_LIMITS.documentNumber} characters.`).optional(),
-  counterpartyName: z.string().trim().min(1, "Payor / Payee is required.").max(TRANSACTION_FIELD_LIMITS.counterpartyName, `Payor / Payee must be at most ${TRANSACTION_FIELD_LIMITS.counterpartyName} characters.`),
-  description: z.string().trim().min(1, "Description is required.").max(TRANSACTION_FIELD_LIMITS.description, `Description must be at most ${TRANSACTION_FIELD_LIMITS.description} characters.`),
-  referenceDescription: z.string().trim().min(1, "Reference description is required.").max(TRANSACTION_FIELD_LIMITS.referenceDescription, `Reference description must be at most ${TRANSACTION_FIELD_LIMITS.referenceDescription} characters.`),
-  eventActivityName: z.string().trim().min(1, "Event / Activity name is required.").max(TRANSACTION_FIELD_LIMITS.eventActivityName, `Event / Activity name must be at most ${TRANSACTION_FIELD_LIMITS.eventActivityName} characters.`),
-});
-
-export const createTransactionSchema = transactionBaseSchema.extend({
-  termId: z.string().trim().min(1, "Term ID is required."),
-  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
-});
-
-export const editTransactionSchema = transactionBaseSchema.extend({
-  id: z.string().trim().min(1, "Transaction ID is required."),
-  version: strictVersionSchema,
-  idempotencyKey: z.string().trim().min(1, "Idempotency key is required."),
-});
 
 function transactionFields(formData: FormData) {
   return {

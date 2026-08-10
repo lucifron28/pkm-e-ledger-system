@@ -1,0 +1,67 @@
+@startuml
+title PKM e-Ledger System - Use Case Diagram
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam actorStyle awesome
+
+actor ManagementActor as "Management User"
+actor Treasurer
+actor Adviser
+actor Audit
+actor TransparencyActor as "Transparency User"
+actor Officer
+actor Member
+actor OSA
+
+ManagementActor <|-- Treasurer
+ManagementActor <|-- Adviser
+ManagementActor <|-- Audit
+TransparencyActor <|-- Officer
+TransparencyActor <|-- Member
+
+rectangle "PKM e-Ledger System" {
+  usecase "Authenticate" as UC_Auth
+  usecase "View Dashboard" as UC_Dashboard
+  usecase "Manage Academic Term" as UC_Term
+  usecase "Record Income" as UC_Income
+  usecase "Record Expense" as UC_Expense
+  usecase "Record Cash Transfer" as UC_Transfer
+  usecase "Manage Attachments" as UC_Attachments
+  usecase "View Treasurer Log" as UC_Log
+  usecase "View Reports" as UC_Reports
+  usecase "Export PDF" as UC_PDF
+  usecase "Export XLSX" as UC_XLSX
+  usecase "View Organization Transparency" as UC_Transparency
+  usecase "Monitor Organizations" as UC_Monitor
+}
+
+ManagementActor --> UC_Auth
+ManagementActor --> UC_Dashboard
+ManagementActor --> UC_Term
+ManagementActor --> UC_Income
+ManagementActor --> UC_Expense
+ManagementActor --> UC_Transfer
+ManagementActor --> UC_Attachments
+ManagementActor --> UC_Log
+ManagementActor --> UC_Reports
+ManagementActor --> UC_PDF
+ManagementActor --> UC_XLSX
+
+TransparencyActor --> UC_Auth
+TransparencyActor --> UC_Dashboard
+TransparencyActor --> UC_Reports
+TransparencyActor --> UC_Transparency
+
+OSA --> UC_Auth
+OSA --> UC_Dashboard
+OSA --> UC_Monitor
+OSA --> UC_Transparency
+OSA --> UC_Reports
+
+UC_Income .> UC_Attachments : <<include>>
+UC_Expense .> UC_Attachments : <<include>>
+UC_Transfer .> UC_Attachments : <<include>>
+UC_PDF .> UC_Reports : <<extend>>
+UC_XLSX .> UC_Reports : <<extend>>
+@enduml

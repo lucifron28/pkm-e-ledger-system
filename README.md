@@ -18,6 +18,7 @@
 * [Project Specification](docs/project-specification.md) — Complete source of truth for functional rules, RBAC, domain rules, and security specifications.
 * [Implementation Roadmap](docs/implementation-roadmap.md) — Multi-phase implementation plan, branch names, grouped commits, and status tracking.
 * [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided historical workbook reference.
+* [Developer Documentation](docs/dev/README.md) — Audit, traceability, demo, UAT, and verification records kept outside core project docs.
 * [Repository Agent Guidelines](AGENTS.md) — Coding agent rules, financial invariants, architecture constraints, and testing expectations.
 * [Deployment Manual](DEPLOYMENT.md) — Reference guide for local Windows hosting using PM2 and automated Task Scheduler backups.
 

@@ -100,8 +100,8 @@ function runOrchestrator(
   }
 }
 
-function deployMigrations(schemaPath: string, dbUrl: string, uploadsRoot: string): void {
-  runOrchestrator(dbUrl, uploadsRoot, schemaPath);
+function deployMigrations(schemaPath: string, dbUrl: string, uploadsRoot: string): string {
+  return runOrchestrator(dbUrl, uploadsRoot, schemaPath);
 }
 
 test("Migration Test Suite: deploy all migrations on an empty DB", async () => {
@@ -120,6 +120,56 @@ test("Migration Test Suite: deploy all migrations on an empty DB", async () => {
   try {
     const orgCount = await prisma.organization.count();
     assert.equal(orgCount, 0);
+    const migrationCount = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*) AS count FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`
+    );
+    assert.equal(Number(migrationCount[0].count), HARDENED_MIGRATIONS.length);
+  } finally {
+    await prisma.$disconnect();
+    cleanupTempDir();
+  }
+});
+
+test("Migration Test Suite: hardening completes when legacy Report table is already absent", async () => {
+  cleanupTempDir();
+  fs.mkdirSync(TEMP_MIGRATION_DIR, { recursive: true });
+
+  const dbPath = path.join(TEMP_MIGRATION_DIR, "without-report.db");
+  const dbUrl = `file:${dbPath}`;
+  const uploadsRoot = path.join(TEMP_MIGRATION_DIR, "uploads");
+  fs.mkdirSync(uploadsRoot, { recursive: true });
+  const phase7SchemaPath = prepareMigrationFixture("without-report-phase7", PHASE_7_MIGRATIONS);
+  fs.writeFileSync(dbPath, Buffer.alloc(0));
+  deployMigrations(phase7SchemaPath, dbUrl, uploadsRoot);
+
+  const legacyPrisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    await legacyPrisma.$executeRawUnsafe(`PRAGMA foreign_keys = OFF`);
+    await legacyPrisma.$executeRawUnsafe(`DROP TABLE "Report"`);
+  } finally {
+    await legacyPrisma.$disconnect();
+  }
+
+  const hardenedSchemaPath = prepareMigrationFixture("without-report-hardened", HARDENED_MIGRATIONS);
+  const hardeningOutput = deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  assert.match(
+    hardeningOutput,
+    /Created temporary Report compatibility table for pending hardening migration/,
+    "Missing legacy Report compatibility state must be handled by orchestrator preflight"
+  );
+
+  const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    const reportTable = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" = 'Report'`
+    );
+    assert.equal(reportTable.length, 0);
+
+    const archiveTable = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" = '_LegacyReportArchive'`
+    );
+    assert.equal(archiveTable.length, 1);
+
     const migrationCount = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT COUNT(*) AS count FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`
     );
@@ -251,7 +301,8 @@ test("Migration Test Suite: upgrade an authentic Phase 7 fixture through hardeni
   }
 
   const hardenedSchemaPath = prepareMigrationFixture("hardened", HARDENED_MIGRATIONS);
-  deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  const hardeningOutput = deployMigrations(hardenedSchemaPath, dbUrl, uploadsRoot);
+  assert.match(hardeningOutput, /Legacy Report table exists; skipping temporary Report compatibility table/);
 
   const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
   try {
@@ -454,7 +505,8 @@ test("Migration Orchestrator: legacy migration runs preflight and migrates dupli
   ]);
   const hardenedSchemaPath = prepareMigrationFixture("orchestrator-legacy-hardened", HARDENED_MIGRATIONS);
   try {
-    runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
+    const firstOutput = runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
+    assert.match(firstOutput, /Legacy Report table exists; skipping temporary Report compatibility table/);
 
     const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
     try {
@@ -499,6 +551,7 @@ test("Migration Orchestrator: rerun after the hardening migration is a safe no-o
     // Rerun: preflight must no-op (no legacy columns) and deploy must find no pending migrations.
     const output = runOrchestrator(fixture.dbUrl, fixture.uploadsRoot, hardenedSchemaPath);
     assert.ok(output.includes("skipping storage-key preflight"), "Rerun must skip the preflight");
+    assert.match(output, /Hardening migration already applied; skipping temporary Report compatibility table/);
 
     const prisma = new PrismaClient({ datasources: { db: { url: fixture.dbUrl } } });
     try {
