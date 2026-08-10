@@ -145,3 +145,15 @@ This document defines the implementation roadmap for the PKM e-Ledger System, tr
   8. `documentation and verification alignment`
   9. `fix: generate Prisma Client after install`
 * **Status**: **Completed / Ready for Review**
+
+### Deployment Preparation: Vercel + Turso
+* **Branch**: `deploy/vercel-turso`
+* **Dependencies**: Audit phase
+* **Goal**: Prepare, but do not execute, Vercel deployment with Turso/libSQL and private Vercel Blob while preserving local SQLite development, financial invariants, organization isolation, attachment lifecycle recovery, report exports, and seed privacy.
+* **Scope**:
+  1. Runtime-selectable Prisma libSQL adapter with local SQLite fallback.
+  2. Private Blob provider with direct client upload, server-side magic-byte validation, authorized downloads, staged/active/trash namespaces, and fail-closed reconciliation.
+  3. Production seed password boundary using `DEMO_PASSWORD`.
+  4. Vercel Node.js route configuration, sanitized Turso bootstrap instructions, and remote migration workflow documentation.
+  5. Focused runtime/provider tests plus full local verification and dependency-security triage.
+* **Status**: **Completed on branch; no merge and no deployment performed**

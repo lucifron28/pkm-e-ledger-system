@@ -1,181 +1,225 @@
-# PKM e-Ledger System — Deployment & Hosting Manual
+# PKM e-Ledger Deployment Guide
 
-This document details the configuration, deployment, hosting, and backup maintenance procedures for the **PKM e-Ledger System** on a local Windows Server, VM, or dedicated office workstation at the **Pambayang Kolehiyo ng Mauban (PKM)**.
+This guide describes the supported deployment shape for the PKM e-Ledger System:
 
----
+* Vercel for the Next.js application;
+* Turso/libSQL for the remote SQLite-compatible database;
+* a private Vercel Blob store for receipt attachments.
 
-## 1. Prerequisites
+No official financial workbook, personal record, real signatory, or sample amount is
+required by this process. Use fictional data only. This guide does not authorize a
+production deployment or destructive cloud operation.
 
-Before deploying the application, ensure the following software is installed on the host machine:
+## Runtime Design
 
-1. **Node.js** — Minimum supported runtime: Node >= 20.9 (LTS). Primary repository verification environment: Node 24.15.0 (Node 24 LTS). Node 18 is deprecated and no longer supported.
-2. **Git** — [Download here](https://git-scm.com/)
-3. **SQLite3** (Usually bundled automatically, but good to have CLI utility installed for low-level DB queries)
+The Prisma datasource remains `sqlite`. `lib/db/prisma.ts` selects the runtime adapter:
 
----
+* Local development: `new PrismaClient()` with `DATABASE_URL=file:./dev.db`.
+* Turso deployment: `PrismaLibSQL` with `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+* Turso timestamps: adapter option `timestampFormat: "unixepoch-ms"`.
 
-## 2. Server Setup & Installation
+Both Turso variables are required together. Vercel fails closed when they are absent.
+Local SQLite remains available when no Turso variables are set.
 
-Follow these steps to set up the codebase on the server machine:
+Attachments use the same local-first split:
 
-1. **Clone or Copy Codebase**:
-   ```bash
-   git clone <repository-url> C:\pkm-eledger
-   cd C:\pkm-eledger
-   ```
+* Local mode stores files below `uploads/` using staging, active, and trash areas.
+* Vercel mode uses private Blob namespaces `staging/`, `active/`, and `trash/`.
+* Browser uploads use the Vercel Blob client-upload flow, so the file does not pass
+  through a Server Action request.
+* The server re-authenticates the owner, reads the staged object, checks size, MIME,
+  extension, and magic bytes, then copies it to `active/` before creating the database
+  record and audit row.
+* Downloads always pass through the authenticated organization-scoped route. Blob URLs
+  are never exposed as public application links.
 
-2. **Install Dependencies**:
-   ```bash
-   npm ci
-   ```
-   > **Note**: Do not run `npm install --omit=dev` before building. Build, testing, and database tools (`prisma`, `tsx`, `scripts/migrate.js`) require devDependencies. If production deployment prunes devDependencies (`npm prune --omit=dev`), you MUST run `npm install` (or `npm ci`) to reinstall devDependencies prior to executing maintenance scripts, database migrations, attachment reconciliation, or seeds.
+## Environment Variables
 
-3. **Configure Environment Variables**:
-   * Copy the template environment file:
-     ```cmd
-     copy .env.example .env
-     ```
-   * Open `.env` in a text editor (e.g. Notepad) and configure the variables:
-     * **DATABASE_URL**: We recommend storing the SQLite database in a folder *outside* the application codebase folder to ensure that updates or clean builds never overwrite the production database.
-       Example: `file:C:/pkm-eledger-data/production.db`
-     * **PORT**: Set to the HTTP port (e.g., `3000` or `80` if dedicated).
-     * **NEXT_PUBLIC_APP_URL**: The IP address or domain name where the server will be accessed on the local network (e.g., `http://192.168.1.50:3000`).
+Copy `.env.example` to the local environment. Fill deployment values in the Vercel
+project settings or a secret manager. Do not commit a filled environment file.
 
----
+| Variable | Local development | Vercel deployment |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | `production` |
+| `DATABASE_URL` | `file:./dev.db` | Keep Prisma schema compatibility value `file:./dev.db` |
+| `TURSO_DATABASE_URL` | unset | `<FILL_ME_TURSO_DATABASE_URL>` |
+| `TURSO_AUTH_TOKEN` | unset | `<FILL_ME_TURSO_AUTH_TOKEN>` |
+| `ATTACHMENT_STORAGE_PROVIDER` | `local` | `vercel-blob` |
+| `NEXT_PUBLIC_ATTACHMENT_STORAGE_PROVIDER` | `local` | `vercel-blob` |
+| `BLOB_READ_WRITE_TOKEN` | unset | `<FILL_ME_VERCEL_BLOB_TOKEN>` |
+| `DEMO_PASSWORD` | optional documented local fallback | `<FILL_ME_STRONG_DEMO_PASSWORD>` |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | deployed application URL |
 
-## 3. Database Scaffolding & Migrations
+`DEMO_PASSWORD` is required by seed/deployment checks in production. The local fallback
+is `local-demo-only-password` and is used only when `NODE_ENV` is not `production` and
+`VERCEL` is not set. Never use that fallback in a deployed environment.
 
-If setting up the system for the first time, initialize the database and tables:
+## Local Preparation
 
-1. **Ensure the database storage folder exists**:
-   If you set `DATABASE_URL="file:C:/pkm-eledger-data/production.db"`, create the `C:\pkm-eledger-data` directory.
-
-2. **Generate Prisma Client**:
-   ```bash
-   npm run db:generate
-   ```
-
-3. **Run Migrations through the Safe Orchestrator**:
-   This applies the tables, schemas, indexes, and triggers to the SQLite database.
-   The orchestrator inspects the `Attachment` table shape, runs the attachment
-   storage-key preflight automatically for legacy databases (copying duplicated
-   physical files to their deterministic migration keys, refusing to overwrite
-   conflicting pre-existing files), applies the Prisma migration, and rolls back
-   preflight-copied files if the migration fails.
-   ```bash
-   npm run db:migrate:deploy
-   ```
-   > **Important**: Never run `npx prisma migrate deploy` directly. The
-   > orchestrator (`scripts/migrate.js`) is the only supported migration entry
-   > point so the storage-key preflight can never be bypassed.
-
-4. **Seed Initial Data**:
-   This seeds the default organizations, system transaction categories, and initial admin/OSA users:
-   ```bash
-   npm run db:seed
-   ```
-
----
-
-## 4. Building the Application
-
-Compile the Next.js server to generate optimized static files and compiled route bundles:
+Run from the repository root:
 
 ```bash
+npm ci
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run test:db
+npm run verify-readiness
+```
+
+Use the repository migration orchestrator. Do not run `prisma migrate dev` or
+`prisma migrate deploy` directly. Local SQLite files, uploads, and backup folders are
+ignored by Git.
+
+## Sanitized Turso Bootstrap
+
+Create a fresh fictional SQLite database from migrations and seed logic. Do not copy an
+existing production database, official workbook, student data, attachments, or real
+credentials into this file.
+
+PowerShell example:
+
+```powershell
+$env:NODE_ENV = "development"
+$env:DATABASE_URL = "file:./turso-bootstrap.db"
+$env:ATTACHMENT_STORAGE_PROVIDER = "local"
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:seed
+npm run test:db
+npm run verify-readiness
+turso db create <fictional-database-name> --from-file .\prisma\turso-bootstrap.db
+```
+
+The generated file is `prisma/turso-bootstrap.db` because relative SQLite URLs are
+resolved from the Prisma schema directory. The file is ignored and must not be
+committed. Remove it after the Turso database has been created if it is no longer
+needed.
+
+If Linux tooling is required, use Docker with the same repository commands rather than
+changing application behavior for one host:
+
+```bash
+docker run --rm -v "$PWD:/workspace" -w /workspace -e NODE_ENV=development \
+  -e DATABASE_URL=file:./turso-bootstrap.db node:20-bookworm \
+  bash -lc 'npm ci && npm run db:generate && npm run db:migrate:deploy && npm run db:seed && npm run test:db'
+```
+
+The Turso CLI command is run from the host or a separate CLI container. No command in
+this repository performs `turso db create` automatically.
+
+## Migration Workflow
+
+Prisma Migrate is a local migration authoring tool for this deployment shape. The
+Prisma libSQL adapter does not provide a supported direct remote migration workflow.
+
+For each future schema change:
+
+1. Edit `prisma/schema.prisma` and add the migration through the existing local
+   migration/orchestration workflow.
+2. Inspect the generated SQL and run local migration, seed, and tests.
+3. Apply the reviewed SQL to Turso with the Turso CLI, for example:
+
+   ```powershell
+   Get-Content .\prisma\migrations\<migration>\migration.sql | turso db shell <fictional-database-name>
+   ```
+
+4. Run `npm run db:generate`, `npx prisma validate`, and the report/ledger regression
+   tests against the intended runtime configuration.
+5. Record migration name, application timestamp, operator, and verification result in
+   the deployment change record.
+
+Never point `prisma migrate deploy` at a remote Turso URL. Never use a schema-only
+bootstrap that bypasses migrations, seed constraints, or verification.
+
+## Vercel Project Setup
+
+1. Import the GitHub repository into Vercel.
+2. Use Node.js 20 or newer. The build command is `npm run build`; install uses the
+   committed lockfile through `npm ci`.
+3. Add the environment variables from the table above for Preview and Production as
+   appropriate. Keep `DATABASE_URL` present for Prisma schema generation even though
+   runtime queries use the Turso adapter.
+4. Create a private Blob store and add its read/write token as
+   `BLOB_READ_WRITE_TOKEN`. Do not choose public Blob access.
+5. Confirm `ATTACHMENT_STORAGE_PROVIDER=vercel-blob` and the matching public variable.
+6. Set the Vercel region only after checking latency to the selected Turso primary
+   region. `vercel.json` intentionally does not hardcode a region.
+7. Run the verification checklist below before approving a deployment.
+
+The PDF, Excel, attachment, Turso, and Blob routes explicitly use the Node.js runtime.
+Do not switch those handlers to Edge runtime.
+
+## Attachment Operations
+
+The accepted attachment types are JPEG, PNG, and PDF up to 10 MB. The lifecycle is:
+
+```text
+authenticated owner
+    -> private staging upload
+    -> server-side metadata and magic-byte validation
+    -> private active object copy
+    -> database Attachment row
+    -> audit log
+    -> staged-object cleanup
+```
+
+If database creation fails after the active copy, the application deletes the active
+object only after an ownership lookup proves it is unreferenced. If that lookup fails,
+the object is retained for reconciliation. Reconciliation re-queries the database and
+fails closed on database or Blob listing errors.
+
+Run local reconciliation with a dry run first:
+
+```bash
+npm run storage:reconcile
+npm run storage:reconcile -- --confirm
+```
+
+The same command selects the Vercel Blob provider when
+`ATTACHMENT_STORAGE_PROVIDER=vercel-blob`. Review retained-for-inspection entries;
+never delete objects manually while a database reference is uncertain.
+
+## Verification Gate
+
+Run the complete gate from a clean checkout or clean working tree:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run db:generate
+npx prisma validate
+npm run test:core
+npm run test:integration
+npm run test:migrations
+npm run test
+npm run test:db
 npm run build
+npm run verify-readiness
+npm audit
+npm audit --omit=dev
 ```
 
-Verify that the build compilation exits with no errors.
+Cloud verification must use fictional organization/user data and a private Blob store.
+Confirm login, organization isolation, transaction create/edit/delete, cash transfers,
+report PDF and Excel exports, attachment upload/download/delete, audit history, and
+reconciliation behavior. Do not claim production readiness from a build alone.
 
----
+## Backup and Recovery
 
-## 5. Hosting the Application with PM2
+The existing `backup` and `restore` scripts are local SQLite/attachments operations.
+They are not a Turso backup strategy. For Turso, use the provider's documented backup,
+branch, and restore controls and record the operation outside the repository. For
+Vercel Blob, retain private object lifecycle records and use reconciliation before any
+manual cleanup.
 
-To keep the application running persistently in the background and restart automatically if the machine reboots or the server process crashes, we use **PM2**.
+For local recovery, stop the application before restoring database and uploads, run
+the restore validation, then run `npm run test:db` and `npm run verify-readiness`.
 
-1. **Install PM2 globally**:
-   ```bash
-   npm install -g pm2
-   ```
+## Privacy Rules
 
-2. **Start the Next.js Production Server**:
-   ```bash
-   pm2 start npm --name "pkm-eledger" -- run start
-   ```
-
-3. **Configure Startup on Windows**:
-   To make PM2 start on Windows startup:
-   * Install `pm2-windows-service` (run as Administrator in PowerShell):
-     ```powershell
-     npm install --global --unsafe-perm pm2-windows-service
-     pm2-service-install
-     ```
-     *When prompted, select "Perform automatic startup" and use the default settings.*
-   * Save the current active PM2 process list:
-     ```bash
-     pm2 save
-     ```
-
----
-
-## 6. Disaster Recovery: Automated Backups
-
-To protect student organization ledgers and scanned receipts from hard drive failures, schedule automated backups.
-
-### Offline Backup Requirement
-The SQLite backup utility requires the application writer process (PM2) to be stopped before taking a backup. Running backup while the application process is writing can result in unflushed WAL state or database lock errors.
-
-Before backing up:
-1. Stop the application process via PM2:
-   ```bash
-   pm2 stop pkm-eledger
-   ```
-2. Run the backup utility with confirmation flag (or `APP_WRITER_STOPPED=true` env var):
-   ```bash
-   node scripts/backup.js --confirm-app-stopped
-   ```
-3. Restart the application process:
-   ```bash
-   pm2 start pkm-eledger
-   ```
-
-Backups are saved inside `backups/backup_YYYYMMDD_HHMMSS/`. The backup utility verifies SQLite `PRAGMA integrity_check` and retains the latest 10 backups.
-
-### Scheduling Backups on Windows (Task Scheduler)
-To automate daily backups during off-peak hours (e.g., 2:00 AM), create a batch script `scripts/daily-backup.cmd`:
-```cmd
-pm2 stop pkm-eledger
-node scripts/backup.js --confirm-app-stopped
-pm2 start pkm-eledger
-```
-Configure Task Scheduler (`taskschd.msc`) to run `scripts/daily-backup.cmd` daily.
-
----
-
-## 7. Restoring Data from Backup
-
-Restoring data overwrites active SQLite database files and attachment uploads. The application process MUST be stopped before restoring.
-
-1. Stop the application process:
-   ```bash
-   pm2 stop pkm-eledger
-   ```
-2. Execute the restore utility:
-   ```bash
-   node scripts/restore.js --confirm-app-stopped
-   ```
-3. Select the target backup from the interactive prompt (or pass target folder: `node scripts/restore.js backup_YYYYMMDD_HHMMSS --confirm-app-stopped`).
-4. *Safety Guard*: The restore utility validates `PRAGMA integrity_check` on the backup *before* modifying active files, clears stale WAL sidecar files, overwrites active database and uploads, runs `PRAGMA integrity_check` on the restored database, and automatically rolls back if any step fails.
-5. Restart the application process:
-   ```bash
-   pm2 start pkm-eledger
-   ```
-
-## 8. Verification & Pre-flight Health Check
-
-Run the pre-flight verification script to ensure local environment prerequisites, database connection, and folder write permissions are configured:
-
-```bash
-node scripts/verify-readiness.js
-```
-*Note*: The readiness script verifies environment prerequisites and storage permissions; it does not prove end-to-end production deployment success or replace functional testing.
+* Never commit `.env`, database files, uploads, official spreadsheets, or real student data.
+* Never seed real names, signatories, sample amounts, or official workbook records.
+* Use fake names and fictional amounts in tests and demos.
+* Do not place access tokens in logs, URLs, client bundles, or documentation.

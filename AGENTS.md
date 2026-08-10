@@ -24,7 +24,7 @@ Do not make current-status claims without inspecting the repository.
 
 * **Completed**: Project foundation (`chore/project-foundation`), Database foundation (`feature/database-foundation-completion`), Documentation alignment (`docs/project-context`), Authentication and role-based access (`feature/auth-and-access`), Accounts and academic terms (`feature/accounts-and-terms`), Ledger and transactions (`feature/ledger-and-transactions`), Reports and exports (`feature/reports-and-exports`), Transparency portals (`feature/transparency-portals`), Testing, hardening, and demo (`feature/testing-hardening-and-demo`), and Post-implementation business-invariant hardening (`fix/business-invariants-concurrency-and-audit` merged via PR #10).
 * **Completed**: Full Engineering Audit & Remediation (`audit/full-project-completeness-ui-docs`), including financial-report-template alignment work from `feat/financial-report-template-alignment`.
-* **Current**: Manual UAT / Demo Readiness (`qa/manual-uat-demo-readiness`).
+* **Current**: Deployment Preparation (`deploy/vercel-turso`).
 
 ## Business Invariants (Post-Implementation Hardening)
 

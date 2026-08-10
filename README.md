@@ -8,8 +8,9 @@
 
 * **Core**: Next.js 16 (App Router), React 19, TypeScript (Strict mode)
 * **Styling**: Tailwind CSS, System / Arial / Helvetica font stack
-* **Database & ORM**: SQLite via Prisma ORM 6
-* **Key Architecture**: Server Actions for mutations, Route Handlers for file downloads and PDF/Excel exports (`pdfkit`, `exceljs`), and database-backed sessions with `bcryptjs` password hashing.
+* **Database & ORM**: SQLite via Prisma ORM 6, with optional Turso/libSQL runtime adapter for deployment
+* **Storage**: Local filesystem in development, private Vercel Blob with direct client uploads in deployment
+* **Key Architecture**: Server Actions for mutations, Node.js Route Handlers for secure file downloads and PDF/Excel exports (`pdfkit`, `exceljs`), and database-backed sessions with `bcryptjs` password hashing.
 
 ---
 
@@ -20,7 +21,7 @@
 * [Report Layout Reference](docs/report-layout-reference.md) — Anonymized layout specifications for Summary Report, Schedule 1 Collections, Schedule 2 Expenses, and Signatures based on the provided historical workbook reference.
 * [Developer Documentation](docs/dev/README.md) — Audit, traceability, demo, UAT, and verification records kept outside core project docs.
 * [Repository Agent Guidelines](AGENTS.md) — Coding agent rules, financial invariants, architecture constraints, and testing expectations.
-* [Deployment Manual](DEPLOYMENT.md) — Reference guide for local Windows hosting using PM2 and automated Task Scheduler backups.
+* [Deployment Manual](DEPLOYMENT.md) — Vercel + Turso deployment guide, local SQLite development, and attachment-storage operations.
 
 ---
 
@@ -82,10 +83,13 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
    Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 4. **Seeded Demo Accounts**:
-   * **OSA Monitoring Account**: `demo_osa` / `password`
-   * **Organization Treasurer**: `demo_treasurer_supreme-student-council` / `password`
-   * **Organization Adviser**: `demo_adviser_supreme-student-council` / `password`
-   * **Organization Auditor**: `demo_audit_supreme-student-council` / `password`
+   * **OSA Monitoring Account**: `demo_osa`
+   * **Organization Treasurer**: `demo_treasurer_supreme-student-council`
+   * **Organization Adviser**: `demo_adviser_supreme-student-council`
+   * **Organization Auditor**: `demo_audit_supreme-student-council`
+
+   Demo passwords come from `DEMO_PASSWORD` during seed/deployment. Local development
+   may use the documented non-production fallback when `DEMO_PASSWORD` is absent.
 
 ---
 
