@@ -1,5 +1,6 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatReportDate } from "@/lib/reports/report-layout";
+import { ReportMasthead } from "@/components/reports/report-masthead";
 
 interface AttachmentReferencesProps {
   report: ReportPackageDto;
@@ -8,19 +9,7 @@ interface AttachmentReferencesProps {
 export function AttachmentReferences({ report }: AttachmentReferencesProps) {
   return (
     <div className="report-page report-attachments bg-white border border-slate-200 rounded-xl p-8 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0">
-      <div className="text-center space-y-1 border-b pb-6">
-        <p className="text-xs uppercase tracking-widest text-slate-500 font-bold">
-          Pambayang Kolehiyo ng Mauban
-        </p>
-        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-          Receipts / Attachments
-        </h2>
-        <p className="text-sm uppercase font-bold text-[#004aad]">Reference index</p>
-        <p className="text-sm text-slate-600 font-semibold">
-          {report.organizationName} &bull; {report.academicYear} {report.semesterLabel}
-        </p>
-        <p className="text-xs text-slate-500">As of {formatReportDate(report.asOfDate)}</p>
-      </div>
+      <ReportMasthead report={report} title="Receipts / Attachments" sectionLabel="Reference index" compact />
 
       {report.attachments.length === 0 ? (
         <div className="text-center py-10 text-slate-500 text-sm italic border rounded-lg">

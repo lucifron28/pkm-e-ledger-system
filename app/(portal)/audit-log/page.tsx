@@ -8,6 +8,7 @@ import {
 } from "@/lib/domain/query";
 import Link from "next/link";
 import { AuditAction } from "@prisma/client";
+import { Button, ButtonLink, PageHeader, StatusPanel } from "@/components/ui/patterns";
 
 export default async function AuditLogPage({
   searchParams,
@@ -39,10 +40,8 @@ export default async function AuditLogPage({
   if (!user.organizationId) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">You are not assigned to an organization.</p>
-        </div>
+        <PageHeader eyebrow="Audit" title="Treasurer log" description="Organization-scoped history of financial and account changes." />
+        <StatusPanel title="Organization assignment required"><p>You are not assigned to an organization.</p></StatusPanel>
       </div>
     );
   }
@@ -62,10 +61,8 @@ export default async function AuditLogPage({
   if (invalidQuery || page.invalidCursor) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">Invalid audit-log filter or expired pagination cursor. Check action, dates, actor, cursor, or page size.</p>
-        </div>
+        <PageHeader eyebrow="Audit" title="Treasurer log" description="Organization-scoped history of financial and account changes." />
+        <StatusPanel title="Invalid audit filter"><p>Check action, dates, actor, cursor, or page size.</p></StatusPanel>
       </div>
     );
   }
@@ -111,72 +108,48 @@ export default async function AuditLogPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Treasurer Log</h1>
-          <p className="text-sm text-slate-600">
-            Organization-scoped audit history for {user.organizationName}
-          </p>
-        </div>
-        <Link href="/dashboard" className="text-sm text-[#004aad] font-semibold hover:underline">
-          &larr; Back to Dashboard
-        </Link>
-      </div>
+      <PageHeader eyebrow="Audit" title="Treasurer log" description={`Organization-scoped audit history for ${user.organizationName}.`} backHref="/dashboard" backLabel="Back to dashboard" />
 
       {/* Filters */}
-      <form method="GET" action="/audit-log" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+      <form method="GET" action="/audit-log" className="ui-panel ui-panel-body grid grid-cols-1 items-end gap-4 sm:grid-cols-2 md:grid-cols-5">
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="action-filter">
-            Action
-          </label>
-          <select id="action-filter" name="action" defaultValue={action || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
-            <option value="">All Actions</option>
+          <label className="ui-label" htmlFor="action-filter">Action</label>
+          <select id="action-filter" name="action" defaultValue={action || ""} className="ui-select">
+            <option value="">All actions</option>
             {Object.values(AuditAction).map((a) => (
               <option key={a} value={a}>{AUDIT_ACTION_LABELS[a] || a}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="actor-filter">
-            Actor User
-          </label>
-          <select id="actor-filter" name="actorUserId" defaultValue={actorUserId || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
-            <option value="">All Users</option>
+          <label className="ui-label" htmlFor="actor-filter">Actor user</label>
+          <select id="actor-filter" name="actorUserId" defaultValue={actorUserId || ""} className="ui-select">
+            <option value="">All users</option>
             {orgUsers.map((u) => (
               <option key={u.id} value={u.id}>{u.fullName} ({u.username})</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-from">
-            Date From
-          </label>
-          <input id="date-from" type="date" name="dateFrom" defaultValue={dateFrom || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white" />
+          <label className="ui-label" htmlFor="date-from">Date from</label>
+          <input id="date-from" type="date" name="dateFrom" defaultValue={dateFrom || ""} className="ui-input" />
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1" htmlFor="date-to">
-            Date To
-          </label>
-          <input id="date-to" type="date" name="dateTo" defaultValue={dateTo || ""} className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white" />
+          <label className="ui-label" htmlFor="date-to">Date to</label>
+          <input id="date-to" type="date" name="dateTo" defaultValue={dateTo || ""} className="ui-input" />
         </div>
         <div className="flex gap-2">
-          <button type="submit" className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex-1">
-            Apply Filters
-          </button>
-          <Link href="/audit-log" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs transition text-center flex-1">
-            Clear
-          </Link>
+          <Button type="submit" className="flex-1 text-xs">Apply filters</Button>
+          <ButtonLink href="/audit-log" variant="secondary" className="flex-1 text-xs">Clear</ButtonLink>
         </div>
       </form>
 
       {logs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
-          No audit entries found for this organization.
-        </div>
+        <StatusPanel title="No audit entries found"><p>No audit entries were found for this organization.</p></StatusPanel>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-slate-900 text-sm">Audit Log Entries — showing {logs.length} entries on this page</h2>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <h2 className="ui-panel-title">Audit log entries - showing {logs.length} on this page</h2>
             <div className="flex items-center gap-3 text-xs font-bold">
               {hasCursor && (
                 <Link href={firstPageUrl} className="text-[#004aad] hover:underline">&laquo; First Page</Link>
@@ -190,8 +163,8 @@ export default async function AuditLogPage({
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
+            <table className="ui-data-table min-w-[760px]">
+              <thead>
                 <tr>
                   <th className="px-4 py-3 text-left">Timestamp</th>
                   <th className="px-4 py-3 text-left">Action</th>
@@ -219,7 +192,7 @@ export default async function AuditLogPage({
                       {log.fullName || log.username || log.userId || "System"}
                       {log.username && <div className="text-xs text-slate-500">{log.username}</div>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.role || "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-700">{log.role || "-"}</td>
                     <td className="px-4 py-3 text-xs text-slate-700">
                       <div className="font-semibold text-slate-900 mb-1">
                         {formatHumanReadableSummary(log)}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
+import { IconX as X } from "@tabler/icons-react";
 
 export function TransactionDetailsModal({
   transaction,
@@ -25,7 +26,7 @@ export function TransactionDetailsModal({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
-        className="bg-blue-50 hover:bg-blue-100 text-[#004aad] font-bold px-2.5 py-1 rounded text-xs border border-blue-200 transition"
+        className="ui-button ui-button-secondary px-3 text-xs"
       >
         Details
       </button>
@@ -52,9 +53,9 @@ export function TransactionDetailsModal({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close details dialog"
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl"
+                className="ui-icon-button"
               >
-                &times;
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 

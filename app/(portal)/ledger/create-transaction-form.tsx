@@ -48,25 +48,25 @@ export function CreateTransactionForm({
   const activeType = fixedType || txType;
 
   return (
-    <form action={formAction} encType="multipart/form-data" className="space-y-4">
+    <form action={formAction} encType="multipart/form-data" className="space-y-5" aria-busy={isPending}>
       <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {fixedType && <input type="hidden" name="type" value={fixedType} />}
       {state?.error && (
-        <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">{state.error}</div>
+        <div role="alert" aria-live="assertive" className="ui-status ui-status-danger"><p>{state.error}</p></div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           {fixedType ? (
             <>
-              <span id="create-tx-type-label" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</span>
-              <div aria-labelledby="create-tx-type-label" className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-slate-700">
+              <span id="create-tx-type-label" className="ui-label">Type</span>
+              <div aria-labelledby="create-tx-type-label" className="ui-input bg-slate-100 font-bold text-slate-700">
                 {fixedType === TransactionType.INCOME ? "Income (Fixed)" : "Expense (Fixed)"}
               </div>
             </>
           ) : (
             <>
-              <label htmlFor="create-tx-type" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>
+              <label htmlFor="create-tx-type" className="ui-label">Type</label>
               <select
                 id="create-tx-type"
                 name="type"
@@ -74,7 +74,7 @@ export function CreateTransactionForm({
                 onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
                 aria-invalid={Boolean(state?.fieldErrors?.type)}
                 aria-describedby={state?.fieldErrors?.type ? "create-tx-type-error" : undefined}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                className="ui-select"
               >
                 <option value="INCOME">Income</option>
                 <option value="EXPENSE">Expense</option>
@@ -85,7 +85,7 @@ export function CreateTransactionForm({
         </div>
 
         <div>
-          <label htmlFor="create-tx-date" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Transaction Date</label>
+          <label htmlFor="create-tx-date" className="ui-label">Transaction date</label>
           <input
             id="create-tx-date"
             name="transactionDate"
@@ -93,13 +93,13 @@ export function CreateTransactionForm({
             required
             aria-invalid={Boolean(state?.fieldErrors?.transactionDate)}
             aria-describedby={state?.fieldErrors?.transactionDate ? "create-tx-date-error" : undefined}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+            className="ui-input"
           />
           {state?.fieldErrors?.transactionDate && <p id="create-tx-date-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.transactionDate[0]}</p>}
         </div>
 
         <div>
-          <label htmlFor="create-tx-amount" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Amount (₱)</label>
+          <label htmlFor="create-tx-amount" className="ui-label">Amount (PHP)</label>
           <input
             id="create-tx-amount"
             name="amount"
@@ -109,7 +109,7 @@ export function CreateTransactionForm({
             placeholder="0.00"
             aria-invalid={Boolean(state?.fieldErrors?.amount)}
             aria-describedby={state?.fieldErrors?.amount ? "create-tx-amount-error" : undefined}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+            className="ui-input font-mono"
           />
           {state?.fieldErrors?.amount && <p id="create-tx-amount-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.amount[0]}</p>}
         </div>
@@ -117,14 +117,14 @@ export function CreateTransactionForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label htmlFor="create-tx-cash-account" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Cash Account</label>
+          <label htmlFor="create-tx-cash-account" className="ui-label">Cash account</label>
           <select
             id="create-tx-cash-account"
             name="cashAccount"
             required
             aria-invalid={Boolean(state?.fieldErrors?.cashAccount)}
             aria-describedby={state?.fieldErrors?.cashAccount ? "create-tx-cash-account-error" : undefined}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+            className="ui-select"
           >
             <option value="">Select account</option>
             <option value="CASH_ON_HAND">Cash on Hand</option>
@@ -134,7 +134,7 @@ export function CreateTransactionForm({
         </div>
 
         <div>
-          <label htmlFor="create-tx-category" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Category</label>
+          <label htmlFor="create-tx-category" className="ui-label">Category</label>
           <select
             id="create-tx-category"
             name="categoryId"
@@ -143,7 +143,7 @@ export function CreateTransactionForm({
             onChange={(e) => setSelectedCategoryId(e.target.value)}
             aria-invalid={Boolean(state?.fieldErrors?.categoryId)}
             aria-describedby={state?.fieldErrors?.categoryId ? "create-tx-category-error" : undefined}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+            className="ui-select"
           >
             <option value="">Select category</option>
             {categories.map((c) => (
@@ -154,7 +154,7 @@ export function CreateTransactionForm({
         </div>
 
         <div>
-          <label htmlFor="create-tx-doc-number" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Document Number</label>
+          <label htmlFor="create-tx-doc-number" className="ui-label">Document number</label>
           <input
             id="create-tx-doc-number"
             name="documentNumber"
@@ -163,14 +163,14 @@ export function CreateTransactionForm({
             placeholder="e.g. OR-001"
             aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
             aria-describedby={state?.fieldErrors?.documentNumber ? "create-tx-doc-number-error" : undefined}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+            className="ui-input"
           />
           {state?.fieldErrors?.documentNumber && <p id="create-tx-doc-number-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.documentNumber[0]}</p>}
         </div>
       </div>
 
       <div>
-        <label htmlFor="create-tx-counterparty" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Payor / Payee</label>
+        <label htmlFor="create-tx-counterparty" className="ui-label">Payor / payee</label>
         <input
           id="create-tx-counterparty"
           name="counterpartyName"
@@ -180,13 +180,13 @@ export function CreateTransactionForm({
           placeholder="Name of person or entity"
           aria-invalid={Boolean(state?.fieldErrors?.counterpartyName)}
           aria-describedby={state?.fieldErrors?.counterpartyName ? "create-tx-counterparty-error" : undefined}
-          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          className="ui-input"
         />
         {state?.fieldErrors?.counterpartyName && <p id="create-tx-counterparty-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.counterpartyName[0]}</p>}
       </div>
 
       <div>
-        <label htmlFor="create-tx-description" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Description</label>
+        <label htmlFor="create-tx-description" className="ui-label">Particulars</label>
         <input
           id="create-tx-description"
           name="description"
@@ -196,13 +196,13 @@ export function CreateTransactionForm({
           placeholder="Brief description of the transaction"
           aria-invalid={Boolean(state?.fieldErrors?.description)}
           aria-describedby={state?.fieldErrors?.description ? "create-tx-description-error" : undefined}
-          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          className="ui-input"
         />
         {state?.fieldErrors?.description && <p id="create-tx-description-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.description[0]}</p>}
       </div>
 
       <div>
-        <label htmlFor="create-tx-reference" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Reference / Attachment Description</label>
+        <label htmlFor="create-tx-reference" className="ui-label">Reference / attachment description</label>
         <input
           id="create-tx-reference"
           name="referenceDescription"
@@ -212,14 +212,14 @@ export function CreateTransactionForm({
           placeholder="Notes about supporting documents"
           aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
           aria-describedby={state?.fieldErrors?.referenceDescription ? "create-tx-reference-error" : undefined}
-          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          className="ui-input"
         />
         {state?.fieldErrors?.referenceDescription && <p id="create-tx-reference-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.referenceDescription[0]}</p>}
       </div>
 
       <div>
-        <label htmlFor="create-tx-attachment" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-          Receipt Attachment
+        <label htmlFor="create-tx-attachment" className="ui-label">
+          Receipt attachment
         </label>
         <input
           id="create-tx-attachment"
@@ -229,14 +229,14 @@ export function CreateTransactionForm({
           accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
           aria-invalid={Boolean(state?.fieldErrors?.attachment)}
           aria-describedby={state?.fieldErrors?.attachment ? "create-tx-attachment-error" : undefined}
-          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          className="ui-input"
         />
         <p className="mt-1 text-xs text-slate-500">Required. JPEG, PNG, or PDF up to 10 MB.</p>
         {state?.fieldErrors?.attachment && <p id="create-tx-attachment-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.attachment[0]}</p>}
       </div>
 
       <div>
-        <label htmlFor="create-tx-event" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Event / Activity Name</label>
+        <label htmlFor="create-tx-event" className="ui-label">Event / activity name</label>
         <input
           id="create-tx-event"
           name="eventActivityName"
@@ -246,14 +246,14 @@ export function CreateTransactionForm({
           placeholder="Associated project, event, or activity"
           aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
           aria-describedby={state?.fieldErrors?.eventActivityName ? "create-tx-event-error" : undefined}
-          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+          className="ui-input"
         />
         {state?.fieldErrors?.eventActivityName && <p id="create-tx-event-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.eventActivityName[0]}</p>}
       </div>
 
       <button
         type="submit" disabled={isPending}
-        className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-6 py-2.5 rounded-lg shadow transition text-sm disabled:opacity-50"
+        className="ui-button ui-button-primary"
       >
         {isPending ? "Recording..." : `Record ${activeType === TransactionType.INCOME ? "Income" : "Expense"}`}
       </button>

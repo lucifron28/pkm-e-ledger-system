@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { deleteAttachmentAction, uploadAttachmentAction } from "@/lib/actions/attachments";
 import type { AttachmentDto } from "@/lib/data/transactions";
+import { IconTrash as Trash } from "@tabler/icons-react";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -53,10 +54,11 @@ export function AttachmentManager({
               <button
                 type="submit"
                 disabled={deletePending}
-                className="text-red-600 hover:underline disabled:opacity-50"
+                className="ui-icon-button text-red-600 hover:bg-red-50 disabled:opacity-50"
+                aria-label={`Delete attachment ${attachment.originalName}`}
                 title="Delete attachment"
               >
-                ×
+                <Trash size={16} aria-hidden="true" />
               </button>
             </form>
           </div>
@@ -72,18 +74,18 @@ export function AttachmentManager({
           accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
           required
           onChange={() => setUploadIdempotencyKey(crypto.randomUUID())}
-          className="block w-full text-[10px] text-slate-600"
+          className="ui-input text-xs"
         />
         <button
           type="submit"
           disabled={uploadPending}
-          className="mt-1 text-xs font-semibold text-[#004aad] hover:underline disabled:opacity-50"
+          className="ui-button ui-button-quiet mt-1 w-full text-xs disabled:opacity-50"
         >
           {uploadPending ? "Uploading..." : "Upload attachment"}
         </button>
       </form>
       {(uploadState?.error || deleteState?.error) && (
-        <p className="text-xs text-red-600">{uploadState?.error || deleteState?.error}</p>
+        <p role="alert" className="text-xs text-red-600">{uploadState?.error || deleteState?.error}</p>
       )}
     </div>
   );

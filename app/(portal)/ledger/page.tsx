@@ -17,6 +17,7 @@ import { AttachmentManager } from "./attachment-manager";
 import { LedgerFilters } from "./ledger-filters";
 import { OsaLedgerSummaryView, OsaOrganizationSelectView } from "@/components/ledger/osa-ledger-summary";
 import { buildLedgerFilterUrl, parseLedgerQueryParams } from "@/lib/domain/query";
+import { ButtonLink, MetricCard, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -55,11 +56,9 @@ export default async function LedgerPage({
   if (Object.values(snapshot.queryValidity).some(Boolean)) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Ledger Entries</h1>
+        <PageHeader eyebrow="Financial control" title="Ledger entries" description="Review and filter recorded transactions for your organization." />
         <LedgerFilters filters={parsedQuery} incomeCategories={incomeCategories} expenseCategories={expenseCategories} terms={snapshot.terms} />
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-sm text-amber-900">
-          Invalid ledger filter. Check term selection, date range, month, cursor, page size, or academic year, then try again.
-        </div>
+        <StatusPanel title="Invalid ledger filter"><p>Check term selection, date range, month, cursor, page size, or academic year, then try again.</p></StatusPanel>
       </div>
     );
   }
@@ -67,11 +66,10 @@ export default async function LedgerPage({
   if (!activeTerm || !snapshot.balances) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Ledger Entries</h1>
-        <div className="bg-amber-50 border-2 border-dashed border-amber-300 p-8 rounded-xl text-center space-y-3">
-          <p className="text-amber-900 font-medium">No academic term configured for {user.organizationName}.</p>
-          <Link href="/settings/term" className="inline-block bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow text-sm">Set Up Academic Term</Link>
-        </div>
+        <PageHeader eyebrow="Financial control" title="Ledger entries" description="Review and filter recorded transactions for your organization." />
+        <StatusPanel title="Academic term required" action={<ButtonLink href="/settings/term">Set up academic term</ButtonLink>}>
+          <p>No academic term is configured for {user.organizationName}.</p>
+        </StatusPanel>
       </div>
     );
   }
@@ -93,42 +91,42 @@ export default async function LedgerPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Ledger Entries</h1>
-          <p className="text-sm text-slate-600">{activeTerm.academicYear} - {getSemesterLabel(activeTerm.semester)} - {user.organizationName}</p>
-        </div>
-        <Link href="/dashboard" className="text-sm text-[#004aad] font-semibold hover:underline">Back to Dashboard</Link>
-      </div>
+      <PageHeader
+        eyebrow="Financial control"
+        title="Ledger entries"
+        description={`${activeTerm.academicYear} - ${getSemesterLabel(activeTerm.semester)} - ${user.organizationName}`}
+        backHref="/dashboard"
+        backLabel="Back to dashboard"
+        actions={<span className={`ui-status-chip ${activeTerm.active ? "ui-status-chip-success" : "ui-status-chip-neutral"}`}>{activeTerm.active ? "Active term" : "Historical term"}</span>}
+      />
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-[#004aad] text-white px-6 py-4"><span className="bg-[#f9d818] text-[#004aad] text-xs font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider">{activeTerm.active ? "Active Term Balances" : "Historical Term Balances"}</span></div>
-        <div className="px-6 py-5 grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <BalanceCard label="Cash on Hand" value={formatPesoFromCents(balances.cashOnHandCents)} />
-          <BalanceCard label="Cash in Bank" value={formatPesoFromCents(balances.cashInBankCents)} />
-          <BalanceCard label="Total Income" value={formatPesoFromCents(balances.totalIncomeCents)} tone="income" />
-          <BalanceCard label="Total Expense" value={formatPesoFromCents(balances.totalExpenseCents)} tone="expense" />
-          <BalanceCard label="Remaining Balance" value={formatPesoFromCents(balances.remainingCents)} tone="remaining" />
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Cash on Hand" value={formatPesoFromCents(balances.cashOnHandCents)} help="Current account balance" />
+        <MetricCard label="Cash in Bank" value={formatPesoFromCents(balances.cashInBankCents)} help="Current account balance" tone="brand" />
+        <MetricCard label="Total Collections" value={formatPesoFromCents(balances.totalIncomeCents)} help="Active income" tone="success" />
+        <MetricCard label="Total Expenses" value={formatPesoFromCents(balances.totalExpenseCents)} help="Active expenses" tone="danger" />
+        <MetricCard label="Remaining Balance" value={formatPesoFromCents(balances.remainingCents)} help="Available after expenses" tone="dark" />
       </div>
 
       {activeTerm.active ? (
-        <>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Transaction</h2></div><div className="p-6"><CreateTransactionForm activeTermId={activeTerm.id} incomeCategories={incomeCategories} expenseCategories={expenseCategories} /></div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="px-6 py-4 bg-slate-50 border-b border-slate-200"><h2 className="font-bold text-slate-900 text-lg">New Cash Transfer</h2></div><div className="p-6"><CreateCashTransferForm activeTermId={activeTerm.id} /></div></div>
-        </>
-      ) : (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center text-sm font-semibold text-amber-900">
-          New entries may only be recorded in the active term.
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Record transaction" description="Capture income or expense with account, category, payee, and receipt details.">
+            <CreateTransactionForm activeTermId={activeTerm.id} incomeCategories={incomeCategories} expenseCategories={expenseCategories} />
+          </Panel>
+          <Panel title="Move cash between accounts" description="Transfers change account balances without changing income or expense totals.">
+            <CreateCashTransferForm activeTermId={activeTerm.id} />
+          </Panel>
         </div>
+      ) : (
+        <StatusPanel title="Read-only historical term"><p>New entries may only be recorded in the active term.</p></StatusPanel>
       )}
 
       <LedgerFilters filters={parsedQuery} incomeCategories={incomeCategories} expenseCategories={expenseCategories} terms={snapshot.terms} />
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="font-bold text-slate-900 text-lg">
-            Ledger Entries — showing {snapshot.pagination.countOnPage} on this page.
+      <div className="ui-panel">
+        <div className="ui-panel-header">
+          <h2 className="ui-panel-title">
+            Ledger entries - showing {snapshot.pagination.countOnPage} on this page.
           </h2>
           <div className="flex items-center gap-3 text-xs font-bold">
             {hasCursor && (
@@ -155,8 +153,8 @@ export default async function LedgerPage({
           <>
             {/* Desktop Table View */}
             <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
+              <table className="ui-data-table min-w-[1500px]">
+                <thead>
                   <tr>
                     <th className="px-4 py-3 text-left">Transaction Date</th>
                     <th className="px-4 py-3 text-left">Academic Year</th>
@@ -233,11 +231,6 @@ export default async function LedgerPage({
       </div>
     </div>
   );
-}
-
-function BalanceCard({ label, value, tone }: { label: string; value: string; tone?: "income" | "expense" | "remaining" }) {
-  const classes = tone === "income" ? "bg-emerald-50 border-emerald-100 text-emerald-700" : tone === "expense" ? "bg-red-50 border-red-100 text-red-700" : tone === "remaining" ? "bg-[#004aad] border-[#004aad] text-[#f9d818]" : "bg-slate-50 border-slate-200 text-slate-900";
-  return <div className={`rounded-lg p-3 border ${classes}`}><div className="text-xs font-bold uppercase tracking-wider mb-1 text-slate-500">{label}</div><div className="text-lg font-extrabold font-mono">{value}</div></div>;
 }
 
 function LedgerRow({

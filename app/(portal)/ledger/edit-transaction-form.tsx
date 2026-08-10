@@ -7,6 +7,7 @@ import { TransactionType } from "@prisma/client";
 import { formatPesoInputFromCents } from "@/lib/data/money";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { TRANSACTION_FIELD_LIMITS } from "@/lib/domain/field-limits";
+import { IconX as X } from "@tabler/icons-react";
 
 interface EditTransactionFormProps {
   transaction: TransactionDto;
@@ -50,7 +51,7 @@ export function EditTransactionForm({
         ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(true)}
-        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded text-xs border border-slate-300 transition"
+        className="ui-button ui-button-secondary px-3 text-xs"
       >
         Edit
       </button>
@@ -78,19 +79,17 @@ export function EditTransactionForm({
                 onClick={() => !isPending && setIsOpen(false)}
                 disabled={isPending}
                 aria-label="Close dialog"
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                className="ui-icon-button disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                &times;
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
             {state?.error && !state.fieldErrors && (
-              <div role="alert" className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">
-                {state.error}
-              </div>
+              <div role="alert" aria-live="assertive" className="ui-status ui-status-danger"><p>{state.error}</p></div>
             )}
 
-            <form action={formAction} className="space-y-4">
+            <form action={formAction} className="space-y-4" aria-busy={isPending}>
               <input type="hidden" name="id" value={transaction.id} />
               <input type="hidden" name="version" value={transaction.version} />
               <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
@@ -326,14 +325,14 @@ export function EditTransactionForm({
                   type="button"
                   onClick={() => !isPending && setIsOpen(false)}
                   disabled={isPending}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ui-button ui-button-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="bg-[#004aad] hover:bg-[#003882] text-white font-bold px-4 py-2 rounded-lg shadow transition text-sm disabled:opacity-50"
+                  className="ui-button ui-button-primary disabled:opacity-50"
                 >
                   {isPending ? "Saving..." : "Save Changes"}
                 </button>
