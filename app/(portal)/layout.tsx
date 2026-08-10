@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/require-auth";
 import { logoutAction } from "@/lib/actions/logout";
 import { isMonitoringRole } from "@/lib/auth/rbac";
 import { PortalNav } from "@/components/navigation/portal-nav";
+import { PkmLogo } from "@/components/branding/pkm-logo";
 import { Suspense } from "react";
 import Link from "next/link";
 
@@ -20,9 +21,7 @@ export default async function PortalLayout({
         <div className="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-16 min-h-[4rem] flex items-center justify-between">
           <div className="flex items-center space-x-4 md:space-x-6">
             <Link href={isMonitoring ? "/osa" : "/dashboard"} className="flex items-center space-x-2.5">
-              <span className="bg-[#f9d818] text-[#004aad] font-extrabold w-9 h-9 rounded-lg flex items-center justify-center text-base shadow-inner">
-                PKM
-              </span>
+              <PkmLogo size={36} priority className="h-9 w-9" />
               <span className="font-extrabold text-lg tracking-tight">e-Ledger</span>
             </Link>
 
