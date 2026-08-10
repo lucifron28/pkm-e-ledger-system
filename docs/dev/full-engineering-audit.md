@@ -97,14 +97,14 @@ Verification executed on `2026-08-10` from executable Git HEAD `e892500` using N
 - Isolated fictional storage-reconciliation dry-run test: passed through the core and full test suites.
 - Report-template verification: synthetic anonymized XLSX round-trip passed for the four export sheets, formulas, six role-only signature slots, grouped collections, mapped expense columns, attachment metadata, and print orientation. Schedule 1 stress coverage passed continuation-page preflight for long payor rows, category subtotals, and the final schedule total. PDF alignment and 520 pt portrait attachment-width checks passed, and synthetic PDF output was visually inspected across summary, collection, expense, and attachment pages.
 
-Final dependency triage reduced the audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Remaining records are documented below. No `npm audit fix --force` was run. Manual browser and desktop viewport evidence are recorded in the later UAT documentation. Full keyboard-only traversal and OS/browser print-preview remain **NOT VERIFIED**; XLSX visual inspection also remains **NOT VERIFIED**.
+Historical dependency triage reduced the earlier audit to 4 package findings (2 moderate, 2 high), with 3 production findings (2 moderate, 1 high). Deployment-branch remediation and residual records are documented below. No `npm audit fix --force` was run. Manual browser and desktop viewport evidence are recorded in the later UAT documentation. Full keyboard-only traversal and OS/browser print-preview remain **NOT VERIFIED**; XLSX visual inspection also remains **NOT VERIFIED**.
 
-## 3. Current Dependency-Security Triage (2026-08-10)
+## 3. Current Dependency-Security Triage (deploy/vercel-turso, 2026-08-10)
 
 Commands captured on this branch: `npm audit --json`, `npm audit --omit=dev --json`,
-`npm audit`, and `npm audit --omit=dev`. Current totals are 4 findings (2 high,
-2 moderate) with 3 findings in the production-only report (1 high, 2 moderate).
-`npm explain` and source inspection were used for dependency paths and API reachability.
+`npm audit`, and `npm audit --omit=dev`. Post-remediation totals are 2 findings
+(0 high, 2 moderate) in both reports. `npm explain` and source inspection were
+used for dependency paths and API reachability.
 
 Class legend: A = runtime, applicable, and fix available; B = runtime, applicable,
 and no compatible fix; C = runtime dependency but vulnerable API not reachable;
@@ -112,14 +112,29 @@ D = dev-only; E = false-positive or superseded advisory.
 
 | Package and installed version | Severity | Advisory | Directness and dependency path | Runtime / dev | API reachable? | Fix status | Class |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `brace-expansion` 1.1.15, 2.1.2, 5.0.7 | High | [GHSA-3jxr-9vmj-r5cp](https://github.com/advisories/GHSA-3jxr-9vmj-r5cp), [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg), [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) | Transitive: `exceljs -> archiver -> readdir-glob -> minimatch -> brace-expansion`; separate ESLint/TypeScript-ESLint dev paths | Runtime and dev nodes | No application-controlled glob pattern reaches `readdir-glob`; XLSX export uses ExcelJS `writeBuffer()` and does not call directory globbing | Patched releases exist (`1.1.18`, `2.1.4`, `5.0.9`); non-force dry-run made no lockfile change; no blind override applied | C |
-| `js-yaml` 4.3.0 | High | [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj) | Transitive: `eslint -> @eslint/eslintrc -> js-yaml` | Dev-only | No production import or route | Patched `4.3.1+` exists; not a runtime remediation target | D |
 | `exceljs` 4.4.0 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) through `uuid` | Direct runtime dependency used by `/api/reports/[termId]/excel` | Runtime | ExcelJS is reachable, but its observed UUID call is v4 without a caller-supplied buffer | Audit suggests breaking downgrade to ExcelJS `3.4.0`; no compatible stable fix demonstrated | C |
-| `uuid` 8.3.2 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq), range `<11.1.1` | Transitive: `exceljs@4.4.0 -> uuid@8.3.2` | Runtime | ExcelJS source uses `uuidv4()` only; vulnerable v3/v5/v6 buffer API is not reachable, and application source has no direct UUID import | UUID major upgrade was not proven compatible with ExcelJS; no override introduced | C |
+| `uuid` 8.3.2 | Moderate | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq), range `<11.1.1` | Transitive: `exceljs@4.4.0 -> uuid@8.3.2` | Runtime | ExcelJS source uses `uuidv4()` only; vulnerable v3/v5/v6 buffer API is not reachable, and application source has no direct UUID import | No compatible ExcelJS/UUID fix demonstrated; no breaking override introduced | C |
 
 Residual audit status: no unresolved applicable runtime HIGH vulnerability. The
-remaining audit exit status `1` is documented residual risk from class C and D
-records. ExcelJS export regression tests generate and reopen XLSX output.
+remaining audit exit status `1` is documented residual risk from two moderate
+class C records. ExcelJS export regression tests generate and reopen XLSX output.
+
+Patched findings observed before the final audit were also classified and remediated:
+
+| Package and patched version | Prior severity | Path and reachability | Remediation | Class |
+| --- | --- | --- | --- | --- |
+| `brace-expansion` `1.1.18`, `2.1.4`, `5.0.9` | High | Runtime ExcelJS archive helper plus dev minimatch paths; application does not call vulnerable glob expansion | Safe non-force patch applied; no override or force downgrade | C |
+| `js-yaml` `4.3.1` | High | Dev-only ESLint configuration path; no production import or route | Safe patch applied | D |
+
+### Deployment Branch Verification (2026-08-10)
+
+`deploy/vercel-turso` final gate: `npm ci`, lint, typecheck, Prisma generation and
+validation, core (104), integration (29), migrations (14), full suite (147), database
+smoke, build, and local readiness all passed. Build completed without the prior six
+Turbopack filesystem-tracing warnings after local-provider trace annotations.
+Both audit modes reported 2 moderate and 0 high findings; the remaining `exceljs` /
+`uuid` record is documented above. Live Turso, Vercel, and Blob operations were not
+run, and no cloud credentials or destructive cloud commands were used.
 
 ## 3.1 Historical Dependency-Security Triage (prior executable head)
 
