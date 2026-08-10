@@ -2,6 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import type { Semester } from "@prisma/client";
+import {
+  IconCalendar,
+  IconFileSpreadsheet,
+  IconFileTypePdf,
+  IconPrinter,
+} from "@tabler/icons-react";
+import { ButtonLink } from "@/components/ui/patterns";
 
 interface TermOption {
   id: string;
@@ -20,71 +27,50 @@ export function ReportToolbar({ terms, currentTermId, canExport = true }: Report
   const router = useRouter();
 
   function handleTermChange(termId: string) {
-    const selected = terms.find((t) => t.id === termId);
-    if (selected) {
-      const searchParams = new URLSearchParams(window.location.search);
-      searchParams.set("academicYear", selected.academicYear);
-      searchParams.set("semester", selected.semester);
-      router.push(`/reports?${searchParams.toString()}`);
-    }
+    const selected = terms.find((term) => term.id === termId);
+    if (!selected) return;
+
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set("academicYear", selected.academicYear);
+    searchParams.set("semester", selected.semester);
+    router.push(`/reports?${searchParams.toString()}`);
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 print:hidden">
-      {/* Term Selector */}
-      <div className="flex items-center gap-3 w-full sm:w-auto">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
-          Academic Term:
-        </label>
-        <select
-          value={currentTermId}
-          onChange={(e) => handleTermChange(e.target.value)}
-          className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#004aad] w-full sm:w-auto"
-        >
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.academicYear} &mdash; {t.semester === "FIRST_SEMESTER" ? "1st Semester" : t.semester === "SECOND_SEMESTER" ? "2nd Semester" : "Summer"} {t.active ? "(Active)" : ""}
-            </option>
-          ))}
-        </select>
+    <div className="ui-report-toolbar print:hidden" aria-label="Report controls">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <IconCalendar size={18} className="shrink-0 text-[#004aad]" aria-hidden="true" />
+        <div className="min-w-0 flex-1 sm:flex-none">
+          <label htmlFor="report-term-select" className="ui-label mb-1">Academic term</label>
+          <select
+            id="report-term-select"
+            value={currentTermId}
+            onChange={(event) => handleTermChange(event.target.value)}
+            className="ui-select min-w-0 sm:min-w-[16rem]"
+          >
+            {terms.map((term) => (
+              <option key={term.id} value={term.id}>
+                {term.academicYear} - {term.semester === "FIRST_SEMESTER" ? "1st Semester" : term.semester === "SECOND_SEMESTER" ? "2nd Semester" : "Summer"} {term.active ? "(Active)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Action Buttons (Visible only if canExport is true) */}
       {canExport && (
-        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-lg text-sm shadow transition flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Print Report Package
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <button type="button" onClick={() => window.print()} className="ui-button ui-button-dark" aria-label="Print report package">
+            <IconPrinter size={17} aria-hidden="true" />
+            <span>Print</span>
           </button>
-
-          <a
-            href={`/api/reports/${currentTermId}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-sm shadow transition flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export PDF
-          </a>
-
-          <a
-            href={`/api/reports/${currentTermId}/excel`}
-            download
-            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2 rounded-lg text-sm shadow transition flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export Excel
-          </a>
+          <ButtonLink href={`/api/reports/${currentTermId}/pdf`} target="_blank" rel="noopener noreferrer" className="ui-button ui-button-primary" aria-label="Export report package as PDF">
+            <IconFileTypePdf size={17} aria-hidden="true" />
+            <span>PDF</span>
+          </ButtonLink>
+          <ButtonLink href={`/api/reports/${currentTermId}/excel`} download className="ui-button ui-button-success" aria-label="Export report package as Excel workbook">
+            <IconFileSpreadsheet size={17} aria-hidden="true" />
+            <span>Excel</span>
+          </ButtonLink>
         </div>
       )}
     </div>

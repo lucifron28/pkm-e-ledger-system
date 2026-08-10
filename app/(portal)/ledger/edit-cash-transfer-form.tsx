@@ -6,6 +6,7 @@ import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoInputFromCents } from "@/lib/data/money";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { TRANSFER_FIELD_LIMITS } from "@/lib/domain/field-limits";
+import { IconX as X } from "@tabler/icons-react";
 
 export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEntry, { kind: "TRANSFER" }> }) {
   const [state, formAction, isPending] = useActionState(editCashTransferAction, null);
@@ -27,7 +28,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
-        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded text-xs border border-slate-300 transition"
+        className="ui-button ui-button-secondary px-3 text-xs"
       >
         Edit
       </button>
@@ -53,20 +54,21 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={isPending}
-                className="text-white hover:text-yellow-300 text-sm font-bold"
+                className="ui-icon-button border-blue-200 bg-white/10 text-white hover:bg-white/20"
+                aria-label="Close edit cash transfer dialog"
               >
-                Close
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <form action={formAction} className="p-6 space-y-4">
+            <form action={formAction} className="p-6 space-y-4" aria-busy={isPending}>
               <input type="hidden" name="id" value={transfer.id} />
               <input type="hidden" name="version" value={transfer.version} />
               <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
               <input type="hidden" name="toAccount" value={toAccount} />
 
               {state?.error && (
-                <div role="alert" className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg">
+                <div role="alert" aria-live="assertive" className="ui-status ui-status-danger">
                   {state.error}
                 </div>
               )}
@@ -126,7 +128,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
 
                 <div>
                   <label htmlFor={`edit-tr-amount-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Amount (₱)
+                    Amount (PHP)
                   </label>
                   <input
                     id={`edit-tr-amount-${transfer.id}`}
@@ -242,14 +244,14 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   type="button"
                   onClick={() => !isPending && setOpen(false)}
                   disabled={isPending}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ui-button ui-button-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="bg-[#004aad] hover:bg-[#003882] text-white font-bold px-4 py-2 rounded-lg shadow transition text-sm disabled:opacity-50"
+                  className="ui-button ui-button-primary disabled:opacity-50"
                 >
                   {isPending ? "Saving..." : "Save Changes"}
                 </button>

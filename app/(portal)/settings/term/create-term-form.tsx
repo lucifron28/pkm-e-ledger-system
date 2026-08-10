@@ -16,19 +16,17 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-5" aria-busy={isPending}>
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {state?.error && !state.fieldErrors && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">
-          {state.error}
-        </div>
+        <div role="alert" aria-live="assertive" className="ui-status ui-status-danger"><p>{state.error}</p></div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label
             htmlFor="academicYear"
-            className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+            className="ui-label"
           >
             Academic Year
           </label>
@@ -38,7 +36,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
             type="text"
             required
             placeholder="e.g. 2026-2027"
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition"
+            className="ui-input"
           />
           {state?.fieldErrors?.academicYear && (
             <p className="mt-1 text-xs text-red-600 font-medium">
@@ -50,7 +48,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
         <div>
           <label
             htmlFor="semester"
-            className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+            className="ui-label"
           >
             Semester
           </label>
@@ -58,7 +56,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
             id="semester"
             name="semester"
             required
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition"
+            className="ui-select"
           >
             <option value="">Select semester</option>
             {Object.entries(SEMESTER_LABELS).map(([value, label]) => (
@@ -79,7 +77,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
         <div>
           <label
             htmlFor="openingCashOnHand"
-            className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+            className="ui-label"
           >
             Opening Cash on Hand
           </label>
@@ -90,7 +88,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
             inputMode="decimal"
             required
             placeholder="0.00"
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition font-mono"
+            className="ui-input font-mono"
           />
           {state?.fieldErrors?.openingCashOnHand && (
             <p className="mt-1 text-xs text-red-600 font-medium">
@@ -102,7 +100,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
         <div>
           <label
             htmlFor="openingCashInBank"
-            className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+            className="ui-label"
           >
             Opening Cash in Bank
           </label>
@@ -113,7 +111,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
             inputMode="decimal"
             required
             placeholder="0.00"
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition font-mono"
+            className="ui-input font-mono"
           />
           {state?.fieldErrors?.openingCashInBank && (
             <p className="mt-1 text-xs text-red-600 font-medium">
@@ -130,7 +128,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
             name="activate"
             type="checkbox"
             value="true"
-            className="w-4 h-4 text-[#004aad] border-slate-300 rounded focus:ring-[#004aad]"
+            className="h-5 w-5 accent-[#004aad]"
           />
           <label htmlFor="activate" className="text-sm text-slate-700">
             Set as active term (will deactivate the current active term)
@@ -141,7 +139,7 @@ export function CreateTermForm({ hasActiveTerm }: CreateTermFormProps) {
       <button
         type="submit"
         disabled={isPending}
-        className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm disabled:opacity-50"
+        className="ui-button ui-button-primary"
       >
         {isPending ? "Creating..." : "Create Academic Term"}
       </button>
