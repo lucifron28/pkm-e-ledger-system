@@ -48,7 +48,7 @@ export function CreateTransactionForm({
   const activeType = fixedType || txType;
 
   return (
-    <form action={formAction} encType="multipart/form-data" className="space-y-5" aria-busy={isPending}>
+    <form action={formAction} className="space-y-5" aria-busy={isPending}>
       <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {fixedType && <input type="hidden" name="type" value={fixedType} />}

@@ -15,7 +15,7 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   return (
-    <form action={formAction} encType="multipart/form-data" className="space-y-5" aria-busy={isPending}>
+    <form action={formAction} className="space-y-5" aria-busy={isPending}>
       <input type="hidden" name="termId" value={activeTermId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <input type="hidden" name="toAccount" value={toAccount} />
