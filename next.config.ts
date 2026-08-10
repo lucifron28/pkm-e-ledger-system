@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "pdfkit"],
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-libsql", "@libsql/client", "bcryptjs", "pdfkit", "exceljs", "@vercel/blob"],
   experimental: {
     serverActions: {
       bodySizeLimit: "12mb",

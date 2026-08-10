@@ -4,9 +4,11 @@ import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
+import type { SessionUser } from "../auth/session";
 import { createAuditLog } from "../data/audit-log";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
 import { AuditAction, Prisma } from "@prisma/client";
+import type { AttachmentStorageProvider, ValidatedStagedUpload } from "../infrastructure/storage/attachment-store";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import {
@@ -14,17 +16,14 @@ import {
   processIdempotentCommand,
   releaseCommandReceipt,
 } from "../application/idempotency";
+import { getAttachmentOwnerIds } from "../application/attachment-input";
+import type { AttachmentOwnerIds } from "../application/attachment-input";
 import { DomainError, ValidationError } from "../domain/errors";
 
 export type AttachmentState = { error?: string } | null;
 
-function getOwnerIds(formData: FormData): { transactionId: string | null; cashTransferId: string | null } {
-  const transactionId = formData.get("transactionId")?.toString().trim() || null;
-  const cashTransferId = formData.get("cashTransferId")?.toString().trim() || null;
-  if ((transactionId ? 1 : 0) + (cashTransferId ? 1 : 0) !== 1) {
-    throw new ValidationError("Attachment must belong to exactly one transaction or cash transfer.");
-  }
-  return { transactionId, cashTransferId };
+function getOwnerIds(formData: FormData): AttachmentOwnerIds {
+  return getAttachmentOwnerIds(formData.get("transactionId")?.toString(), formData.get("cashTransferId")?.toString());
 }
 
 function getFile(formData: FormData): File {
@@ -35,6 +34,80 @@ function getFile(formData: FormData): File {
 
 function getIdempotencyKey(formData: FormData, fallback: string): string {
   return formData.get("idempotencyKey")?.toString().trim() || fallback;
+}
+
+async function persistAttachmentRecord({
+  user,
+  owner,
+  validated,
+  storageKey,
+  idempotencyKey,
+  payload,
+  claimToken,
+}: {
+  user: SessionUser;
+  owner: AttachmentOwnerIds;
+  validated: Pick<ValidatedStagedUpload, "originalName" | "mimeType" | "sizeBytes">;
+  storageKey: string;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+  claimToken: string;
+}) {
+  return withTransientRetry(() =>
+    processIdempotentCommand<{ id: string }>(
+      user.id,
+      user.organizationId!,
+      "UPLOAD_ATTACHMENT",
+      idempotencyKey,
+      payload,
+      async (tx) => {
+        const transaction = owner.transactionId
+          ? await tx.transaction.findFirst({
+              where: { id: owner.transactionId, organizationId: user.organizationId!, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        const transfer = owner.cashTransferId
+          ? await tx.cashTransfer.findFirst({
+              where: { id: owner.cashTransferId, organizationId: user.organizationId!, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (!transaction && !transfer) throw new ValidationError("Attachment owner not found or access denied.");
+
+        const attachment = await tx.attachment.create({
+          data: {
+            transactionId: transaction?.id || null,
+            cashTransferId: transfer?.id || null,
+            uploadedById: user.id,
+            originalName: validated.originalName,
+            storageKey,
+            mimeType: validated.mimeType,
+            sizeBytes: validated.sizeBytes,
+          },
+        });
+
+        await createAuditLog({
+          userId: user.id,
+          organizationId: user.organizationId,
+          role: user.role,
+          action: AuditAction.UPLOADED_ATTACHMENT,
+          entityType: "Attachment",
+          entityId: attachment.id,
+          metadata: {
+            transactionId: transaction?.id || null,
+            cashTransferId: transfer?.id || null,
+            originalName: validated.originalName,
+            sizeBytes: validated.sizeBytes,
+          },
+          tx,
+        });
+
+        return { result: { id: attachment.id }, resultEntityType: "Attachment", resultEntityId: attachment.id };
+      },
+      { claimToken },
+    ),
+  );
 }
 
 export async function uploadAttachmentAction(
@@ -56,6 +129,10 @@ export async function uploadAttachmentAction(
   const validation = await validateAndReadAttachmentFile(file);
   if (!validation.success) return { error: validation.error };
   const validated = validation.data;
+  const storage = defaultAttachmentStorageService;
+  if (storage.mode === "vercel-blob") {
+    return { error: "Use direct private storage upload for this deployment." };
+  }
   const fileHash = crypto.createHash("sha256").update(validated.buffer).digest("hex");
   const ownerKey = owner.transactionId || owner.cashTransferId!;
   const commandType = "UPLOAD_ATTACHMENT";
@@ -83,7 +160,6 @@ export async function uploadAttachmentAction(
   if (receipt.status === "COMPLETED") return null;
 
   const claim = receipt.claim;
-  const storage = defaultAttachmentStorageService;
   let staged: Awaited<ReturnType<typeof storage.stageUpload>> | null = null;
   let storageKey: string | null = null;
   try {
@@ -91,61 +167,19 @@ export async function uploadAttachmentAction(
     const committed = await storage.commitUpload(staged.stageId, staged.extension);
     storageKey = committed.storageKey;
 
-    const outcome = await withTransientRetry(() =>
-      processIdempotentCommand<{ id: string }>(
-        user.id,
-        user.organizationId!,
-        commandType,
-        idempotencyKey,
-        payload,
-        async (tx) => {
-          const transaction = owner.transactionId
-            ? await tx.transaction.findFirst({
-                where: { id: owner.transactionId, organizationId: user.organizationId!, deletedAt: null },
-                select: { id: true },
-              })
-            : null;
-          const transfer = owner.cashTransferId
-            ? await tx.cashTransfer.findFirst({
-                where: { id: owner.cashTransferId, organizationId: user.organizationId!, deletedAt: null },
-                select: { id: true },
-              })
-            : null;
-          if (!transaction && !transfer) throw new ValidationError("Attachment owner not found or access denied.");
-
-          const attachment = await tx.attachment.create({
-            data: {
-              transactionId: transaction?.id || null,
-              cashTransferId: transfer?.id || null,
-              uploadedById: user.id,
-              originalName: validated.originalName,
-              storageKey: storageKey!,
-              mimeType: validated.mimeType,
-              sizeBytes: validated.sizeBytes,
-            },
-          });
-
-          await createAuditLog({
-            userId: user.id,
-            organizationId: user.organizationId,
-            role: user.role,
-            action: AuditAction.UPLOADED_ATTACHMENT,
-            entityType: "Attachment",
-            entityId: attachment.id,
-            metadata: {
-              transactionId: transaction?.id || null,
-              cashTransferId: transfer?.id || null,
-              originalName: validated.originalName,
-              sizeBytes: validated.sizeBytes,
-            },
-            tx,
-          });
-
-          return { result: { id: attachment.id }, resultEntityType: "Attachment", resultEntityId: attachment.id };
-        },
-        { claimToken: claim.claimToken }
-      )
-    );
+    const outcome = await persistAttachmentRecord({
+      user,
+      owner,
+      validated: {
+        originalName: validated.originalName,
+        mimeType: validated.mimeType,
+        sizeBytes: validated.sizeBytes,
+      },
+      storageKey: storageKey!,
+      idempotencyKey,
+      payload,
+      claimToken: claim.claimToken,
+    });
 
     if (outcome.disposition === "CACHED" && storageKey) {
       // Another claimant completed this upload; this caller's committed file
@@ -178,6 +212,105 @@ export async function uploadAttachmentAction(
     if (error instanceof DomainError) return { error: error.message };
     console.error("Upload attachment error:", error);
     return { error: "Failed to upload attachment. Please try again." };
+  }
+
+  revalidatePath("/ledger");
+  return null;
+}
+
+export async function finalizeStagedAttachmentUpload({
+  user,
+  owner,
+  stagedKey,
+  originalName,
+  mimeType,
+  sizeBytes,
+  idempotencyKey,
+}: {
+  user: SessionUser;
+  owner: AttachmentOwnerIds;
+  stagedKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  idempotencyKey: string;
+}): Promise<AttachmentState> {
+  if (!user.organizationId) return { error: "You are not assigned to an organization." };
+
+  const storage: AttachmentStorageProvider = defaultAttachmentStorageService;
+  if (storage.mode !== "vercel-blob") return { error: "Private direct upload is not enabled for this environment." };
+
+  const ownerKey = owner.transactionId || owner.cashTransferId!;
+  const commandKey = idempotencyKey.trim() || `upload-${ownerKey}-${stagedKey}`;
+  const payload = {
+    ...owner,
+    originalName,
+    mimeType,
+    sizeBytes,
+    stagedKey: stagedKey.trim(),
+  };
+
+  let receipt;
+  try {
+    receipt = await claimCommandReceipt<{ id: string }>(
+      user.id,
+      user.organizationId,
+      "UPLOAD_ATTACHMENT",
+      commandKey,
+      payload,
+    );
+  } catch (error) {
+    return { error: error instanceof DomainError ? error.message : "Could not claim attachment upload." };
+  }
+  if (receipt.status === "COMPLETED") {
+    await storage.discardStagedObject(stagedKey).catch(() => undefined);
+    return null;
+  }
+
+  const claim = receipt.claim;
+  let validated: ValidatedStagedUpload;
+  try {
+    validated = await storage.validateStagedUpload(stagedKey, originalName, mimeType, sizeBytes);
+  } catch (error) {
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    return { error: error instanceof DomainError ? error.message : "Staged upload could not be validated." };
+  }
+
+  let storageKey: string | null = null;
+  try {
+    const committed = await storage.commitValidatedStagedUpload(validated);
+    storageKey = committed.storageKey;
+    const outcome = await persistAttachmentRecord({
+      user,
+      owner,
+      validated,
+      storageKey,
+      idempotencyKey: commandKey,
+      payload,
+      claimToken: claim.claimToken,
+    });
+
+    if (outcome.disposition === "CACHED") {
+      await storage.deleteActiveFile(storageKey).catch(() => undefined);
+    }
+    await storage.discardStagedObject(validated.stagedKey).catch(() => undefined);
+  } catch (error) {
+    if (storageKey) {
+      let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
+      try {
+        const ref = await prisma.attachment.findFirst({ where: { storageKey }, select: { id: true } });
+        lookupState = ref ? "LOOKUP_SUCCEEDED_REFERENCED" : "LOOKUP_SUCCEEDED_UNREFERENCED";
+      } catch (lookupError) {
+        console.warn("[AttachmentAction] Ownership lookup failed; retaining active Blob for reconciliation:", lookupError);
+      }
+      if (lookupState === "LOOKUP_SUCCEEDED_UNREFERENCED") {
+        await storage.deleteActiveFile(storageKey).catch(() => undefined);
+      }
+    }
+    await releaseCommandReceipt(claim).catch(() => undefined);
+    if (error instanceof DomainError) return { error: error.message };
+    console.error("Finalize attachment upload error:", error);
+    return { error: "Failed to finalize attachment. Please try again." };
   }
 
   revalidatePath("/ledger");

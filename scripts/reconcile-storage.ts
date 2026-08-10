@@ -11,10 +11,10 @@ try {
 }
 
 import path from "path";
-import { PrismaClient } from "@prisma/client";
 
 async function main() {
-  const { AttachmentStorageService } = await import("../lib/infrastructure/storage/attachment-store");
+  const { createPrismaClient } = await import("../lib/db/prisma");
+  const { AttachmentStorageService, createAttachmentStorageService } = await import("../lib/infrastructure/storage/attachment-store");
   const confirm = process.argv.includes("--confirm");
   const dryRun = !confirm;
   const uploadsRoot = path.resolve(
@@ -25,7 +25,7 @@ async function main() {
   console.log(`Uploads Directory: ${uploadsRoot}`);
   console.log(`Mode: ${dryRun ? "DRY RUN (pass --confirm to execute changes)" : "CONFIRM (executing storage changes)"}`);
 
-  const prisma = new PrismaClient();
+  const prisma = createPrismaClient();
   try {
     await prisma.$queryRaw`SELECT 1`;
   } catch (error) {
@@ -34,7 +34,10 @@ async function main() {
     process.exit(1);
   }
 
-  const storageService = new AttachmentStorageService(uploadsRoot, prisma);
+  const storageService = process.env.ATTACHMENT_STORAGE_PROVIDER === "vercel-blob"
+    ? createAttachmentStorageService(undefined, prisma)
+    : new AttachmentStorageService(uploadsRoot, prisma);
+  console.log(`Storage Provider: ${storageService.mode}`);
   const plan = await storageService.planReconciliation(60 * 60 * 1000);
 
   if (plan.dbError) {

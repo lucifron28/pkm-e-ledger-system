@@ -2,20 +2,12 @@ import "server-only";
 import bcrypt from "bcryptjs";
 
 import { ValidationError } from "../domain/errors";
+import {
+  MAX_PASSWORD_BYTES,
+  validatePasswordLength,
+} from "../domain/password-policy";
 
-export const MIN_PASSWORD_CHARS = 8;
-export const MAX_PASSWORD_BYTES = 72;
-
-export function validatePasswordLength(password: string): { valid: boolean; message?: string } {
-  if (!password || password.length < MIN_PASSWORD_CHARS) {
-    return { valid: false, message: `Password must be at least ${MIN_PASSWORD_CHARS} characters long.` };
-  }
-  const byteLength = Buffer.byteLength(password, "utf8");
-  if (byteLength > MAX_PASSWORD_BYTES) {
-    return { valid: false, message: `Password exceeds maximum length of ${MAX_PASSWORD_BYTES} bytes.` };
-  }
-  return { valid: true };
-}
+export { MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, validatePasswordLength } from "../domain/password-policy";
 
 export async function hashPassword(plain: string): Promise<string> {
   const check = validatePasswordLength(plain);

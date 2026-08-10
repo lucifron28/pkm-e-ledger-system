@@ -1,24 +1,28 @@
-const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
-const MIME_EXTENSIONS: Record<string, string[]> = {
+export const MIME_EXTENSIONS: Record<string, string[]> = {
   "image/jpeg": ["jpg", "jpeg"],
   "image/png": ["png"],
   "application/pdf": ["pdf"],
 };
 
-export function validateAttachmentFile(file: File): string | null {
-  if (file.size <= 0) return "File is required.";
-  if (file.size > MAX_ATTACHMENT_SIZE) return "File must be under 10 MB.";
+export function validateAttachmentMetadata(originalName: string, mimeType: string, sizeBytes: number): string | null {
+  if (!originalName.trim() || sizeBytes <= 0) return "File is required.";
+  if (sizeBytes > MAX_ATTACHMENT_SIZE) return "File must be under 10 MB.";
 
-  const allowedExtensions = MIME_EXTENSIONS[file.type];
+  const allowedExtensions = MIME_EXTENSIONS[mimeType];
   if (!allowedExtensions) return "Only JPEG, PNG, and PDF files are allowed.";
 
-  const extension = file.name.split(".").pop()?.toLowerCase();
+  const extension = originalName.split(".").pop()?.toLowerCase();
   if (!extension || !allowedExtensions.includes(extension)) {
     return "File extension does not match its MIME type.";
   }
 
   return null;
+}
+
+export function validateAttachmentFile(file: File): string | null {
+  return validateAttachmentMetadata(file.name, file.type, file.size);
 }
 
 export function validateFileMagicBytes(buffer: Uint8Array, mimeType: string): boolean {
@@ -50,16 +54,10 @@ export function validateAttachmentPayload(
   buffer: Uint8Array,
   sizeBytes: number
 ): string | null {
-  if (sizeBytes <= 0 || buffer.length <= 0) return "File is required.";
+  const metadataError = validateAttachmentMetadata(originalName, mimeType, sizeBytes);
+  if (metadataError) return metadataError;
+  if (buffer.length <= 0) return "File is required.";
   if (sizeBytes !== buffer.length) return "Attachment size metadata does not match file contents.";
-  if (sizeBytes > MAX_ATTACHMENT_SIZE) return "File must be under 10 MB.";
-
-  const allowedExtensions = MIME_EXTENSIONS[mimeType];
-  if (!allowedExtensions) return "Only JPEG, PNG, and PDF files are allowed.";
-  const extension = originalName.split(".").pop()?.toLowerCase();
-  if (!extension || !allowedExtensions.includes(extension)) {
-    return "File extension does not match its MIME type.";
-  }
   if (!validateFileMagicBytes(buffer, mimeType)) {
     return "File content signature does not match its declared type.";
   }

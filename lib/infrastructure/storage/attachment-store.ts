@@ -3,7 +3,9 @@ import { existsSync } from "fs";
 import path from "path";
 import crypto from "crypto";
 import { StorageConsistencyError, ValidationError } from "../../domain/errors";
+import { validateAttachmentPayload } from "../../domain/attachments";
 import { prisma } from "../../db/prisma";
+import { VercelBlobAttachmentStorageService } from "./vercel-blob-storage";
 
 const DEFAULT_UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
@@ -21,6 +23,22 @@ export interface CommittedUploadResult {
   relativeKey: string;
 }
 
+export interface ValidatedStagedUpload {
+  stageId: string;
+  stagedKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  extension: string;
+  buffer: Uint8Array;
+  fileHash: string;
+}
+
+export interface StorageReadResult {
+  buffer: Uint8Array;
+  contentType?: string;
+}
+
 export interface StorageAttachmentRecord {
   id: string;
   storageKey: string;
@@ -36,7 +54,7 @@ export interface StorageDatabase {
 
 export type TrashOperationState = "PREPARED" | "MOVED" | "DB_DELETED" | "CLEANED";
 
-interface TrashManifest {
+export interface TrashManifest {
   version: 1;
   state: TrashOperationState;
   trashKey: string;
@@ -54,14 +72,60 @@ export interface TrashMoveOwner {
   cashTransferId?: string | null;
 }
 
+export interface StorageReconciliationPlan {
+  deleteStaging: string[];
+  restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }>;
+  deleteTrash: Array<{ manifestPath: string; trashKey: string }>;
+  deleteManifestOnly: string[];
+  deleteActiveOrphans: string[];
+  missingDbFiles: string[];
+  retainedForReview: Array<{ path: string; reason: string }>;
+  dbError?: boolean;
+}
+
+export interface AttachmentStorageProvider {
+  readonly mode: "local" | "vercel-blob";
+  createStagedUploadKey(extension: string): string;
+  stageUpload(buffer: Uint8Array, originalName: string, mimeType: string): Promise<StagedUploadResult>;
+  commitUpload(stageId: string, extension: string): Promise<CommittedUploadResult>;
+  validateStagedUpload(
+    stagedKey: string,
+    originalName: string,
+    mimeType: string,
+    sizeBytes: number,
+  ): Promise<ValidatedStagedUpload>;
+  commitValidatedStagedUpload(validated: ValidatedStagedUpload): Promise<CommittedUploadResult>;
+  discardStagedUpload(stageId: string, extension: string): Promise<void>;
+  discardStagedObject(stagedKey: string): Promise<void>;
+  moveToTrash(storageKey: string, owner?: TrashMoveOwner): Promise<string>;
+  restoreFromTrash(trashKey: string, storageKey: string): Promise<void>;
+  readActiveFile(storageKey: string): Promise<StorageReadResult | null>;
+  deleteActiveFile(storageKey: string): Promise<void>;
+  permanentlyDelete(trashKey: string): Promise<void>;
+  planReconciliation(maxStaleAgeMs?: number): Promise<StorageReconciliationPlan>;
+  applyReconciliation(plan: StorageReconciliationPlan): Promise<{
+    cleanedStaged: number;
+    cleanedTrash: number;
+    cleanedActive: number;
+    missingDbFiles: string[];
+  }>;
+  reconcile(maxStaleAgeMs?: number): Promise<{
+    cleanedStaged: number;
+    cleanedTrash: number;
+    cleanedActive: number;
+    missingDbFiles: string[];
+  }>;
+}
+
 const defaultStorageDatabase = prisma as unknown as StorageDatabase;
 
 export class AttachmentStorageService {
+  public readonly mode = "local" as const;
   private uploadsRoot: string;
   private database: StorageDatabase;
 
   constructor(customUploadsRoot?: string, database: StorageDatabase = defaultStorageDatabase) {
-    this.uploadsRoot = path.resolve(customUploadsRoot || DEFAULT_UPLOADS_ROOT);
+    this.uploadsRoot = path.resolve(/*turbopackIgnore: true*/ customUploadsRoot || DEFAULT_UPLOADS_ROOT);
     this.database = database;
   }
 
@@ -71,6 +135,12 @@ export class AttachmentStorageService {
 
   public getTrashDir(): string {
     return path.join(this.uploadsRoot, "trash");
+  }
+
+  public createStagedUploadKey(extension: string): string {
+    const safeExtension = extension.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (!safeExtension) throw new ValidationError("Attachment file extension is required.");
+    return `${crypto.randomUUID()}.${safeExtension}`;
   }
 
   public async stageUpload(
@@ -83,7 +153,7 @@ export class AttachmentStorageService {
 
     const stageId = crypto.randomUUID();
     const stagingDir = this.getStagingDir();
-    const stagedPath = path.join(stagingDir, `${stageId}.${extension}`);
+    const stagedPath = path.join(/*turbopackIgnore: true*/ stagingDir, `${stageId}.${extension}`);
 
     await fs.mkdir(stagingDir, { recursive: true });
     await fs.writeFile(stagedPath, buffer);
@@ -95,8 +165,8 @@ export class AttachmentStorageService {
     const safeExtension = extension.replace(/[^a-z0-9]/gi, "").toLowerCase();
     if (!safeExtension) throw new ValidationError("Attachment file extension is required.");
 
-    const stagedPath = path.join(this.getStagingDir(), `${stageId}.${safeExtension}`);
-    if (!existsSync(stagedPath)) {
+    const stagedPath = path.join(/*turbopackIgnore: true*/ this.getStagingDir(), `${stageId}.${safeExtension}`);
+    if (!existsSync(/*turbopackIgnore: true*/ stagedPath)) {
       throw new StorageConsistencyError(`Staged upload file missing for stageId: ${stageId}`);
     }
 
@@ -108,16 +178,60 @@ export class AttachmentStorageService {
     return { storageKey, relativeKey: storageKey };
   }
 
+  public async validateStagedUpload(
+    stagedKey: string,
+    originalName: string,
+    mimeType: string,
+    sizeBytes: number,
+  ): Promise<ValidatedStagedUpload> {
+    const parsed = this.parseStagedKey(stagedKey);
+    const stagedPath = this.resolveContainedFile(this.getStagingDir(), parsed.fileName, "staged upload key");
+    let buffer: Uint8Array;
+    try {
+      buffer = await fs.readFile(stagedPath);
+    } catch (error) {
+      throw new StorageConsistencyError(`Staged upload file missing: ${String(error)}`);
+    }
+    const validationError = validateAttachmentPayload(originalName, mimeType, buffer, sizeBytes);
+    if (validationError) throw new ValidationError(validationError);
+
+    return {
+      stageId: parsed.stageId,
+      stagedKey: parsed.fileName,
+      originalName,
+      mimeType,
+      sizeBytes,
+      extension: parsed.extension,
+      buffer,
+      fileHash: crypto.createHash("sha256").update(buffer).digest("hex"),
+    };
+  }
+
+  public async commitValidatedStagedUpload(validated: ValidatedStagedUpload): Promise<CommittedUploadResult> {
+    return this.commitUpload(validated.stageId, validated.extension);
+  }
+
   public async discardStagedUpload(stageId: string, extension: string): Promise<void> {
     const safeExtension = extension.replace(/[^a-z0-9]/gi, "").toLowerCase();
-    const stagedPath = path.join(this.getStagingDir(), `${stageId}.${safeExtension}`);
-    if (existsSync(stagedPath)) {
+    const stagedPath = path.join(/*turbopackIgnore: true*/ this.getStagingDir(), `${stageId}.${safeExtension}`);
+    if (existsSync(/*turbopackIgnore: true*/ stagedPath)) {
       try {
         await fs.unlink(stagedPath);
       } catch {
         /* best effort cleanup */
       }
     }
+  }
+
+  public async discardStagedObject(stagedKey: string): Promise<void> {
+    const parsed = this.parseStagedKey(stagedKey);
+    await this.discardStagedUpload(parsed.stageId, parsed.extension);
+  }
+
+  public async readActiveFile(storageKey: string): Promise<StorageReadResult | null> {
+    const activePath = this.resolveActivePath(storageKey);
+    if (!existsSync(activePath)) return null;
+    return { buffer: await fs.readFile(activePath) };
   }
 
   public async moveToTrash(storageKey: string, owner: TrashMoveOwner = {}): Promise<string> {
@@ -230,6 +344,13 @@ export class AttachmentStorageService {
     return resolved;
   }
 
+  private parseStagedKey(stagedKey: string): { fileName: string; stageId: string; extension: string } {
+    const fileName = path.basename(stagedKey.trim());
+    const match = /^([0-9a-f-]{36})\.([a-z0-9]+)$/i.exec(fileName);
+    if (!match) throw new ValidationError("Invalid staged upload key.");
+    return { fileName, stageId: match[1], extension: match[2].toLowerCase() };
+  }
+
   private getManifestPath(trashKey: string): string {
     const base = path.basename(trashKey, path.extname(trashKey));
     return path.join(this.getTrashDir(), `${base}.json`);
@@ -300,18 +421,7 @@ export class AttachmentStorageService {
     }
   }
 
-  public async planReconciliation(
-    maxStaleAgeMs = 60 * 60 * 1000
-  ): Promise<{
-    deleteStaging: string[];
-    restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }>;
-    deleteTrash: Array<{ manifestPath: string; trashKey: string }>;
-    deleteManifestOnly: string[];
-    deleteActiveOrphans: string[];
-    missingDbFiles: string[];
-    retainedForReview: Array<{ path: string; reason: string }>;
-    dbError?: boolean;
-  }> {
+  public async planReconciliation(maxStaleAgeMs = 60 * 60 * 1000): Promise<StorageReconciliationPlan> {
     const deleteStaging: string[] = [];
     const restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }> = [];
     const deleteTrash: Array<{ manifestPath: string; trashKey: string }> = [];
@@ -478,15 +588,7 @@ export class AttachmentStorageService {
     };
   }
 
-  public async applyReconciliation(plan: {
-    deleteStaging: string[];
-    restoreTrash: Array<{ manifestPath: string; trashKey: string; storageKey: string }>;
-    deleteTrash: Array<{ manifestPath: string; trashKey: string }>;
-    deleteManifestOnly: string[];
-    deleteActiveOrphans: string[];
-    missingDbFiles: string[];
-    dbError?: boolean;
-  }): Promise<{ cleanedStaged: number; cleanedTrash: number; cleanedActive: number; missingDbFiles: string[] }> {
+  public async applyReconciliation(plan: StorageReconciliationPlan): Promise<{ cleanedStaged: number; cleanedTrash: number; cleanedActive: number; missingDbFiles: string[] }> {
     if (plan.dbError) {
       return { cleanedStaged: 0, cleanedTrash: 0, cleanedActive: 0, missingDbFiles: [] };
     }
@@ -579,4 +681,34 @@ export class AttachmentStorageService {
   }
 }
 
-export const defaultAttachmentStorageService = new AttachmentStorageService();
+type AttachmentStorageEnvironment = {
+  ATTACHMENT_STORAGE_PROVIDER?: string;
+  BLOB_READ_WRITE_TOKEN?: string;
+  VERCEL?: string;
+};
+
+export function getAttachmentStorageProviderMode(environment: AttachmentStorageEnvironment = process.env as AttachmentStorageEnvironment): "local" | "vercel-blob" {
+  const configured = environment.ATTACHMENT_STORAGE_PROVIDER?.trim() || "local";
+  if (configured !== "local" && configured !== "vercel-blob") {
+    throw new Error(`Unsupported ATTACHMENT_STORAGE_PROVIDER: ${configured}`);
+  }
+  if (environment.VERCEL === "1" && configured !== "vercel-blob") {
+    throw new Error("Vercel deployments must use ATTACHMENT_STORAGE_PROVIDER=vercel-blob.");
+  }
+  if (configured === "vercel-blob" && !environment.BLOB_READ_WRITE_TOKEN?.trim()) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is required for private Vercel Blob storage.");
+  }
+  return configured;
+}
+
+export function createAttachmentStorageService(
+  customUploadsRoot?: string,
+  database: StorageDatabase = defaultStorageDatabase,
+): AttachmentStorageProvider {
+  if (customUploadsRoot) return new AttachmentStorageService(customUploadsRoot, database);
+  return getAttachmentStorageProviderMode() === "vercel-blob"
+    ? new VercelBlobAttachmentStorageService(database)
+    : new AttachmentStorageService(undefined, database);
+}
+
+export const defaultAttachmentStorageService: AttachmentStorageProvider = createAttachmentStorageService();

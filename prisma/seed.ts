@@ -1,7 +1,10 @@
-import { ExpenseReportBucket, PrismaClient, Role, Semester, TransactionType } from "@prisma/client";
+import { ExpenseReportBucket, Role, Semester, TransactionType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+import { getDemoPassword } from "../lib/application/demo-password";
+import { createPrismaClient } from "../lib/db/runtime";
+
+const prisma = createPrismaClient();
 
 const organizations = [
   "Agricultural Group of Students",
@@ -147,7 +150,7 @@ async function seedCategories() {
 
 async function seedAcademicTermsAndUsers(seededOrganizations: Array<{ id: string; name: string; slug: string; active: boolean }>) {
   const resetPasswords = process.env.RESET_DEMO_PASSWORDS === "true";
-  const defaultPasswordHash = await bcrypt.hash("password", 12);
+  const defaultPasswordHash = await bcrypt.hash(getDemoPassword(), 12);
 
   const CANONICAL_AY = "2026-2027";
 

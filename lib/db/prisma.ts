@@ -1,11 +1,15 @@
 import "server-only";
-import { PrismaClient } from "@prisma/client";
+
+import { createPrismaClient, getDatabaseRuntimeMode } from "./runtime";
+export { createPrismaClient, getDatabaseRuntimeMode } from "./runtime";
+export type { DatabaseEnvironment, DatabaseRuntimeMode } from "./runtime";
 
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
+  prisma?: ReturnType<typeof createPrismaClient>;
 };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+export const DATABASE_RUNTIME_MODE = getDatabaseRuntimeMode();
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

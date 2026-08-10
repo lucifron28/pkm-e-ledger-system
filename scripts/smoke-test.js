@@ -3,6 +3,7 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const { PrismaLibSQL } = require("@prisma/adapter-libsql");
 
 async function runSmokeTest() {
   console.log("=== PKM e-Ledger Database Smoke Test ===");
@@ -11,7 +12,11 @@ async function runSmokeTest() {
   const tempSmokeDbPath = path.join(__dirname, "temp_smoke_test.db");
   const tempDbUrl = `file:${tempSmokeDbPath}`;
 
-  const isIsolatedTest = process.env.USE_DEV_DB !== "true";
+  const hasTursoUrl = Boolean(process.env.TURSO_DATABASE_URL?.trim());
+  const hasTursoToken = Boolean(process.env.TURSO_AUTH_TOKEN?.trim());
+  if (hasTursoUrl !== hasTursoToken) throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be configured together.");
+  const isTursoMode = hasTursoUrl && hasTursoToken;
+  const isIsolatedTest = !isTursoMode && process.env.USE_DEV_DB !== "true";
   if (isIsolatedTest) {
     process.env.DATABASE_URL = tempDbUrl;
     if (fs.existsSync(tempSmokeDbPath)) {
@@ -20,7 +25,7 @@ async function runSmokeTest() {
     // Prisma's Windows schema engine requires the SQLite file to exist before deploy.
     fs.writeFileSync(tempSmokeDbPath, Buffer.alloc(0));
 
-    execSync(`npx prisma migrate deploy`, {
+    execSync(`npm run db:migrate:deploy`, {
       cwd: rootDir,
       env: { ...process.env, DATABASE_URL: tempDbUrl },
       encoding: "utf8",
@@ -36,7 +41,14 @@ async function runSmokeTest() {
     });
   }
 
-  const prisma = new PrismaClient();
+  const prisma = isTursoMode
+    ? new PrismaClient({
+        adapter: new PrismaLibSQL(
+          { url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN },
+          { timestampFormat: "unixepoch-ms" },
+        ),
+      })
+    : new PrismaClient();
 
   try {
     const orgCount = await prisma.organization.count();

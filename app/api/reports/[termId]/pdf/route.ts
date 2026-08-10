@@ -8,6 +8,8 @@ import { AuditAction } from "@prisma/client";
 import { validateRouteAuth } from "@/lib/auth/require-auth";
 import { MANAGEMENT_ROLES } from "@/lib/auth/rbac";
 
+export const runtime = "nodejs";
+
 export async function handleReportPdfExportRequest(
   termId: string,
   sessionUser?: SessionUser | null
