@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
+import { PkmLogo } from "@/components/branding/pkm-logo";
 
 export default async function HomePage() {
   const sessionUser = await getSession();
@@ -10,9 +11,7 @@ export default async function HomePage() {
       <header className="bg-[#004aad] text-white shadow-md border-b-4 border-[#f9d818]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="bg-[#f9d818] text-[#004aad] font-extrabold w-11 h-11 rounded-lg flex items-center justify-center text-xl shadow-inner">
-              PKM
-            </div>
+            <PkmLogo size={44} priority className="h-11 w-11 rounded-lg bg-white p-0.5" />
             <div>
               <h1 className="font-bold text-xl leading-tight tracking-wide">
                 PKM e-Ledger System
