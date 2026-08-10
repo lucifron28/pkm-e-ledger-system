@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useMemo } from "react";
 import { updateOpeningBalancesAction } from "@/lib/actions/terms";
+import { IconX as X } from "@tabler/icons-react";
 
 interface EditOpeningBalancesFormProps {
   termId: string;
@@ -28,42 +29,44 @@ export function EditOpeningBalancesForm({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded text-xs shadow transition border border-slate-300"
+          className="ui-button ui-button-secondary px-3 text-xs"
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
         >
           Edit Balances
         </button>
       )}
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation">
+          <div className="w-full max-w-md space-y-5 rounded-lg border border-slate-200 bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="edit-opening-balances-title">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">
+              <h3 id="edit-opening-balances-title" className="font-extrabold text-slate-900">
                 Edit Opening Balances
               </h3>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg leading-none"
+                className="ui-icon-button"
+                aria-label="Close opening balances dialog"
+                title="Close"
               >
-                &times;
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
             {state?.error && !state.fieldErrors && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-800 text-sm rounded">
-                {state.error}
-              </div>
+              <div role="alert" aria-live="assertive" className="ui-status ui-status-danger"><p>{state.error}</p></div>
             )}
 
-            <form action={formAction} className="space-y-4">
+            <form action={formAction} className="space-y-4" aria-busy={isPending}>
               <input type="hidden" name="termId" value={termId} />
               <input type="hidden" name="version" value={version} />
               <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
               <div>
                 <label
                   htmlFor={`cohand-${termId}`}
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+                  className="ui-label"
                 >
                   Opening Cash on Hand
                 </label>
@@ -74,14 +77,14 @@ export function EditOpeningBalancesForm({
                   inputMode="decimal"
                   required
                   defaultValue={initialCashOnHand}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition font-mono"
+                  className="ui-input font-mono"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor={`cibank-${termId}`}
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+                  className="ui-label"
                 >
                   Opening Cash in Bank
                 </label>
@@ -92,7 +95,7 @@ export function EditOpeningBalancesForm({
                   inputMode="decimal"
                   required
                   defaultValue={initialCashInBank}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] focus:border-transparent transition font-mono"
+                  className="ui-input font-mono"
                 />
               </div>
 
@@ -100,14 +103,14 @@ export function EditOpeningBalancesForm({
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition"
+                  className="ui-button ui-button-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="bg-[#004aad] hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-lg shadow transition text-sm disabled:opacity-50"
+                  className="ui-button ui-button-primary"
                 >
                   {isPending ? "Saving..." : "Save Changes"}
                 </button>

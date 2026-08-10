@@ -1,8 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams, usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import type { TablerIcon } from "@tabler/icons-react";
+import {
+  IconArchive as Archive,
+  IconBook2 as Book2,
+  IconClipboardList as ClipboardList,
+  IconFileAnalytics as FileAnalytics,
+  IconLayoutDashboard as LayoutDashboard,
+  IconLock as Lock,
+  IconMenu2 as Menu2,
+  IconReceipt as Receipt,
+  IconSettings as Settings,
+  IconShieldCheck as ShieldCheck,
+  IconX as X,
+} from "@tabler/icons-react";
 import { Role } from "@prisma/client";
 import { getPortalNavLinks } from "@/lib/auth/rbac";
 import { logoutAction } from "@/lib/actions/logout";
@@ -11,15 +25,31 @@ interface PortalNavProps {
   role: Role;
   userName?: string;
   userOrgName?: string;
+  mode: "desktop" | "mobile";
 }
 
-export function PortalNav({ role, userName, userOrgName }: PortalNavProps) {
+const iconsByPath: Record<string, TablerIcon> = {
+  "/dashboard": LayoutDashboard,
+  "/osa": ShieldCheck,
+  "/settings/term": Settings,
+  "/ledger": Book2,
+  "/ledger/income/new": Receipt,
+  "/ledger/expense/new": Receipt,
+  "/reports": FileAnalytics,
+  "/audit-log": ClipboardList,
+  "/account": Lock,
+};
+
+function getIcon(path: string): TablerIcon {
+  return iconsByPath[path] || Archive;
+}
+
+export function PortalNav({ role, userName, userOrgName, mode }: PortalNavProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const orgParam = searchParams.get("org") || undefined;
-
   const navLinks = getPortalNavLinks(role, orgParam);
 
   const closeMenu = useCallback(() => {
@@ -29,102 +59,71 @@ export function PortalNav({ role, userName, userOrgName }: PortalNavProps) {
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeMenu();
-      }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, closeMenu]);
 
-  const linkClass = (isActive: boolean) =>
-    `px-3 py-2 rounded text-sm font-semibold hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f9d818] transition whitespace-nowrap ${
-      isActive ? "bg-blue-900 text-[#f9d818]" : "text-white"
-    }`;
+  const isActive = (href: string) => pathname === href.split("?")[0];
 
-  const mobileLinkClass = (isActive: boolean) =>
-    `block px-3 py-2 rounded text-base font-medium hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f9d818] transition ${
-      isActive ? "bg-blue-900 text-[#f9d818] font-bold" : "text-white"
-    }`;
-
-  // Desktop nav excludes duplicate Account button since header right controls render Account
-  const desktopLinks = navLinks.filter((link) => link.href !== "/account");
+  const links = navLinks.map((link) => {
+    const Icon = getIcon(link.href.split("?")[0]);
+    const active = isActive(link.href);
+    return (
+      <Link
+        key={link.href}
+        href={link.href}
+        aria-current={active ? "page" : undefined}
+        onClick={closeMenu}
+        className={`portal-nav-link ${active ? "portal-nav-link-active" : ""}`}
+      >
+        <Icon size={18} stroke={1.8} aria-hidden="true" />
+        <span>{link.label}</span>
+      </Link>
+    );
+  });
 
   return (
     <>
-      {/* Desktop Navigation - xl and wider */}
-      <nav aria-label="Desktop Navigation" className="hidden xl:flex items-center space-x-1 font-semibold">
-        {desktopLinks.map((link) => {
-          const isActive = pathname === link.href.split("?")[0];
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              aria-current={isActive ? "page" : undefined}
-              className={linkClass(isActive)}
-            >
-              {link.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {mode === "desktop" && (
+        <nav aria-label="Portal navigation" className="hidden lg:flex lg:flex-col lg:gap-1">
+          {links}
+        </nav>
+      )}
 
-      {/* Mobile / Compact Menu Toggle Button - below xl */}
-      <div className="xl:hidden flex items-center">
-        <button
-          ref={buttonRef}
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          aria-expanded={isOpen}
-          aria-controls="mobile-menu"
-          aria-label="Toggle navigation menu"
-          className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f9d818] transition"
-        >
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            {isOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
-      </div>
+      {mode === "mobile" && (
+        <div className="lg:hidden portal-mobile-nav">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => setIsOpen((open) => !open)}
+            aria-expanded={isOpen}
+            aria-controls="portal-mobile-menu"
+            className="portal-mobile-toggle"
+          >
+            {isOpen ? <X size={19} aria-hidden="true" /> : <Menu2 size={19} aria-hidden="true" />}
+            <span>{isOpen ? "Close navigation" : "Open navigation"}</span>
+          </button>
 
-      {/* Mobile / Compact Menu Overlay Dropdown - below xl */}
-      {isOpen && (
-        <div
-          id="mobile-menu"
-          className="xl:hidden absolute top-16 left-0 w-full bg-[#004aad] border-b-4 border-[#f9d818] shadow-xl z-50 px-4 pt-2 pb-4 space-y-2"
-        >
-          {userName && (
-            <div className="px-3 py-2 border-b border-blue-700 text-xs mb-2">
-              <div className="font-bold text-white text-sm">{userName}</div>
-              <div className="text-yellow-300 font-semibold">{role} • {userOrgName || "Office of Student Affairs"}</div>
+          {isOpen && (
+            <div id="portal-mobile-menu" className="portal-mobile-menu">
+              {userName && (
+                <div className="portal-mobile-user">
+                  <span className="portal-mobile-user-name">{userName}</span>
+                  <span>{role} - {userOrgName || "Office of Student Affairs"}</span>
+                </div>
+              )}
+              {links}
+              <form action={logoutAction} className="mt-2 border-t border-blue-800 pt-2">
+                <button type="submit" className="portal-mobile-logout">
+                  <Lock size={18} aria-hidden="true" />
+                  <span>Log out</span>
+                </button>
+              </form>
             </div>
           )}
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href.split("?")[0];
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => setIsOpen(false)}
-                className={mobileLinkClass(isActive)}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-          <form action={logoutAction} className="pt-2">
-            <button
-              type="submit"
-              className="w-full text-left bg-[#f9d818] hover:bg-yellow-400 text-[#004aad] font-bold px-3 py-2 rounded shadow transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            >
-              Logout
-            </button>
-          </form>
         </div>
       )}
     </>

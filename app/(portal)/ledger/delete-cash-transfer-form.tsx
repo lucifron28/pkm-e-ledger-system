@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { softDeleteCashTransferAction } from "@/lib/actions/transfers";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
+import { IconX as X } from "@tabler/icons-react";
 
 export function DeleteCashTransferForm({ id, version }: { id: string; version: number }) {
   const [state, formAction, isPending] = useActionState(softDeleteCashTransferAction, null);
@@ -21,7 +22,7 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
-        className="bg-red-50 hover:bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded text-xs border border-red-200 transition"
+        className="ui-button ui-button-danger px-3 text-xs"
       >
         Delete
       </button>
@@ -49,27 +50,23 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
                 onClick={() => !isPending && setOpen(false)}
                 disabled={isPending}
                 aria-label="Close dialog"
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                className="ui-icon-button disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                &times;
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
             {state?.error && !state.fieldErrors && (
-              <div role="alert" className="text-sm text-red-700 bg-red-50 p-3 rounded border border-red-200">
-                {state.error}
-              </div>
+              <div role="alert" aria-live="assertive" className="ui-status ui-status-danger"><p>{state.error}</p></div>
             )}
 
-            <form action={formAction} className="space-y-4">
+            <form action={formAction} className="space-y-4" aria-busy={isPending}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="version" value={version} />
               <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5" htmlFor={`del-tr-reason-${id}`}>
-                  Deletion Reason
-                </label>
+                <label className="ui-label" htmlFor={`del-tr-reason-${id}`}>Deletion reason</label>
                 <textarea
                   id={`del-tr-reason-${id}`}
                   name="deleteReason"
@@ -77,7 +74,7 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
                   placeholder="Reason for deleting this cash transfer..."
                   aria-invalid={Boolean(state?.fieldErrors?.deleteReason)}
                   aria-describedby={state?.fieldErrors?.deleteReason ? `err-del-tr-reason-${id}` : undefined}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad] resize-none"
+                  className="ui-textarea"
                   rows={3}
                 />
                 {state?.fieldErrors?.deleteReason && (
@@ -92,14 +89,14 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
                   type="button"
                   onClick={() => !isPending && setOpen(false)}
                   disabled={isPending}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ui-button ui-button-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg shadow transition text-sm disabled:opacity-50"
+                  className="ui-button ui-button-danger disabled:opacity-50"
                 >
                   {isPending ? "Deleting..." : "Confirm Delete"}
                 </button>

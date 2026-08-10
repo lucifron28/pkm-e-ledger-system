@@ -9,24 +9,15 @@ import { formatPesoFromCents, formatPesoInputFromCents } from "@/lib/data/money"
 import { CreateTermForm } from "./create-term-form";
 import { ActivateTermForm } from "./activate-term-form";
 import { EditOpeningBalancesForm } from "./edit-opening-balances-form";
-import Link from "next/link";
+import { MetricCard, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
 
 export default async function TermSettingsPage() {
   const user = await requireManagementUser();
   if (!user.organizationId) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Term Settings</h1>
-          <p className="text-sm text-slate-600">
-            Configure academic terms and opening balances.
-          </p>
-        </div>
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 text-center">
-          <p className="font-semibold text-amber-800">
-            You are not assigned to an active organization.
-          </p>
-        </div>
+        <PageHeader eyebrow="Settings" title="Term settings" description="Configure academic terms and opening balances." />
+        <StatusPanel title="Organization assignment required"><p>You are not assigned to an active organization.</p></StatusPanel>
       </div>
     );
   }
@@ -38,154 +29,78 @@ export default async function TermSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Term Settings</h1>
-          <p className="text-sm text-slate-600">
-            Configure academic terms and opening balances for {user.organizationName}.
-          </p>
-        </div>
-        <Link
-          href="/dashboard"
-          className="text-sm text-[#004aad] font-semibold hover:underline"
-        >
-          ← Back to Dashboard
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow="Settings"
+        title="Term settings"
+        description={`Configure academic terms and opening balances for ${user.organizationName}.`}
+        backHref="/dashboard"
+        backLabel="Back to dashboard"
+      />
 
       {activeTerm && (
-        <div className="bg-[#004aad] text-white rounded-xl shadow overflow-hidden">
-          <div className="px-6 py-5 flex items-center justify-between">
-            <div>
-              <span className="bg-[#f9d818] text-[#004aad] text-xs font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider">
-                Active Term
-              </span>
-              <h2 className="text-xl font-extrabold mt-2">
-                {activeTerm.academicYear} — {getSemesterLabel(activeTerm.semester)}
-              </h2>
-            </div>
+        <Panel
+          title={`${activeTerm.academicYear} - ${getSemesterLabel(activeTerm.semester)}`}
+          description="Active term opening balances establish balance forwarded for the official report package."
+          actions={<span className="ui-status-chip ui-status-chip-success">Active term</span>}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard label="Opening Cash on Hand" value={formatPesoFromCents(activeTerm.openingCashOnHandCents)} />
+            <MetricCard label="Opening Cash in Bank" value={formatPesoFromCents(activeTerm.openingCashInBankCents)} tone="brand" />
+            <MetricCard label="Balance Forwarded" value={formatPesoFromCents(activeTerm.balanceForwardedCents)} tone="dark" />
           </div>
-          <div className="bg-blue-900/40 px-6 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-            <div>
-              <div className="text-blue-100 text-xs uppercase tracking-wider font-bold">
-                Opening Cash on Hand
-              </div>
-              <div className="text-[#f9d818] font-extrabold text-lg">
-                {formatPesoFromCents(activeTerm.openingCashOnHandCents)}
-              </div>
-            </div>
-            <div>
-              <div className="text-blue-100 text-xs uppercase tracking-wider font-bold">
-                Opening Cash in Bank
-              </div>
-              <div className="text-[#f9d818] font-extrabold text-lg">
-                {formatPesoFromCents(activeTerm.openingCashInBankCents)}
-              </div>
-            </div>
-            <div>
-              <div className="text-blue-100 text-xs uppercase tracking-wider font-bold">
-                Balance Forwarded
-              </div>
-              <div className="text-[#f9d818] font-extrabold text-lg">
-                {formatPesoFromCents(activeTerm.balanceForwardedCents)}
-              </div>
-            </div>
-          </div>
-        </div>
+        </Panel>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
-          <h2 className="font-bold text-slate-900 text-lg">Create Academic Term</h2>
-        </div>
-        <div className="p-6">
-          <CreateTermForm hasActiveTerm={!!activeTerm} />
-        </div>
-      </div>
+      <Panel title="Create academic term" description="Add a term before recording transactions or publishing its reports.">
+        <CreateTermForm hasActiveTerm={!!activeTerm} />
+      </Panel>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
-          <h2 className="font-bold text-slate-900 text-lg">
-            All Academic Terms ({terms.length})
-          </h2>
-        </div>
-
+      <Panel title={`All academic terms (${terms.length})`} description="Activate one term at a time. Historical terms remain available for review.">
         {terms.length === 0 ? (
-          <div className="p-10 text-center text-sm text-slate-500">
-            No academic terms have been created yet. Use the form above to create your first term.
-          </div>
+          <p className="py-4 text-sm text-slate-500">No academic terms have been created yet. Use the form above to create the first term.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
+            <table className="ui-data-table min-w-[820px]">
+              <caption className="sr-only">Academic terms and opening balances</caption>
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left">Academic Year</th>
-                  <th className="px-6 py-3 text-left">Semester</th>
-                  <th className="px-6 py-3 text-right">C.O.H.</th>
-                  <th className="px-6 py-3 text-right">C.I.B.</th>
-                  <th className="px-6 py-3 text-right">Balance Forwarded</th>
-                  <th className="px-6 py-3 text-center">Status</th>
-                  <th className="px-6 py-3 text-right">Actions</th>
+                  <th scope="col">Academic year</th>
+                  <th scope="col">Semester</th>
+                  <th scope="col" className="text-right">Cash on Hand</th>
+                  <th scope="col" className="text-right">Cash in Bank</th>
+                  <th scope="col" className="text-right">Balance forwarded</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {terms.map((term) => (
-                  <TermRow
-                    key={term.id}
-                    term={term}
-                    isActive={activeTerm?.id === term.id}
-                  />
-                ))}
+              <tbody>
+                {terms.map((term) => <TermRow key={term.id} term={term} isActive={activeTerm?.id === term.id} />)}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
 
 function TermRow({ term, isActive }: { term: TermDto; isActive: boolean }) {
   return (
-    <tr className={isActive ? "bg-blue-50/40" : "hover:bg-slate-50"}>
-      <td className="px-6 py-4 font-semibold text-slate-900">
-        {term.academicYear}
-      </td>
-      <td className="px-6 py-4 text-slate-700">
-        {getSemesterLabel(term.semester)}
-      </td>
-      <td className="px-6 py-4 text-right font-mono text-slate-800">
-        {formatPesoFromCents(term.openingCashOnHandCents)}
-      </td>
-      <td className="px-6 py-4 text-right font-mono text-slate-800">
-        {formatPesoFromCents(term.openingCashInBankCents)}
-      </td>
-      <td className="px-6 py-4 text-right font-mono font-bold text-slate-900">
-        {formatPesoFromCents(term.balanceForwardedCents)}
-      </td>
-      <td className="px-6 py-4 text-center">
-        {isActive ? (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-            Active
-          </span>
-        ) : (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-            Inactive
-          </span>
-        )}
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center justify-end gap-2">
+    <tr className={isActive ? "bg-blue-50/50" : undefined}>
+      <td className="font-semibold text-slate-900">{term.academicYear}</td>
+      <td>{getSemesterLabel(term.semester)}</td>
+      <td className="text-right font-mono">{formatPesoFromCents(term.openingCashOnHandCents)}</td>
+      <td className="text-right font-mono">{formatPesoFromCents(term.openingCashInBankCents)}</td>
+      <td className="text-right font-mono font-bold text-slate-900">{formatPesoFromCents(term.balanceForwardedCents)}</td>
+      <td><span className={`ui-status-chip ${isActive ? "ui-status-chip-success" : "ui-status-chip-neutral"}`}>{isActive ? "Active" : "Inactive"}</span></td>
+      <td>
+        <div className="flex justify-end gap-2">
           {!isActive && <ActivateTermForm termId={term.id} />}
           <EditOpeningBalancesForm
             termId={term.id}
             version={term.version}
-            initialCashOnHand={formatPesoInputFromCents(
-              term.openingCashOnHandCents
-            )}
-            initialCashInBank={formatPesoInputFromCents(
-              term.openingCashInBankCents
-            )}
+            initialCashOnHand={formatPesoInputFromCents(term.openingCashOnHandCents)}
+            initialCashInBank={formatPesoInputFromCents(term.openingCashInBankCents)}
           />
         </div>
       </td>

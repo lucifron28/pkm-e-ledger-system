@@ -30,13 +30,14 @@ export function DashboardTermSelector({ terms, currentTermId }: DashboardTermSel
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+      <label htmlFor="dashboard-term-select" className="ui-label mb-0 whitespace-nowrap">
         Term:
       </label>
       <select
+        id="dashboard-term-select"
         value={currentTermId}
         onChange={(e) => handleTermChange(e.target.value)}
-        className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+        className="ui-select w-auto min-w-[12rem] text-xs font-bold"
       >
         {terms.map((t) => (
           <option key={t.id} value={t.id}>
