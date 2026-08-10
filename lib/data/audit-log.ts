@@ -579,6 +579,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   LOGGED_IN: "User Login",
   LOGGED_OUT: "User Logout",
   CHANGED_PASSWORD: "Password Changed",
+  UPDATED_PROFILE: "Profile Updated",
   REGISTERED_USER: "User Registered",
   CREATED_ORGANIZATION: "Created Organization",
   TOGGLED_ORGANIZATION_STATUS: "Toggled Organization Status",
@@ -687,6 +688,9 @@ export function formatHumanReadableSummary(log: {
 
     case AuditAction.CHANGED_PASSWORD:
       return `Updated account password`;
+
+    case AuditAction.UPDATED_PROFILE:
+      return `Updated account profile`;
 
     case AuditAction.REGISTERED_USER: {
       const name = (meta.actorFullName || meta.registeredFullName || meta.fullName) as string | undefined;

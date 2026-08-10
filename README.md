@@ -86,6 +86,15 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
    * **Organization Treasurer**: `demo_treasurer_supreme-student-council` / `password`
    * **Organization Adviser**: `demo_adviser_supreme-student-council` / `password`
    * **Organization Auditor**: `demo_audit_supreme-student-council` / `password`
+   * **Organization Officer**: `demo_officer_supreme-student-council` / `password`
+   * **Organization Member**: `demo_member_supreme-student-council` / `password`
+
+5. **Convert a seeded management account to an official account**:
+   * Sign in with the fictional seeded Treasurer, Adviser, or Audit account.
+   * Open **Account** and replace the fictional full name and username with official values.
+   * Confirm the profile update with the current password.
+   * Open **Change password** and set a private official password.
+   * Never commit official names, usernames, or passwords to the repository.
 
 ---
 

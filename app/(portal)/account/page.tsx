@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/require-auth";
 import { logoutAction } from "@/lib/actions/logout";
 import { Button, ButtonLink, PageHeader, Panel } from "@/components/ui/patterns";
+import { ProfileForm } from "@/components/profile-form";
 
 export default async function AccountPage() {
   const user = await requireUser();
@@ -15,17 +16,11 @@ export default async function AccountPage() {
 
       <Panel
         title="Profile details"
+        description="Update the name and username shown in the portal and audit records."
         actions={<span className="ui-status-chip ui-status-chip-brand">{user.role}</span>}
       >
-        <dl className="divide-y divide-slate-100">
-          <div className="grid gap-2 py-4 sm:grid-cols-3 sm:gap-4">
-            <dt className="ui-label mb-0">Full name</dt>
-            <dd className="text-sm font-semibold text-slate-900 sm:col-span-2">{user.fullName}</dd>
-          </div>
-          <div className="grid gap-2 py-4 sm:grid-cols-3 sm:gap-4">
-            <dt className="ui-label mb-0">Username</dt>
-            <dd className="font-mono text-sm font-medium text-slate-900 sm:col-span-2">{user.username}</dd>
-          </div>
+        <ProfileForm initialFullName={user.fullName} initialUsername={user.username} />
+        <dl className="mt-6 divide-y divide-slate-100 border-t border-slate-100">
           <div className="grid gap-2 py-4 sm:grid-cols-3 sm:gap-4">
             <dt className="ui-label mb-0">Assigned role</dt>
             <dd className="text-sm font-semibold text-slate-900 sm:col-span-2">{user.role}</dd>
