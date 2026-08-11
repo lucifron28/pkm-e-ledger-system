@@ -1,5 +1,6 @@
 import { ExpenseReportBucket, PrismaClient, Role, Semester, TransactionType } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { DEMO_ACCOUNT_DEFAULT_PASSWORD } from "../lib/domain/demo-accounts";
 
 const prisma = new PrismaClient();
 
@@ -147,7 +148,7 @@ async function seedCategories() {
 
 async function seedAcademicTermsAndUsers(seededOrganizations: Array<{ id: string; name: string; slug: string; active: boolean }>) {
   const resetPasswords = process.env.RESET_DEMO_PASSWORDS === "true";
-  const defaultPasswordHash = await bcrypt.hash("password", 12);
+  const defaultPasswordHash = await bcrypt.hash(DEMO_ACCOUNT_DEFAULT_PASSWORD, 12);
 
   const CANONICAL_AY = "2026-2027";
 

@@ -96,6 +96,11 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
    * Open **Change password** and set a private official password.
    * Never commit official names, usernames, or passwords to the repository.
 
+6. **Download the remote demo account workbook**:
+   * Sign in as the OSA monitoring account and open **OSA Overview**.
+   * Select **Demo accounts Excel** to download one workbook containing fictional seeded usernames, roles, access scope, and the default seed password.
+   * This workbook is for controlled demo handoff only. Do not publish it publicly or use its default password for production accounts.
+
 ---
 
 ## Quality & Build Verification
