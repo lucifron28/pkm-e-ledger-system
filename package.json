@@ -25,6 +25,7 @@
     "verify-readiness": "node scripts/verify-readiness.js"
   },
   "dependencies": {
+    "@prisma/adapter-libsql": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "@tabler/icons-react": "^3.46.0",
     "bcryptjs": "^3.0.3",

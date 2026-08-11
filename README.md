@@ -101,6 +101,21 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
    * Select **Demo accounts Excel** to download one workbook containing fictional seeded usernames, roles, access scope, and the default seed password.
    * This workbook is for controlled demo handoff only. Do not publish it publicly or use its default password for production accounts.
 
+## Remote deployment
+
+Vercel deployments use Turso for writable runtime data. Configure these
+variables in the Vercel project before deploying:
+
+* `TURSO_DATABASE_URL`
+* `TURSO_AUTH_TOKEN`
+
+The application keeps local SQLite as the development default and selects the
+Turso libSQL adapter when both variables are present. A Vercel runtime without
+both variables fails fast instead of attempting writes to its read-only local
+filesystem. Initialize the Turso schema and fictional seed accounts through
+the deployment operator workflow; never commit `.env` files, tokens, or live
+account data.
+
 ---
 
 ## Quality & Build Verification

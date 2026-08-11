@@ -1,8 +1,27 @@
 import { ExpenseReportBucket, PrismaClient, Role, Semester, TransactionType } from "@prisma/client";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
 import bcrypt from "bcryptjs";
 import { DEMO_ACCOUNT_DEFAULT_PASSWORD } from "../lib/domain/demo-accounts";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
+
+function createPrismaClient(): PrismaClient {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
+  const tursoAuthToken = process.env.TURSO_AUTH_TOKEN?.trim();
+  const shouldUseTurso =
+    process.env.USE_TURSO === "true" || databaseUrl?.startsWith("libsql://");
+
+  if (shouldUseTurso && tursoUrl && tursoAuthToken) {
+    const adapter = new PrismaLibSQL(
+      { url: tursoUrl, authToken: tursoAuthToken },
+      { timestampFormat: "unixepoch-ms" }
+    );
+    return new PrismaClient({ adapter });
+  }
+
+  return new PrismaClient();
+}
 
 const organizations = [
   "Agricultural Group of Students",
