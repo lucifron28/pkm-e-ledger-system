@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { execSync } from "child_process";
 import { PrismaClient, Role, ExpenseReportBucket } from "@prisma/client";
+import ExcelJS from "exceljs";
 import type { SessionUser } from "../../lib/auth/session";
 
 // Production modules are NEVER statically imported here: they transitively
@@ -13,6 +14,7 @@ import type { SessionUser } from "../../lib/auth/session";
 type AttachmentHandler = typeof import("../../app/api/attachments/[id]/route").handleAttachmentDownloadRequest;
 type PdfHandler = typeof import("../../app/api/reports/[termId]/pdf/route").handleReportPdfExportRequest;
 type ExcelHandler = typeof import("../../app/api/reports/[termId]/excel/route").handleReportExcelExportRequest;
+type DemoAccountsExcelHandler = typeof import("../../app/api/demo-accounts/excel/route").handleDemoAccountsExcelExportRequest;
 
 const testDbPath = path.join(__dirname, "temp_security_routes_test.db");
 const dbUrl = `file:${testDbPath}`;
@@ -23,6 +25,7 @@ const sampleFilePath = path.join(sandboxUploadsDir, sampleFileName);
 let handleAttachmentDownloadRequest: AttachmentHandler | null = null;
 let handleReportPdfExportRequest: PdfHandler | null = null;
 let handleReportExcelExportRequest: ExcelHandler | null = null;
+let handleDemoAccountsExcelExportRequest: DemoAccountsExcelHandler | null = null;
 
 let termAId = "";
 let attAId = "";
@@ -104,9 +107,11 @@ test.before(async () => {
   const attachmentModule = await import("../../app/api/attachments/[id]/route");
   const pdfModule = await import("../../app/api/reports/[termId]/pdf/route");
   const excelModule = await import("../../app/api/reports/[termId]/excel/route");
+  const demoAccountsModule = await import("../../app/api/demo-accounts/excel/route");
   handleAttachmentDownloadRequest = attachmentModule.handleAttachmentDownloadRequest;
   handleReportPdfExportRequest = pdfModule.handleReportPdfExportRequest;
   handleReportExcelExportRequest = excelModule.handleReportExcelExportRequest;
+  handleDemoAccountsExcelExportRequest = demoAccountsModule.handleDemoAccountsExcelExportRequest;
 
   if (!fs.existsSync(sandboxUploadsDir)) {
     fs.mkdirSync(sandboxUploadsDir, { recursive: true });
@@ -131,6 +136,27 @@ test.before(async () => {
         passwordHash: "dummyhash",
         fullName: treasurerActor.fullName,
         role: treasurerActor.role,
+        organizationId: orgA.id,
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        id: "demo-osa",
+        username: "demo_osa",
+        passwordHash: "dummyhash",
+        fullName: "Demo OSA User",
+        role: Role.OSA,
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        id: "demo-treasurer-org-a",
+        username: "demo_treasurer_org-a",
+        passwordHash: "dummyhash",
+        fullName: "Demo TREASURER User",
+        role: Role.TREASURER,
         organizationId: orgA.id,
       },
     });
@@ -297,4 +323,27 @@ test("Security Routes Integration: XLSX export authorization and response header
 
   const resOsa = await handler(termAId, osaActor);
   assert.equal(resOsa.status, 403, "OSA role must be denied XLSX export endpoint");
+});
+
+test("Security Routes Integration: demo account XLSX export is OSA-only and includes seed password", async () => {
+  assert.ok(handleDemoAccountsExcelExportRequest, "Demo account handler must be loaded by test.before");
+  const handler = handleDemoAccountsExcelExportRequest;
+
+  const resOsa = await handler(osaActor);
+  assert.equal(resOsa.status, 200);
+  assert.equal(resOsa.headers.get("Content-Type"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  assert.equal(resOsa.headers.get("Content-Disposition"), "attachment; filename=PKM_Demo_Accounts.xlsx");
+  assert.equal(resOsa.headers.get("Cache-Control"), "private, no-store");
+  assert.equal(resOsa.headers.get("X-Content-Type-Options"), "nosniff");
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await resOsa.arrayBuffer());
+  const accountSheet = workbook.getWorksheet("DEMO ACCOUNTS");
+  assert.ok(accountSheet);
+  assert.equal(accountSheet.getCell("E6").text, "password");
+  assert.equal(accountSheet.getCell("E7").text, "password");
+
+  assert.equal((await handler(treasurerActor)).status, 403);
+  assert.equal((await handler(officerActor)).status, 403);
+  assert.equal((await handler(null)).status, 401);
 });

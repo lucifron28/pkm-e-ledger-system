@@ -2,6 +2,7 @@ import { requireOsaUser } from "@/lib/auth/require-auth";
 import { listOsaOrganizationsOverview } from "@/lib/data/osa";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { ButtonLink, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
+import { IconFileSpreadsheet } from "@tabler/icons-react";
 
 export default async function OsaOverviewPage() {
   const user = await requireOsaUser();
@@ -13,7 +14,20 @@ export default async function OsaOverviewPage() {
         eyebrow="Office of Student Affairs"
         title="Organization monitoring"
         description={`Compare active financial positions across recognized student organizations. Signed in as ${user.fullName} (${user.username}).`}
-        actions={<ButtonLink href="/account" variant="secondary">Manage account</ButtonLink>}
+        actions={
+          <div className="flex flex-wrap justify-end gap-2">
+            <ButtonLink
+              href="/api/demo-accounts/excel"
+              download
+              variant="success"
+              aria-label="Download seeded demo accounts Excel workbook"
+            >
+              <IconFileSpreadsheet size={17} aria-hidden="true" />
+              <span>Demo accounts Excel</span>
+            </ButtonLink>
+            <ButtonLink href="/account" variant="secondary">Manage account</ButtonLink>
+          </div>
+        }
       />
 
       <Panel
