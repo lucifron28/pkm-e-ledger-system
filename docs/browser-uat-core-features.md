@@ -8,11 +8,11 @@
 | Source | Current main at a07697d814b90a46cb24e51fff4616bbbf678a2b when UAT began |
 | Application | Local production server from current main: npm run start, http://localhost:3001 |
 | Browser | Codex In-app Browser, Chromium-based |
-| Viewport | Desktop 1920 x 1080; long-page captures use the same viewport with full-page capture |
+| Viewport | Desktop 1920 x 1080; long workflows use readable viewport captures at the relevant scroll position |
 | Data | Fresh isolated SQLite database and fictional UAT records only |
 | Cloud preview | No usable Vercel Preview was confirmed; local production UAT was used. Remote preview lookup was inconclusive because access permission timed out. |
 | Workbook inspection | Officecli 1.0.142 used for workbook structure, formula, issue, and HTML/screenshot inspection. |
-| Evidence QA | All 63 evidence files decode as valid PNG images. Visual review found 20 original captures with a narrow-left-column layout defect; these remain identified below rather than being replaced with unverified reconstructed evidence. |
+| Evidence QA | All 63 evidence files decode as valid PNG images. Targeted desktop recaptures replaced the 20 malformed narrow-column captures using an isolated fictional fixture; visual review found no remaining narrow-column evidence. |
 
 No application source files were changed during this UAT. The reference workbook, private data, real credentials, and production/Turso data were not used.
 
@@ -20,7 +20,7 @@ No application source files were changed during this UAT. The reference workbook
 
 **PASS WITH VALIDATION WARNING**
 
-No product failure was observed in the executed browser flows. Financial entry, balances, transfer handling, attachments, report rendering, PDF opening, role boundaries, OSA monitoring, organization scoping, soft deletion, and audit history passed. Evidence QA found a capture-layout defect in 20 original screenshots; this is recorded as a documentation/evidence warning, not silently presented as clean visual proof.
+No product failure was observed in the executed browser flows. Financial entry, balances, transfer handling, attachments, report rendering, PDF opening, role boundaries, OSA monitoring, organization scoping, soft deletion, and audit history passed. Evidence QA replaced the 20 malformed original captures with targeted desktop recaptures from an isolated fictional fixture; no production or committed application data was changed.
 
 The XLSX download completed and Officecli visually inspected the workbook sheets. Officecli reported five OpenXML font-style schema warnings; workbook content, formulas, and rendered layout remained readable and free of reported formula/content issues.
 
@@ -34,7 +34,7 @@ The XLSX download completed and Officecli visually inspected the workbook sheets
 | Ledger controls | PASS | Search, filters, details, edit, soft delete, and audit history completed. |
 | Official reports | PASS | Summary, Schedule 1, Schedule 2, attachments, signatures, and PDF export rendered. |
 | XLSX export | PASS WITH VALIDATION WARNING | Download completed; Officecli confirmed four expected sheets, formulas, zero issue reports, and readable rendered sheets. Five font-style schema warnings remain. |
-| Screenshot evidence quality | VALIDATION WARNING | 63 files are valid PNGs. Twenty original captures preserve a narrow-left-column layout and require recapture during a future UAT run for stronger visual proof. |
+| Screenshot evidence quality | PASS | All 63 files are valid PNGs and passed visual layout review. Targeted replacement captures use readable desktop viewport framing; the authorized attachment viewer remains intentionally captured at its native viewer size. |
 | Role boundaries | PASS | Adviser and Auditor management access passed; Officer and Member remained view-only. |
 | OSA monitoring | PASS | OSA overview, organization selection, report view, and Demo accounts Excel action passed. |
 | Organization isolation | PASS | Cross-organization requests did not expose protected financial data. |
@@ -418,7 +418,7 @@ Formula check: 500.00 + 0.00 - 300.00 = **200.00**. Final cash accounts: 0.00 + 
 | Item | Classification | Impact |
 | --- | --- | --- |
 | XLSX OpenXML font-style warnings | VALIDATION WARNING | Officecli reported five unexpected `sz` child elements in `styles.xml`. Workbook structure, formulas, content checks, and rendered sheet previews passed. |
-| Original screenshot capture layout | DOCUMENTATION / EVIDENCE WARNING | These original files have valid PNG encoding but show the portal compressed into a narrow left column: `07-management-account-profile.png`, `08-term-settings.png`, `09-income-form.png`, `09-management-change-password.png`, `13-expense-recorded.png`, `17-cash-transfer-form.png`, `20-ledger-with-uat-records.png`, `21-ledger-filtered.png`, `22-transaction-details.png`, `26-treasurer-log-after-edit.png`, `28-report-schedule-1.png`, `29-report-schedule-2.png`, `30-report-attachments.png`, `34-delete-confirmation.png`, `35-ledger-after-delete.png`, `37-treasurer-log-after-delete.png`, `39-adviser-action.png`, `43-officer-reports.png`, `46-member-reports.png`, and `50-osa-demo-accounts-action.png`. Exact original UAT database/session state was unavailable for an evidence-only recapture, so no reconstructed screenshots were substituted. |
+| Targeted screenshot recapture | COMPLETED | Twenty malformed original captures were replaced with visually checked desktop captures from a disposable isolated SQLite fixture containing fictional Browser UAT records. No production database, committed database, official workbook, real credentials, or application source code was changed. |
 | Vercel Preview could not be confirmed | Environment limitation | UAT ran against local production mode and did not claim remote/Turso persistence. |
 | No product failures observed | Informational | No defect was raised from executed browser flows. |
 
