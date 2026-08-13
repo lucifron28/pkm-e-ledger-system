@@ -11,17 +11,18 @@
 | Viewport | Desktop 1920 x 1080; long-page captures use the same viewport with full-page capture |
 | Data | Fresh isolated SQLite database and fictional UAT records only |
 | Cloud preview | No usable Vercel Preview was confirmed; local production UAT was used. Remote preview lookup was inconclusive because access permission timed out. |
-| Workbook viewer | No LibreOffice, OpenOffice, or Microsoft Excel viewer was available in this environment. |
+| Workbook inspection | Officecli 1.0.142 used for workbook structure, formula, issue, and HTML/screenshot inspection. |
+| Evidence QA | All 63 evidence files decode as valid PNG images. Visual review found 20 original captures with a narrow-left-column layout defect; these remain identified below rather than being replaced with unverified reconstructed evidence. |
 
 No application source files were changed during this UAT. The reference workbook, private data, real credentials, and production/Turso data were not used.
 
 ## Overall Result
 
-**PASS WITH ENVIRONMENT-BLOCKED ITEM**
+**PASS WITH VALIDATION WARNING**
 
-No product failure was observed in the executed browser flows. Financial entry, balances, transfer handling, attachments, report rendering, PDF opening, role boundaries, OSA monitoring, organization scoping, soft deletion, and audit history passed.
+No product failure was observed in the executed browser flows. Financial entry, balances, transfer handling, attachments, report rendering, PDF opening, role boundaries, OSA monitoring, organization scoping, soft deletion, and audit history passed. Evidence QA found a capture-layout defect in 20 original screenshots; this is recorded as a documentation/evidence warning, not silently presented as clean visual proof.
 
-One export check is blocked by the environment: the XLSX download completed, but visual sheet-by-sheet inspection could not be performed because no spreadsheet viewer was installed. This is not classified as an application failure.
+The XLSX download completed and Officecli visually inspected the workbook sheets. Officecli reported five OpenXML font-style schema warnings; workbook content, formulas, and rendered layout remained readable and free of reported formula/content issues.
 
 ## UAT Checklist
 
@@ -32,7 +33,8 @@ One export check is blocked by the environment: the XLSX download completed, but
 | Financial recording | PASS | Income, expense, attachment, and cash transfer workflows completed. |
 | Ledger controls | PASS | Search, filters, details, edit, soft delete, and audit history completed. |
 | Official reports | PASS | Summary, Schedule 1, Schedule 2, attachments, signatures, and PDF export rendered. |
-| XLSX export | PASS / BLOCKED VISUAL CHECK | Download completed; visual sheet inspection remained blocked by missing spreadsheet viewer. |
+| XLSX export | PASS WITH VALIDATION WARNING | Download completed; Officecli confirmed four expected sheets, formulas, zero issue reports, and readable rendered sheets. Five font-style schema warnings remain. |
+| Screenshot evidence quality | VALIDATION WARNING | 63 files are valid PNGs. Twenty original captures preserve a narrow-left-column layout and require recapture during a future UAT run for stronger visual proof. |
 | Role boundaries | PASS | Adviser and Auditor management access passed; Officer and Member remained view-only. |
 | OSA monitoring | PASS | OSA overview, organization selection, report view, and Demo accounts Excel action passed. |
 | Organization isolation | PASS | Cross-organization requests did not expose protected financial data. |
@@ -228,13 +230,28 @@ The PDF export control opened a four-page report package in the browser PDF view
 
 ![PDF opened in browser viewer](evidence/browser-uat/32-pdf-opened.png)
 
-### XLSX Export - PASS / BLOCKED VISUAL CHECK
+### XLSX Export - PASS WITH VALIDATION WARNING
 
-The XLSX download completed successfully. Visual workbook inspection remained BLOCKED because no spreadsheet viewer was installed; no sheet-level visual PASS is claimed.
+The XLSX download completed successfully. Officecli 1.0.142 inspected the workbook structure and rendered each expected sheet. The workbook contains SUMMARY, SCHEDULE 1 - COLLECTIONS, SCHEDULE 2 - EXPENSES, and RECEIPTS - ATTACHMENTS. Formula and content issue checks reported zero issues, and the rendered sheets were readable with no visible truncation or placeholder leakage.
+
+Officecli validation reported five OpenXML schema warnings in the workbook font-style records (`styles.xml`, unexpected `sz` child elements). This is recorded as a validation warning, not silently dismissed.
+
+Officecli rendered previews for all four sheets: `SUMMARY`, `SCHEDULE 1 - COLLECTIONS`, `SCHEDULE 2 - EXPENSES`, and `RECEIPTS - ATTACHMENTS`. The previews were readable and showed no visible truncation or placeholder leakage. The preview files were temporary inspection artifacts and were not committed as application data.
 
 **XLSX export control**
 
 ![XLSX export control](evidence/browser-uat/33-xlsx-export.png)
+
+**Officecli workbook audit**
+
+| Sheet | Rows | Columns | Formulas | Error cells |
+| --- | ---: | ---: | ---: | ---: |
+| SUMMARY | 33 | 3 | 5 | 0 |
+| SCHEDULE 1 - COLLECTIONS | 13 | 3 | 2 | 0 |
+| SCHEDULE 2 - EXPENSES | 10 | 12 | 8 | 0 |
+| RECEIPTS - ATTACHMENTS | 10 | 7 | 0 | 0 |
+
+Officecli issue inspection returned zero formula/content issues. Workbook schema validation still reports five font-style warnings in `styles.xml`; these remain documented as a validation warning.
 
 ### Delete and Audit History - PASS
 
@@ -400,7 +417,8 @@ Formula check: 500.00 + 0.00 - 300.00 = **200.00**. Final cash accounts: 0.00 + 
 
 | Item | Classification | Impact |
 | --- | --- | --- |
-| XLSX visual inspection unavailable | BLOCKED environment check | Download completed, but workbook sheet layout was not visually inspected because no spreadsheet viewer was available. |
+| XLSX OpenXML font-style warnings | VALIDATION WARNING | Officecli reported five unexpected `sz` child elements in `styles.xml`. Workbook structure, formulas, content checks, and rendered sheet previews passed. |
+| Original screenshot capture layout | DOCUMENTATION / EVIDENCE WARNING | These original files have valid PNG encoding but show the portal compressed into a narrow left column: `07-management-account-profile.png`, `08-term-settings.png`, `09-income-form.png`, `09-management-change-password.png`, `13-expense-recorded.png`, `17-cash-transfer-form.png`, `20-ledger-with-uat-records.png`, `21-ledger-filtered.png`, `22-transaction-details.png`, `26-treasurer-log-after-edit.png`, `28-report-schedule-1.png`, `29-report-schedule-2.png`, `30-report-attachments.png`, `34-delete-confirmation.png`, `35-ledger-after-delete.png`, `37-treasurer-log-after-delete.png`, `39-adviser-action.png`, `43-officer-reports.png`, `46-member-reports.png`, and `50-osa-demo-accounts-action.png`. Exact original UAT database/session state was unavailable for an evidence-only recapture, so no reconstructed screenshots were substituted. |
 | Vercel Preview could not be confirmed | Environment limitation | UAT ran against local production mode and did not claim remote/Turso persistence. |
 | No product failures observed | Informational | No defect was raised from executed browser flows. |
 
