@@ -4,7 +4,7 @@ import { getSession, SessionUser } from "@/lib/auth/session";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 
-import { AttachmentStorageService } from "@/lib/infrastructure/storage/attachment-store";
+import { AttachmentStorageService, isBlobStorageKey } from "@/lib/infrastructure/storage/attachment-store";
 
 import { validateRouteAuth } from "@/lib/auth/require-auth";
 import { MANAGEMENT_ROLES } from "@/lib/auth/rbac";
@@ -36,6 +36,35 @@ export async function handleAttachmentDownloadRequest(
 
   if (!ownerOrgId || user.organizationId !== ownerOrgId || isDeleted) {
     return new NextResponse("Attachment not found", { status: 404 });
+  }
+
+  if (isBlobStorageKey(attachment.storageKey)) {
+    try {
+      const response = await fetch(attachment.storageKey);
+      if (!response.ok) {
+        return new NextResponse("File not found in storage", { status: 404 });
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const fileBuffer = Buffer.from(arrayBuffer);
+      if (fileBuffer.length !== attachment.sizeBytes) {
+        console.warn(
+          `[AttachmentDownload] Stored size mismatch for attachment ${attachment.id}: metadata=${attachment.sizeBytes}, actual=${fileBuffer.length}`
+        );
+      }
+      const safeFileName = attachment.originalName.replace(/["\r\n\\/]/g, "_");
+      return new NextResponse(fileBuffer, {
+        headers: {
+          "Content-Type": attachment.mimeType,
+          "Content-Disposition": `inline; filename="${safeFileName}"`,
+          "Content-Length": fileBuffer.length.toString(),
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch (error) {
+      console.error("[AttachmentDownload] Blob fetch error:", error);
+      return new NextResponse("Error reading file", { status: 500 });
+    }
   }
 
   const storageService = new AttachmentStorageService(customUploadsRoot);

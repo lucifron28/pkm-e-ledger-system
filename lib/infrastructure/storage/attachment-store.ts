@@ -1,11 +1,36 @@
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 import { StorageConsistencyError, ValidationError } from "../../domain/errors";
 import { prisma } from "../../db/prisma";
 
-const DEFAULT_UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
+export function isBlobStorageKey(key: string): boolean {
+  return typeof key === "string" && (key.startsWith("https://") || key.startsWith("http://"));
+}
+
+export function isVercelBlobConfigured(): boolean {
+  if (process.env.ATTACHMENT_STORAGE_PROVIDER === "local") {
+    return false;
+  }
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+export function getDefaultUploadsRoot(): string {
+  if (process.env.UPLOADS_DIR) {
+    return path.resolve(process.env.UPLOADS_DIR);
+  }
+  if (process.env.UPLOAD_DIR) {
+    return path.resolve(process.env.UPLOAD_DIR);
+  }
+  if (process.env.VERCEL === "1" || isVercelBlobConfigured()) {
+    return path.join(os.tmpdir(), "uploads");
+  }
+  return path.resolve(process.cwd(), "uploads");
+}
+
+const DEFAULT_UPLOADS_ROOT = getDefaultUploadsRoot();
 
 export interface StagedUploadResult {
   stageId: string;
@@ -59,10 +84,20 @@ const defaultStorageDatabase = prisma as unknown as StorageDatabase;
 export class AttachmentStorageService {
   private uploadsRoot: string;
   private database: StorageDatabase;
+  private useBlobStorage: boolean;
 
-  constructor(customUploadsRoot?: string, database: StorageDatabase = defaultStorageDatabase) {
+  constructor(
+    customUploadsRoot?: string,
+    database: StorageDatabase = defaultStorageDatabase,
+    useBlobStorage?: boolean
+  ) {
+    this.useBlobStorage = useBlobStorage ?? (customUploadsRoot ? false : isVercelBlobConfigured());
     this.uploadsRoot = path.resolve(customUploadsRoot || DEFAULT_UPLOADS_ROOT);
     this.database = database;
+  }
+
+  public isBlobEnabled(): boolean {
+    return this.useBlobStorage;
   }
 
   public getStagingDir(): string {
@@ -100,6 +135,27 @@ export class AttachmentStorageService {
       throw new StorageConsistencyError(`Staged upload file missing for stageId: ${stageId}`);
     }
 
+    if (this.useBlobStorage) {
+      const fileBuffer = await fs.readFile(stagedPath);
+      const { put } = await import("@vercel/blob");
+      const blobPathname = `attachments/${crypto.randomUUID()}.${safeExtension}`;
+      const blobResult = await put(blobPathname, fileBuffer, {
+        access: "public",
+        addRandomSuffix: false,
+      });
+
+      try {
+        await fs.unlink(stagedPath);
+      } catch {
+        /* best effort cleanup of temp staging file */
+      }
+
+      return {
+        storageKey: blobResult.url,
+        relativeKey: blobResult.pathname,
+      };
+    }
+
     const storageKey = `${crypto.randomUUID()}.${safeExtension}`;
     const activePath = this.resolveActivePath(storageKey);
     await fs.mkdir(this.uploadsRoot, { recursive: true });
@@ -121,6 +177,27 @@ export class AttachmentStorageService {
   }
 
   public async moveToTrash(storageKey: string, owner: TrashMoveOwner = {}): Promise<string> {
+    if (isBlobStorageKey(storageKey)) {
+      const trashId = crypto.randomUUID();
+      const trashKey = `blob-trash_${trashId}`;
+      const manifest: TrashManifest = {
+        version: 1,
+        state: "MOVED",
+        trashKey,
+        originalStorageKey: storageKey,
+        attachmentId: owner.attachmentId || null,
+        transactionId: owner.transactionId || null,
+        cashTransferId: owner.cashTransferId || null,
+        operationTimestamp: new Date().toISOString(),
+        stateChangedAt: new Date().toISOString(),
+      };
+
+      await fs.mkdir(this.getTrashDir(), { recursive: true });
+      const manifestPath = this.getManifestPath(trashKey);
+      await fs.writeFile(manifestPath, JSON.stringify(manifest), "utf8");
+      return trashKey;
+    }
+
     const activePath = this.resolveActivePath(storageKey);
     if (!existsSync(activePath)) {
       throw new StorageConsistencyError(`Active attachment file missing: ${storageKey}`);
@@ -179,6 +256,14 @@ export class AttachmentStorageService {
   }
 
   public async restoreFromTrash(trashKey: string, storageKey: string): Promise<void> {
+    if (trashKey.startsWith("blob-trash_") || isBlobStorageKey(storageKey)) {
+      const manifestPath = this.getManifestPath(trashKey);
+      if (existsSync(manifestPath)) {
+        await fs.unlink(manifestPath).catch(() => undefined);
+      }
+      return;
+    }
+
     const trashPath = this.resolveTrashPath(trashKey);
     const manifestPath = this.getManifestPath(trashKey);
     if (!existsSync(trashPath)) {
@@ -207,6 +292,9 @@ export class AttachmentStorageService {
   }
 
   public resolveActivePath(storageKey: string): string {
+    if (isBlobStorageKey(storageKey)) {
+      throw new ValidationError("Cannot resolve local filesystem path for cloud storage key.");
+    }
     return this.resolveContainedFile(this.uploadsRoot, storageKey, "storage key");
   }
 
@@ -282,11 +370,48 @@ export class AttachmentStorageService {
   }
 
   public async deleteActiveFile(storageKey: string): Promise<void> {
+    if (isBlobStorageKey(storageKey)) {
+      try {
+        const { del } = await import("@vercel/blob");
+        await del(storageKey);
+      } catch (error) {
+        console.warn(`[AttachmentStorageService] Failed to delete active blob: ${storageKey}`, error);
+      }
+      return;
+    }
+
     const activePath = this.resolveActivePath(storageKey);
     if (existsSync(activePath)) await fs.unlink(activePath);
   }
 
   public async permanentlyDelete(trashKey: string): Promise<void> {
+    if (isBlobStorageKey(trashKey)) {
+      try {
+        const { del } = await import("@vercel/blob");
+        await del(trashKey);
+      } catch (error) {
+        console.warn(`[AttachmentStorageService] Failed to permanently delete blob: ${trashKey}`, error);
+      }
+      return;
+    }
+
+    if (trashKey.startsWith("blob-trash_")) {
+      const manifestPath = this.getManifestPath(trashKey);
+      if (existsSync(manifestPath)) {
+        try {
+          const manifest = await this.readManifest(manifestPath);
+          if (isBlobStorageKey(manifest.originalStorageKey)) {
+            const { del } = await import("@vercel/blob");
+            await del(manifest.originalStorageKey);
+          }
+        } catch (error) {
+          console.warn(`[AttachmentStorageService] Failed to delete blob during permanent delete: ${trashKey}`, error);
+        }
+        await fs.unlink(manifestPath).catch(() => undefined);
+      }
+      return;
+    }
+
     const trashPath = this.resolveTrashPath(trashKey);
     const manifestPath = this.getManifestPath(trashKey);
 
@@ -371,6 +496,15 @@ export class AttachmentStorageService {
           const manifestPath = path.join(trashDir, manifestFile);
           try {
             const manifest = await this.readManifest(manifestPath);
+            if (isBlobStorageKey(manifest.originalStorageKey) || manifest.trashKey.startsWith("blob-trash_")) {
+              if (manifest.state === "CLEANED" || manifest.state === "DB_DELETED") {
+                deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+              } else if (now - new Date(manifest.stateChangedAt).getTime() > maxStaleAgeMs) {
+                deleteTrash.push({ manifestPath, trashKey: manifest.trashKey });
+              }
+              continue;
+            }
+
             const trashPath = this.resolveTrashPath(manifest.trashKey);
             const row = manifest.attachmentId
               ? dbById.get(manifest.attachmentId)
@@ -449,6 +583,9 @@ export class AttachmentStorageService {
       }
 
       for (const attachment of dbAttachments) {
+        if (isBlobStorageKey(attachment.storageKey)) {
+          continue;
+        }
         try {
           if (!existsSync(this.resolveActivePath(attachment.storageKey))) {
             missingDbFiles.push(attachment.storageKey);
@@ -459,6 +596,9 @@ export class AttachmentStorageService {
       }
     } else {
       for (const attachment of dbAttachments) {
+        if (isBlobStorageKey(attachment.storageKey)) {
+          continue;
+        }
         missingDbFiles.push(attachment.storageKey);
       }
     }
