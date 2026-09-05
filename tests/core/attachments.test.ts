@@ -7,7 +7,13 @@ import {
   validateFileMagicBytes,
   validateAndReadAttachmentFile,
 } from "../../lib/domain/attachments";
-import { AttachmentStorageService, StorageDatabase } from "../../lib/infrastructure/storage/attachment-store";
+import {
+  AttachmentStorageService,
+  StorageDatabase,
+  isBlobStorageKey,
+  isVercelBlobConfigured,
+  getDefaultUploadsRoot,
+} from "../../lib/infrastructure/storage/attachment-store";
 import { ValidationError } from "../../lib/domain/errors";
 
 test("Attachment Domain: Valid MIME types and file extensions", () => {
@@ -346,6 +352,85 @@ test("Attachment Storage: reconciliation completes a crash after state advance a
     assert.equal(fs.readFileSync(store.resolveActivePath("crash-moved.png"), "utf8"), "crash-receipt", "Active file must be restored from trash");
     assert.equal(fs.existsSync(path.join(store.getTrashDir(), trashKey)), false, "Trash file must be consumed by restoration");
     assert.equal(fs.existsSync(path.join(store.getTrashDir(), "moved-trash.json")), false, "Restoration manifest must not be left behind");
+  } finally {
+    if (fs.existsSync(sandboxUploads)) fs.rmSync(sandboxUploads, { recursive: true, force: true });
+  }
+});
+
+test("Attachment Storage: Vercel Blob detection and environment helpers", () => {
+  assert.equal(isBlobStorageKey("https://public.blob.vercel-storage.com/attachments/test.png"), true);
+  assert.equal(isBlobStorageKey("http://localhost:3000/blob.png"), true);
+  assert.equal(isBlobStorageKey("550e8400-e29b-41d4-a716-446655440000.png"), false);
+  assert.equal(isBlobStorageKey("receipt.pdf"), false);
+
+  const prevToken = process.env.BLOB_READ_WRITE_TOKEN;
+  const prevProvider = process.env.ATTACHMENT_STORAGE_PROVIDER;
+  const prevVercel = process.env.VERCEL;
+  try {
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    delete process.env.ATTACHMENT_STORAGE_PROVIDER;
+    assert.equal(isVercelBlobConfigured(), false);
+
+    process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_test";
+    assert.equal(isVercelBlobConfigured(), true);
+
+    process.env.ATTACHMENT_STORAGE_PROVIDER = "local";
+    assert.equal(isVercelBlobConfigured(), false);
+
+    delete process.env.ATTACHMENT_STORAGE_PROVIDER;
+    process.env.VERCEL = "1";
+    assert.ok(getDefaultUploadsRoot().length > 0);
+  } finally {
+    if (prevToken !== undefined) process.env.BLOB_READ_WRITE_TOKEN = prevToken;
+    else delete process.env.BLOB_READ_WRITE_TOKEN;
+    if (prevProvider !== undefined) process.env.ATTACHMENT_STORAGE_PROVIDER = prevProvider;
+    else delete process.env.ATTACHMENT_STORAGE_PROVIDER;
+    if (prevVercel !== undefined) process.env.VERCEL = prevVercel;
+    else delete process.env.VERCEL;
+  }
+});
+
+test("Attachment Storage: Blob storage keys protection and trash lifecycle", async () => {
+  const sandboxUploads = path.join(__dirname, "temp_storage_blob_test");
+  if (fs.existsSync(sandboxUploads)) fs.rmSync(sandboxUploads, { recursive: true, force: true });
+  const blobUrl = "https://public.blob.vercel-storage.com/attachments/sample-123.png";
+
+  const db: StorageDatabase = {
+    attachment: {
+      findMany: async () => [
+        { id: "att-blob-1", storageKey: blobUrl, transactionId: "tx-blob-1", cashTransferId: null },
+      ],
+    },
+  };
+
+  const store = new AttachmentStorageService(sandboxUploads, db, false);
+
+  try {
+    // resolveActivePath must reject cloud URLs
+    assert.throws(
+      () => store.resolveActivePath(blobUrl),
+      (err: unknown) => err instanceof ValidationError && /Cannot resolve local filesystem path/i.test(err.message)
+    );
+
+    // moveToTrash creates a blob trash manifest without touching local disk files
+    const trashKey = await store.moveToTrash(blobUrl, {
+      attachmentId: "att-blob-1",
+      transactionId: "tx-blob-1",
+    });
+    assert.ok(trashKey.startsWith("blob-trash_"));
+
+    const manifestPath = path.join(store.getTrashDir(), `${trashKey}.json`);
+    assert.equal(fs.existsSync(manifestPath), true, "Blob trash manifest must be written");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as { originalStorageKey: string };
+    assert.equal(manifest.originalStorageKey, blobUrl);
+
+    // restoreFromTrash removes manifest
+    await store.restoreFromTrash(trashKey, blobUrl);
+    assert.equal(fs.existsSync(manifestPath), false, "Blob trash manifest must be unlinked on restore");
+
+    // planReconciliation does NOT flag blob storage keys as missingDbFiles
+    const plan = await store.planReconciliation(0);
+    assert.equal(plan.missingDbFiles.length, 0, "Cloud blob keys must not be flagged as missing on disk");
   } finally {
     if (fs.existsSync(sandboxUploads)) fs.rmSync(sandboxUploads, { recursive: true, force: true });
   }
