@@ -17,6 +17,12 @@ export function isVercelBlobConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
+export function getBlobAccess(): "public" | "private" {
+  if (process.env.BLOB_ACCESS === "public") return "public";
+  if (process.env.BLOB_ACCESS === "private") return "private";
+  return "private";
+}
+
 export function getDefaultUploadsRoot(): string {
   if (process.env.UPLOADS_DIR) {
     return path.resolve(process.env.UPLOADS_DIR);
@@ -139,10 +145,29 @@ export class AttachmentStorageService {
       const fileBuffer = await fs.readFile(stagedPath);
       const { put } = await import("@vercel/blob");
       const blobPathname = `attachments/${crypto.randomUUID()}.${safeExtension}`;
-      const blobResult = await put(blobPathname, fileBuffer, {
-        access: "public",
-        addRandomSuffix: false,
-      });
+      const primaryAccess = getBlobAccess();
+      let blobResult;
+      try {
+        blobResult = await put(blobPathname, fileBuffer, {
+          access: primaryAccess,
+          addRandomSuffix: false,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("private store") && primaryAccess === "public") {
+          blobResult = await put(blobPathname, fileBuffer, {
+            access: "private",
+            addRandomSuffix: false,
+          });
+        } else if (message.includes("public store") && primaryAccess === "private") {
+          blobResult = await put(blobPathname, fileBuffer, {
+            access: "public",
+            addRandomSuffix: false,
+          });
+        } else {
+          throw err;
+        }
+      }
 
       try {
         await fs.unlink(stagedPath);

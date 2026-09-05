@@ -40,19 +40,42 @@ export async function handleAttachmentDownloadRequest(
 
   if (isBlobStorageKey(attachment.storageKey)) {
     try {
-      const response = await fetch(attachment.storageKey);
-      if (!response.ok) {
-        return new NextResponse("File not found in storage", { status: 404 });
+      let fileBuffer: Buffer | null = null;
+      try {
+        const { get } = await import("@vercel/blob");
+        const blobResult = await get(attachment.storageKey, { access: "private" }).catch(async () => {
+          return await get(attachment.storageKey, { access: "public" });
+        });
+        if (blobResult && blobResult.statusCode === 200 && blobResult.stream) {
+          const reader = blobResult.stream.getReader();
+          const chunks: Uint8Array[] = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) chunks.push(value);
+          }
+          fileBuffer = Buffer.concat(chunks);
+        }
+      } catch {
+        /* fallback to direct fetch */
       }
-      const arrayBuffer = await response.arrayBuffer();
-      const fileBuffer = Buffer.from(arrayBuffer);
+
+      if (!fileBuffer) {
+        const response = await fetch(attachment.storageKey);
+        if (!response.ok) {
+          return new NextResponse("File not found in storage", { status: 404 });
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        fileBuffer = Buffer.from(arrayBuffer);
+      }
+
       if (fileBuffer.length !== attachment.sizeBytes) {
         console.warn(
           `[AttachmentDownload] Stored size mismatch for attachment ${attachment.id}: metadata=${attachment.sizeBytes}, actual=${fileBuffer.length}`
         );
       }
       const safeFileName = attachment.originalName.replace(/["\r\n\\/]/g, "_");
-      return new NextResponse(fileBuffer, {
+      return new NextResponse(new Uint8Array(fileBuffer), {
         headers: {
           "Content-Type": attachment.mimeType,
           "Content-Disposition": `inline; filename="${safeFileName}"`,

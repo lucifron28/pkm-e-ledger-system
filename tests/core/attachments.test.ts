@@ -12,6 +12,7 @@ import {
   StorageDatabase,
   isBlobStorageKey,
   isVercelBlobConfigured,
+  getBlobAccess,
   getDefaultUploadsRoot,
 } from "../../lib/infrastructure/storage/attachment-store";
 import { ValidationError } from "../../lib/domain/errors";
@@ -380,7 +381,15 @@ test("Attachment Storage: Vercel Blob detection and environment helpers", () => 
     delete process.env.ATTACHMENT_STORAGE_PROVIDER;
     process.env.VERCEL = "1";
     assert.ok(getDefaultUploadsRoot().length > 0);
+
+    assert.equal(getBlobAccess(), "private");
+    process.env.BLOB_ACCESS = "public";
+    assert.equal(getBlobAccess(), "public");
+    process.env.BLOB_ACCESS = "private";
+    assert.equal(getBlobAccess(), "private");
+    delete process.env.BLOB_ACCESS;
   } finally {
+    delete process.env.BLOB_ACCESS;
     if (prevToken !== undefined) process.env.BLOB_READ_WRITE_TOKEN = prevToken;
     else delete process.env.BLOB_READ_WRITE_TOKEN;
     if (prevProvider !== undefined) process.env.ATTACHMENT_STORAGE_PROVIDER = prevProvider;
