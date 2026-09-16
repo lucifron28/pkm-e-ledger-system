@@ -104,10 +104,14 @@ Phase 8 adds cash transfer workflows, database-level financial invariants, idemp
 ## Remote deployment
 
 Vercel deployments use Turso for writable runtime data. Configure these
-variables in the Vercel project before deploying:
+variables in every Vercel environment used by deployments before deploying:
 
 * `TURSO_DATABASE_URL`
 * `TURSO_AUTH_TOKEN`
+
+Preview deployments do not inherit Production variables. Configure both
+variables for the Preview environment as well, or scope them to the specific
+Preview Git branch being deployed.
 
 The application keeps local SQLite as the development default and selects the
 Turso libSQL adapter when both variables are present. A Vercel runtime without
