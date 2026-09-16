@@ -1,5 +1,5 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
-import { formatReportDate } from "@/lib/reports/report-layout";
+import { formatPhilippineDate } from "@/lib/date-format";
 import { PkmLogo } from "@/components/branding/pkm-logo";
 
 export function ReportMasthead({
@@ -29,7 +29,7 @@ export function ReportMasthead({
       <p className="mt-2 text-xs font-semibold text-slate-600 sm:text-sm">
         {report.academicYear} <span aria-hidden="true">&bull;</span> {report.semesterLabel}
       </p>
-      <p className="text-[11px] text-slate-500">As of {formatReportDate(report.asOfDate)}</p>
+      <p className="text-[11px] text-slate-500">As of {formatPhilippineDate(report.asOfDate)}</p>
     </div>
   );
 }

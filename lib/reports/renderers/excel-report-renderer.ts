@@ -1,11 +1,11 @@
 import ExcelJS from "exceljs";
 import { ReportPackageDto, Schedule2Bucket } from "@/lib/domain/reports";
+import { formatPhilippineDate } from "@/lib/date-format";
 import {
-  formatReportDate,
   getReportExpenseColumns,
   REPORT_CURRENCY_FORMAT,
   REPORT_DATE_FORMAT,
-  toReportDateCell,
+  toFinancialDateCell,
 } from "@/lib/reports/report-layout";
 
 /** Prevent formula injection when user-controlled text enters an Excel cell. */
@@ -87,7 +87,7 @@ function addHeading(
     sanitizeExcelCellString(report.organizationName),
     title,
     `${sanitizeExcelCellString(report.academicYear)} | ${sanitizeExcelCellString(report.semesterLabel)}`,
-    includeAsOf ? `As of ${formatReportDate(report.asOfDate)}` : "",
+    includeAsOf ? `As of ${formatPhilippineDate(report.asOfDate)}` : "",
   ];
 
   headingRows.forEach((value, index) => {
@@ -328,7 +328,7 @@ export async function buildReportExcelBuffer(report: ReportPackageDto): Promise<
   for (const item of report.expenseRows) {
     const row = sched2.addRow([
       sanitizeExcelCellString(item.documentNumber),
-      toReportDateCell(item.transactionDate),
+      toFinancialDateCell(item.transactionDate),
       sanitizeExcelCellString(item.payeeName),
       sanitizeExcelCellString(item.description),
       item.amountCents / 100,
@@ -407,7 +407,7 @@ export async function buildReportExcelBuffer(report: ReportPackageDto): Promise<
   for (const attachment of report.attachments) {
     const row = attachments.addRow([
       attachment.entryType === "CASH_TRANSFER" ? "Transfer" : "Transaction",
-      toReportDateCell(attachment.transactionDate),
+      toFinancialDateCell(attachment.transactionDate),
       sanitizeExcelCellString(attachment.documentNumber),
       sanitizeExcelCellString(attachment.description),
       sanitizeExcelCellString(attachment.originalName),

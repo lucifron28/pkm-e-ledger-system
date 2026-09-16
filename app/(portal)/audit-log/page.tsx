@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { AuditAction } from "@prisma/client";
 import { Button, ButtonLink, PageHeader, StatusPanel } from "@/components/ui/patterns";
+import { formatPhilippineDateTime } from "@/lib/date-format";
 
 export default async function AuditLogPage({
   searchParams,
@@ -177,13 +178,7 @@ export default async function AuditLogPage({
                 {logs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50 align-top">
                     <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                      {log.createdAt.toLocaleString("en-PH", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatPhilippineDateTime(log.createdAt)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-900">
                       {AUDIT_ACTION_LABELS[log.action] || log.action}

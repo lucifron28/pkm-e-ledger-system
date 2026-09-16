@@ -1,5 +1,5 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
-import { formatReportDate } from "@/lib/reports/report-layout";
+import { formatFinancialDate } from "@/lib/date-format";
 import { ReportMasthead } from "@/components/reports/report-masthead";
 
 interface AttachmentReferencesProps {
@@ -36,7 +36,7 @@ export function AttachmentReferences({ report }: AttachmentReferencesProps) {
                     {att.entryType === "CASH_TRANSFER" ? "Transfer" : "Transaction"}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-slate-700">
-                    {formatReportDate(att.transactionDate)}
+                    {formatFinancialDate(att.transactionDate)}
                   </td>
                   <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">
                     {att.documentNumber || "-"}
