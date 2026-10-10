@@ -77,10 +77,17 @@ export async function uploadAttachmentDirectly(
   const config = (await configRes.json()) as {
     isBlobConfigured: boolean;
     blobAccess: "public" | "private";
+    organizationId?: string;
   };
 
   if (config.isBlobConfigured) {
-    const blobResult = await upload(file.name, file, {
+    const ext = file.name.split(".").pop()?.toLowerCase() || "pdf";
+    const uploadId = crypto.randomUUID();
+    const pathname = config.organizationId
+      ? `attachments/${config.organizationId}/${uploadId}.${ext}`
+      : `attachments/${uploadId}.${ext}`;
+
+    const blobResult = await upload(pathname, file, {
       access: config.blobAccess || "private",
       handleUploadUrl: "/api/attachments/upload",
       abortSignal: options.signal,

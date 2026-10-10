@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db/prisma";
 import { getSession, SessionUser } from "@/lib/auth/session";
 import { readFile } from "fs/promises";

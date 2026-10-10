@@ -80,6 +80,9 @@ export function AttachmentUploadField({
         setUploaded(result);
         setIsUploading(false);
         setProgress(100);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         onUploaded?.(result);
       } catch (err: unknown) {
         if (controller.signal.aborted) {
@@ -149,15 +152,15 @@ export function AttachmentUploadField({
         </>
       )}
 
-      {/* Actual native file input */}
+      {/* Native file input - omitted from form payload once upload succeeded */}
       <input
         ref={fileInputRef}
         id={id}
-        name={name}
+        name={uploaded ? undefined : name}
         type="file"
         accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
         required={required && !uploaded}
-        disabled={disabled || isUploading}
+        disabled={disabled || isUploading || Boolean(uploaded)}
         onChange={handleFileChange}
         aria-invalid={Boolean(activeError)}
         aria-describedby={`${activeError ? errorId : ""} ${helpId}`.trim()}

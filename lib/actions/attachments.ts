@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { validateAndReadAttachmentFile, validateAttachmentMetadata } from "../domain/attachments";
+import { validateAndReadAttachmentFile } from "../domain/attachments";
+import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
 import { AuditAction, Prisma } from "@prisma/client";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
@@ -59,9 +60,22 @@ export async function uploadAttachmentAction(
       originalName = formData.get("originalName")?.toString().trim() || "";
       mimeType = formData.get("mimeType")?.toString().trim() || "";
       sizeBytes = Number(formData.get("sizeBytes")) || 0;
-      const metaError = validateAttachmentMetadata(originalName, mimeType, sizeBytes);
-      if (metaError) return { error: metaError };
-      fileHash = crypto.createHash("sha256").update(providedStorageKey).digest("hex");
+      if (!originalName || !mimeType || sizeBytes <= 0) {
+        return { error: "Uploaded attachment metadata is incomplete." };
+      }
+      const verified = await verifyAndSecureAttachmentStorage(
+        {
+          storageKey: providedStorageKey,
+          originalName,
+          mimeType,
+          sizeBytes,
+        },
+        user
+      );
+      originalName = verified.originalName;
+      mimeType = verified.mimeType;
+      sizeBytes = verified.sizeBytes;
+      fileHash = crypto.createHash("sha256").update(verified.storageKey).digest("hex");
     } else {
       const file = getFile(formData);
       const validation = await validateAndReadAttachmentFile(file);

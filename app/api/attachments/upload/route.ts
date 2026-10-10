@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import path from "path";
 import { handleUpload } from "@vercel/blob/client";
 import type { HandleUploadBody } from "@vercel/blob/client";
@@ -23,6 +25,7 @@ export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
     isBlobConfigured: isBlob,
     blobAccess: getBlobAccess(),
+    organizationId: authResult.user.organizationId,
     maxSizeBytes: 10 * 1024 * 1024,
     allowedMimeTypes: ["image/jpeg", "image/png", "application/pdf"],
     allowedExtensions: ["jpg", "jpeg", "png", "pdf"],
@@ -99,10 +102,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (!["jpg", "jpeg", "png", "pdf"].includes(ext)) {
           throw new Error("Invalid attachment extension. Allowed: jpg, jpeg, png, pdf.");
         }
+        const expectedPrefix = `attachments/${user.organizationId}/`;
+        if (!pathname.startsWith(expectedPrefix)) {
+          throw new Error("Invalid upload path: organization scope mismatch.");
+        }
         return {
           allowedContentTypes: ["image/jpeg", "image/png", "application/pdf"],
           maximumSizeInBytes: 10 * 1024 * 1024,
-          addRandomSuffix: true,
+          addRandomSuffix: false,
           tokenPayload: JSON.stringify({
             userId: user.id,
             organizationId: user.organizationId,

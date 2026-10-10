@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { deleteAttachmentAction, uploadAttachmentAction } from "@/lib/actions/attachments";
 import type { AttachmentDto } from "@/lib/data/transactions";
@@ -24,6 +24,7 @@ function formatSize(bytes: number): string {
 interface DeleteConfirmModalProps {
   attachment: AttachmentDto;
   isPending: boolean;
+  triggerElement?: HTMLElement | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -31,6 +32,7 @@ interface DeleteConfirmModalProps {
 function DeleteConfirmModal({
   attachment,
   isPending,
+  triggerElement,
   onCancel,
   onConfirm,
 }: DeleteConfirmModalProps) {
@@ -39,6 +41,11 @@ function DeleteConfirmModal({
     isPending,
     onClose: onCancel,
   });
+  useEffect(() => {
+    return () => {
+      triggerElement?.focus();
+    };
+  }, [triggerElement]);
 
   return (
     <div
@@ -110,6 +117,7 @@ export function AttachmentManager({
   const [deleteState, deleteAction, deletePending] = useActionState(deleteAttachmentAction, null);
 
   const [confirmingAttachment, setConfirmingAttachment] = useState<AttachmentDto | null>(null);
+  const [confirmingTrigger, setConfirmingTrigger] = useState<HTMLButtonElement | null>(null);
   const [clientUploadProgress, setClientUploadProgress] = useState<number | null>(null);
   const [clientUploadError, setClientUploadError] = useState<string | null>(null);
   const [isClientUploading, setIsClientUploading] = useState(false);
@@ -193,7 +201,10 @@ export function AttachmentManager({
             <button
               type="button"
               disabled={deletePending || isFinalAttachment}
-              onClick={() => setConfirmingAttachment(attachment)}
+              onClick={(e) => {
+                setConfirmingAttachment(attachment);
+                setConfirmingTrigger(e.currentTarget);
+              }}
               className="ui-icon-button text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent min-w-[28px] min-h-[28px] p-1"
               aria-label={
                 isFinalAttachment
@@ -217,7 +228,11 @@ export function AttachmentManager({
         <DeleteConfirmModal
           attachment={confirmingAttachment}
           isPending={deletePending}
-          onCancel={() => setConfirmingAttachment(null)}
+          triggerElement={confirmingTrigger}
+          onCancel={() => {
+            setConfirmingAttachment(null);
+            confirmingTrigger?.focus();
+          }}
           onConfirm={handleConfirmDelete}
         />
       )}

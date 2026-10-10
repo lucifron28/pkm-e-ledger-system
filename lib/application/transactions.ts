@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
+import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
 import {
   claimCommandReceipt,
   processIdempotentCommand,
@@ -18,7 +19,7 @@ import {
   ValidationError,
 } from "../domain/errors";
 import { validateMoneyAmount } from "../domain/money";
-import { validateAttachmentPayload, validateAttachmentMetadata } from "../domain/attachments";
+import { validateAttachmentPayload } from "../domain/attachments";
 import {
   assertSufficientFunds,
   projectMutationBalances,
@@ -85,13 +86,19 @@ export async function createTransactionService(
   validateMoneyAmount(input.amountCents, false, "Transaction amount");
   let fileHash: string;
   if (input.attachment.storageKey) {
-    const metaError = validateAttachmentMetadata(
-      input.attachment.originalName,
-      input.attachment.mimeType,
-      input.attachment.sizeBytes
+    const verified = await verifyAndSecureAttachmentStorage(
+      {
+        storageKey: input.attachment.storageKey,
+        originalName: input.attachment.originalName,
+        mimeType: input.attachment.mimeType,
+        sizeBytes: input.attachment.sizeBytes,
+      },
+      user
     );
-    if (metaError) throw new ValidationError(metaError);
-    fileHash = crypto.createHash("sha256").update(input.attachment.storageKey).digest("hex");
+    input.attachment.originalName = verified.originalName;
+    input.attachment.mimeType = verified.mimeType;
+    input.attachment.sizeBytes = verified.sizeBytes;
+    fileHash = crypto.createHash("sha256").update(verified.storageKey).digest("hex");
   } else if (input.attachment.buffer) {
     const attachmentError = validateAttachmentPayload(
       input.attachment.originalName,

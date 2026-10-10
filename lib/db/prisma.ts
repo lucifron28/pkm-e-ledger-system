@@ -21,6 +21,14 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient({ adapter });
   }
 
+  if (
+    shouldUseTurso &&
+    (process.env.NEXT_PHASE === "phase-production-build" ||
+      process.env.npm_lifecycle_event === "build")
+  ) {
+    return new PrismaClient();
+  }
+
   if (shouldUseTurso) {
     throw new Error(
       "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are required on Vercel."

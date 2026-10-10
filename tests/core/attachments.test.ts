@@ -17,7 +17,10 @@ import {
   getBlobAccess,
   getDefaultUploadsRoot,
 } from "../../lib/infrastructure/storage/attachment-store";
-import { ValidationError } from "../../lib/domain/errors";
+import { AccessDeniedError, ValidationError } from "../../lib/domain/errors";
+import { verifyAndSecureAttachmentStorage } from "../../lib/infrastructure/storage/attachment-verification";
+import { Role } from "@prisma/client";
+import type { SessionUser } from "../../lib/auth/session";
 
 test("Attachment Domain: Valid MIME types and file extensions", () => {
   const validFile = new File(["dummy content"], "receipt.jpg", { type: "image/jpeg" });
@@ -483,4 +486,110 @@ test("Attachment Direct Upload: Direct blob keys are identified and metadata is 
     validateAttachmentMetadata("uploaded-file.pdf", "application/pdf", 12 * 1024 * 1024) || "",
     /under 10 MB/
   );
+});
+
+const mockUser: SessionUser = {
+  id: "user-1",
+  username: "test_user",
+  fullName: "Test User",
+  role: Role.TREASURER,
+  organizationId: "org-alpha",
+  organizationName: "Org Alpha",
+  active: true,
+  mustChangePassword: false,
+};
+
+test("Attachment Security: Rejects arbitrary third-party storage URLs", async () => {
+  await assert.rejects(
+    async () => {
+      await verifyAndSecureAttachmentStorage(
+        {
+          storageKey: "https://evil.com/attachments/org-alpha/malware.pdf",
+          originalName: "malware.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+        },
+        mockUser
+      );
+    },
+    (err: unknown) =>
+      err instanceof ValidationError && /untrusted storage host/i.test(err.message)
+  );
+});
+
+test("Attachment Security: Rejects cross-organization attachment URLs", async () => {
+  await assert.rejects(
+    async () => {
+      await verifyAndSecureAttachmentStorage(
+        {
+          storageKey:
+            "https://test.public.blob.vercel-storage.com/attachments/other-org-beta/receipt.pdf",
+          originalName: "receipt.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+        },
+        mockUser
+      );
+    },
+    (err: unknown) =>
+      err instanceof AccessDeniedError && /does not belong to your organization/i.test(err.message)
+  );
+});
+
+test("Attachment Security: Rejects spoofed file content signature on staged files", async () => {
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const spoofedFileName = `spoofed-${Date.now()}.pdf`;
+  const spoofedFilePath = path.join(stagingDir, spoofedFileName);
+  fs.writeFileSync(spoofedFilePath, Buffer.from("NOT_A_REAL_PDF_FILE"));
+
+  try {
+    await assert.rejects(
+      async () => {
+        await verifyAndSecureAttachmentStorage(
+          {
+            storageKey: spoofedFilePath,
+            originalName: "spoofed.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 19,
+          },
+          mockUser
+        );
+      },
+      (err: unknown) =>
+        err instanceof ValidationError && /signature does not match/i.test(err.message)
+    );
+  } finally {
+    if (fs.existsSync(spoofedFilePath)) fs.unlinkSync(spoofedFilePath);
+  }
+});
+
+test("Attachment Security: Accepts valid staged PDF with valid magic bytes", async () => {
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const validFileName = `valid-${Date.now()}.pdf`;
+  const validFilePath = path.join(stagingDir, validFileName);
+  const validPdfHeader = Buffer.from("%PDF-1.7 valid content for testing");
+  fs.writeFileSync(validFilePath, validPdfHeader);
+
+  try {
+    const verified = await verifyAndSecureAttachmentStorage(
+      {
+        storageKey: validFilePath,
+        originalName: "valid.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: validPdfHeader.length,
+      },
+      mockUser
+    );
+    assert.equal(verified.originalName, "valid.pdf");
+    assert.equal(verified.sizeBytes, validPdfHeader.length);
+    assert.equal(verified.mimeType, "application/pdf");
+  } finally {
+    if (fs.existsSync(validFilePath)) fs.unlinkSync(validFilePath);
+  }
 });
