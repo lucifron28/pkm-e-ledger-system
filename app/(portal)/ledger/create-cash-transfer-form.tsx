@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { createCashTransferAction } from "@/lib/actions/transfers";
 import { TRANSFER_FIELD_LIMITS } from "@/lib/domain/field-limits";
+import { AttachmentUploadField } from "@/components/ui/attachment-upload-field";
 
 interface CreateCashTransferFormProps {
   activeTermId: string;
@@ -147,20 +148,15 @@ export function CreateCashTransferForm({ activeTermId }: CreateCashTransferFormP
         {state?.fieldErrors?.referenceDescription && <p id="create-transfer-ref-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.referenceDescription[0]}</p>}
       </div>
 
-      <div>
-        <label htmlFor="create-transfer-attachment" className="ui-label">Supporting document attachment</label>
-        <input
-          id="create-transfer-attachment"
-          name="attachment"
-          type="file"
-          required
-          accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
-          aria-invalid={Boolean(state?.fieldErrors?.attachment)}
-          aria-describedby={state?.fieldErrors?.attachment ? "create-transfer-att-error" : undefined}
-          className="ui-input"
-        />
-        {state?.fieldErrors?.attachment && <p id="create-transfer-att-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.attachment[0]}</p>}
-      </div>
+      <AttachmentUploadField
+        id="create-transfer-attachment"
+        name="attachment"
+        label="Supporting document attachment"
+        helpText="Required. JPEG, PNG, or PDF up to 10 MB."
+        required
+        error={state?.fieldErrors?.attachment?.[0]}
+        disabled={isPending}
+      />
 
       <button type="submit" disabled={isPending} className="ui-button ui-button-primary">
         {isPending ? "Recording..." : "Record Cash Transfer"}
