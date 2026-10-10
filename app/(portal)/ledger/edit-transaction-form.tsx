@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useMemo } from "react";
+import { useActionState, useState, useMemo, useEffect, useRef } from "react";
 import { editTransactionAction } from "@/lib/actions/transactions";
 import type { TransactionDto, CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
@@ -33,6 +33,14 @@ export function EditTransactionForm({
     isPending,
     onClose: () => setIsOpen(false),
   });
+
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (wasPendingRef.current && !isPending && !state?.error) {
+      setIsOpen(false);
+    }
+    wasPendingRef.current = isPending;
+  }, [isPending, state?.error]);
 
   const isCurrentCategoryInList = categories.some((c) => c.id === transaction.categoryId);
 
@@ -96,7 +104,7 @@ export function EditTransactionForm({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor={`edit-type-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-type-${transaction.id}`} className="ui-label">
                     Type
                   </label>
                   <select
@@ -104,14 +112,14 @@ export function EditTransactionForm({
                     name="type"
                     value={txType}
                     onChange={(e) => handleTypeChange(e.target.value as TransactionType)}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-select"
                   >
                     <option value="INCOME">Income</option>
                     <option value="EXPENSE">Expense</option>
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={`edit-date-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-date-${transaction.id}`} className="ui-label">
                     Date
                   </label>
                   <input
@@ -122,7 +130,7 @@ export function EditTransactionForm({
                     defaultValue={dateStr}
                     aria-invalid={Boolean(state?.fieldErrors?.transactionDate)}
                     aria-describedby={state?.fieldErrors?.transactionDate ? `err-date-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.transactionDate && (
                     <p id={`err-date-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -131,8 +139,8 @@ export function EditTransactionForm({
                   )}
                 </div>
                 <div>
-                  <label htmlFor={`edit-amount-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Amount
+                  <label htmlFor={`edit-amount-${transaction.id}`} className="ui-label">
+                    Amount (PHP)
                   </label>
                   <input
                     id={`edit-amount-${transaction.id}`}
@@ -143,7 +151,7 @@ export function EditTransactionForm({
                     defaultValue={formatPesoInputFromCents(transaction.amountCents)}
                     aria-invalid={Boolean(state?.fieldErrors?.amount)}
                     aria-describedby={state?.fieldErrors?.amount ? `err-amount-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input font-mono"
                   />
                   {state?.fieldErrors?.amount && (
                     <p id={`err-amount-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -155,7 +163,7 @@ export function EditTransactionForm({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor={`edit-account-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-account-${transaction.id}`} className="ui-label">
                     Cash Account
                   </label>
                   <select
@@ -165,7 +173,7 @@ export function EditTransactionForm({
                     defaultValue={transaction.cashAccount}
                     aria-invalid={Boolean(state?.fieldErrors?.cashAccount)}
                     aria-describedby={state?.fieldErrors?.cashAccount ? `err-account-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-select"
                   >
                     <option value="CASH_ON_HAND">Cash on Hand</option>
                     <option value="CASH_IN_BANK">Cash in Bank</option>
@@ -177,7 +185,7 @@ export function EditTransactionForm({
                   )}
                 </div>
                 <div>
-                  <label htmlFor={`edit-category-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-category-${transaction.id}`} className="ui-label">
                     Category
                   </label>
                   <select
@@ -188,7 +196,7 @@ export function EditTransactionForm({
                     onChange={(e) => setSelectedCategoryId(e.target.value)}
                     aria-invalid={Boolean(state?.fieldErrors?.categoryId)}
                     aria-describedby={state?.fieldErrors?.categoryId ? `err-category-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-select"
                   >
                     <option value="">Select Category...</option>
                     {!isCurrentCategoryInList && transaction.categoryId && (
@@ -209,7 +217,7 @@ export function EditTransactionForm({
                   )}
                 </div>
                 <div>
-                  <label htmlFor={`edit-doc-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-doc-${transaction.id}`} className="ui-label">
                     Document # (OR/DV)
                   </label>
                   <input
@@ -221,7 +229,7 @@ export function EditTransactionForm({
                     placeholder="e.g. OR-1001"
                     aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
                     aria-describedby={state?.fieldErrors?.documentNumber ? `err-doc-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.documentNumber && (
                     <p id={`err-doc-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -233,7 +241,7 @@ export function EditTransactionForm({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor={`edit-party-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-party-${transaction.id}`} className="ui-label">
                     {txType === TransactionType.INCOME ? "Payor Name" : "Payee Name"}
                   </label>
                   <input
@@ -245,7 +253,7 @@ export function EditTransactionForm({
                     placeholder={txType === TransactionType.INCOME ? "Received from..." : "Paid to..."}
                     aria-invalid={Boolean(state?.fieldErrors?.counterpartyName)}
                     aria-describedby={state?.fieldErrors?.counterpartyName ? `err-party-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.counterpartyName && (
                     <p id={`err-party-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -254,7 +262,7 @@ export function EditTransactionForm({
                   )}
                 </div>
                 <div>
-                  <label htmlFor={`edit-event-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-event-${transaction.id}`} className="ui-label">
                     Event / Activity
                   </label>
                   <input
@@ -266,7 +274,7 @@ export function EditTransactionForm({
                     placeholder="e.g. Sportsfest 2026"
                     aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
                     aria-describedby={state?.fieldErrors?.eventActivityName ? `err-event-${transaction.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.eventActivityName && (
                     <p id={`err-event-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -277,7 +285,7 @@ export function EditTransactionForm({
               </div>
 
               <div>
-                <label htmlFor={`edit-desc-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor={`edit-desc-${transaction.id}`} className="ui-label">
                   Particulars / Description
                 </label>
                 <input
@@ -289,7 +297,7 @@ export function EditTransactionForm({
                   defaultValue={transaction.description}
                   aria-invalid={Boolean(state?.fieldErrors?.description)}
                   aria-describedby={state?.fieldErrors?.description ? `err-desc-${transaction.id}` : undefined}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  className="ui-input"
                 />
                 {state?.fieldErrors?.description && (
                   <p id={`err-desc-${transaction.id}`} className="mt-1 text-xs text-red-600">
@@ -299,7 +307,7 @@ export function EditTransactionForm({
               </div>
 
               <div>
-                <label htmlFor={`edit-ref-${transaction.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor={`edit-ref-${transaction.id}`} className="ui-label">
                   Reference Description
                 </label>
                 <input
@@ -311,7 +319,7 @@ export function EditTransactionForm({
                   defaultValue={transaction.referenceDescription}
                   aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
                   aria-describedby={state?.fieldErrors?.referenceDescription ? `err-ref-${transaction.id}` : undefined}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  className="ui-input"
                 />
                 {state?.fieldErrors?.referenceDescription && (
                   <p id={`err-ref-${transaction.id}`} className="mt-1 text-xs text-red-600">

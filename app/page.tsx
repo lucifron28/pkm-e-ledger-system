@@ -17,7 +17,7 @@ export default async function HomePage() {
             <PkmLogo size={40} priority className="h-10 w-10 rounded bg-white p-0.5" />
             <span className="grid gap-0.5">
               <strong className="text-sm font-extrabold tracking-tight sm:text-base">PKM e-Ledger</strong>
-              <small className="text-[11px] font-semibold text-blue-100">Student organization financial records</small>
+              <small className="text-xs font-semibold text-blue-100">Student organization financial records</small>
             </span>
           </Link>
           <div className="flex items-center gap-2">

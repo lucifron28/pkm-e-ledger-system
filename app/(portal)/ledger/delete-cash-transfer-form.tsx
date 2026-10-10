@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useEffect, useRef } from "react";
 import { softDeleteCashTransferAction } from "@/lib/actions/transfers";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { IconX as X } from "@tabler/icons-react";
@@ -15,6 +15,14 @@ export function DeleteCashTransferForm({ id, version }: { id: string; version: n
     isPending,
     onClose: () => setOpen(false),
   });
+
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (wasPendingRef.current && !isPending && !state?.error) {
+      setOpen(false);
+    }
+    wasPendingRef.current = isPending;
+  }, [isPending, state?.error]);
 
   return (
     <div className="inline">
