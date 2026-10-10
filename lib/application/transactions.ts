@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
 import {
   claimCommandReceipt,
   processIdempotentCommand,
@@ -8,7 +9,7 @@ import {
 } from "./idempotency";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import { CashAccount, TransactionType } from "@prisma/client";
-import { SessionUser } from "../auth/session";
+import type { SessionUser } from "../auth/session";
 import { isManagementRole } from "../auth/rbac";
 import {
   AccessDeniedError,
@@ -17,7 +18,7 @@ import {
   ValidationError,
 } from "../domain/errors";
 import { validateMoneyAmount } from "../domain/money";
-import { validateAttachmentPayload } from "../domain/attachments";
+import { validateAttachmentPayload, validateAttachmentMetadata } from "../domain/attachments";
 import {
   assertSufficientFunds,
   projectMutationBalances,
@@ -63,7 +64,8 @@ export interface CreateTransactionInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Uint8Array | Buffer;
+    buffer?: Uint8Array | Buffer;
+    storageKey?: string;
   };
 }
 
@@ -81,14 +83,27 @@ export async function createTransactionService(
   }
 
   validateMoneyAmount(input.amountCents, false, "Transaction amount");
-  const attachmentError = validateAttachmentPayload(
-    input.attachment.originalName,
-    input.attachment.mimeType,
-    input.attachment.buffer,
-    input.attachment.sizeBytes
-  );
-  if (attachmentError) throw new ValidationError(attachmentError);
-  const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
+  let fileHash: string;
+  if (input.attachment.storageKey) {
+    const metaError = validateAttachmentMetadata(
+      input.attachment.originalName,
+      input.attachment.mimeType,
+      input.attachment.sizeBytes
+    );
+    if (metaError) throw new ValidationError(metaError);
+    fileHash = crypto.createHash("sha256").update(input.attachment.storageKey).digest("hex");
+  } else if (input.attachment.buffer) {
+    const attachmentError = validateAttachmentPayload(
+      input.attachment.originalName,
+      input.attachment.mimeType,
+      input.attachment.buffer,
+      input.attachment.sizeBytes
+    );
+    if (attachmentError) throw new ValidationError(attachmentError);
+    fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
+  } else {
+    throw new ValidationError("Attachment file or storage key is required.");
+  }
 
   const payloadForHash = {
     termId: input.termId,
@@ -123,17 +138,18 @@ export async function createTransactionService(
 
   const claim = receipt.claim;
   const storageService = dependencies.storageService || defaultAttachmentStorageService;
-  let staged: Awaited<ReturnType<typeof storageService.stageUpload>> | null = null;
-  let committedName: string | null = null;
+  let staged: StagedUploadResult | null = null;
+  let committedName: string | null = input.attachment.storageKey || null;
   try {
-    staged = await storageService.stageUpload(
-      input.attachment.buffer,
-      input.attachment.originalName,
-      input.attachment.mimeType
-    );
-    const committed = await storageService.commitUpload(staged.stageId, staged.extension);
-    committedName = committed.storageKey;
-
+    if (!committedName && input.attachment.buffer) {
+      staged = await storageService.stageUpload(
+        input.attachment.buffer,
+        input.attachment.originalName,
+        input.attachment.mimeType
+      );
+      const committed = await storageService.commitUpload(staged.stageId, staged.extension);
+      committedName = committed.storageKey;
+    }
     const outcome = await withTransientRetry(() =>
       processIdempotentCommand<TransactionDto>(
         user.id,
@@ -211,7 +227,7 @@ export async function createTransactionService(
               transactionId: transaction.id,
               uploadedById: user.id,
               originalName: input.attachment.originalName,
-              storageKey: committed.storageKey,
+              storageKey: committedName!,
               mimeType: input.attachment.mimeType,
               sizeBytes: input.attachment.sizeBytes,
             },

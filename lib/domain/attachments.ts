@@ -44,6 +44,23 @@ export function validateFileMagicBytes(buffer: Uint8Array, mimeType: string): bo
   return false;
 }
 
+export function validateAttachmentMetadata(
+  originalName: string,
+  mimeType: string,
+  sizeBytes: number
+): string | null {
+  if (sizeBytes <= 0) return "File is required.";
+  if (sizeBytes > MAX_ATTACHMENT_SIZE) return "File must be under 10 MB.";
+
+  const allowedExtensions = MIME_EXTENSIONS[mimeType];
+  if (!allowedExtensions) return "Only JPEG, PNG, and PDF files are allowed.";
+  const extension = originalName.split(".").pop()?.toLowerCase();
+  if (!extension || !allowedExtensions.includes(extension)) {
+    return "File extension does not match its MIME type.";
+  }
+  return null;
+}
+
 export function validateAttachmentPayload(
   originalName: string,
   mimeType: string,

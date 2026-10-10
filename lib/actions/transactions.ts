@@ -59,22 +59,48 @@ export async function createTransactionAction(
 
   let amountCents: number;
   let transactionDate: Date;
-  let file: File;
+  const preUploadedStorageKey = formData.get("attachmentStorageKey")?.toString().trim() || null;
+  let attachmentInput: {
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    buffer?: Uint8Array;
+    storageKey?: string;
+  };
+
   try {
     amountCents = parsePesoToCents(validation.data.amount);
     transactionDate = parseStrictDate(validation.data.transactionDate);
-    file = getAttachmentFile(formData);
+    if (preUploadedStorageKey) {
+      const originalName = formData.get("attachmentOriginalName")?.toString().trim() || "";
+      const mimeType = formData.get("attachmentMimeType")?.toString().trim() || "";
+      const sizeBytes = Number(formData.get("attachmentSizeBytes")) || 0;
+      if (!originalName || !mimeType || sizeBytes <= 0) {
+        return { error: "Uploaded receipt metadata is incomplete." };
+      }
+      attachmentInput = {
+        storageKey: preUploadedStorageKey,
+        originalName,
+        mimeType,
+        sizeBytes,
+      };
+    } else {
+      const file = getAttachmentFile(formData);
+      const fileValidation = await validateAndReadAttachmentFile(file);
+      if (!fileValidation.success) {
+        return { error: fileValidation.error };
+      }
+      attachmentInput = {
+        originalName: fileValidation.data.originalName,
+        mimeType: fileValidation.data.mimeType,
+        sizeBytes: fileValidation.data.sizeBytes,
+        buffer: fileValidation.data.buffer,
+      };
+    }
   } catch (error) {
     if (error instanceof DomainError) return { error: error.message };
     return { error: "Please fix the transaction details and attachment." };
   }
-
-  const fileValidation = await validateAndReadAttachmentFile(file);
-  if (!fileValidation.success) {
-    return { error: fileValidation.error };
-  }
-  const validatedFile = fileValidation.data;
-
   try {
     await createTransactionService(user, {
       termId: validation.data.termId,
@@ -89,12 +115,7 @@ export async function createTransactionAction(
       referenceDescription: validation.data.referenceDescription,
       eventActivityName: validation.data.eventActivityName,
       idempotencyKey: validation.data.idempotencyKey,
-      attachment: {
-        originalName: validatedFile.originalName,
-        mimeType: validatedFile.mimeType,
-        sizeBytes: validatedFile.sizeBytes,
-        buffer: Buffer.from(validatedFile.buffer),
-      },
+      attachment: attachmentInput,
     });
   } catch (error) {
     if (error instanceof DomainError) return { error: error.message };

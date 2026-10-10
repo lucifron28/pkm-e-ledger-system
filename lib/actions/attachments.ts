@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
-import { validateAndReadAttachmentFile } from "../domain/attachments";
+import { validateAndReadAttachmentFile, validateAttachmentMetadata } from "../domain/attachments";
 import { AuditAction, Prisma } from "@prisma/client";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import {
   claimCommandReceipt,
@@ -45,29 +46,46 @@ export async function uploadAttachmentAction(
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
   let owner: { transactionId: string | null; cashTransferId: string | null };
-  let file: File;
+  let originalName: string;
+  let mimeType: string;
+  let sizeBytes: number;
+  let fileHash: string;
+  let bufferToStage: Uint8Array | null = null;
+  const providedStorageKey = formData.get("storageKey")?.toString().trim() || null;
+
   try {
     owner = getOwnerIds(formData);
-    file = getFile(formData);
+    if (providedStorageKey) {
+      originalName = formData.get("originalName")?.toString().trim() || "";
+      mimeType = formData.get("mimeType")?.toString().trim() || "";
+      sizeBytes = Number(formData.get("sizeBytes")) || 0;
+      const metaError = validateAttachmentMetadata(originalName, mimeType, sizeBytes);
+      if (metaError) return { error: metaError };
+      fileHash = crypto.createHash("sha256").update(providedStorageKey).digest("hex");
+    } else {
+      const file = getFile(formData);
+      const validation = await validateAndReadAttachmentFile(file);
+      if (!validation.success) return { error: validation.error };
+      originalName = validation.data.originalName;
+      mimeType = validation.data.mimeType;
+      sizeBytes = validation.data.sizeBytes;
+      bufferToStage = validation.data.buffer;
+      fileHash = crypto.createHash("sha256").update(validation.data.buffer).digest("hex");
+    }
   } catch (error) {
     return { error: error instanceof DomainError ? error.message : "Attachment owner and file are required." };
   }
 
-  const validation = await validateAndReadAttachmentFile(file);
-  if (!validation.success) return { error: validation.error };
-  const validated = validation.data;
-  const fileHash = crypto.createHash("sha256").update(validated.buffer).digest("hex");
   const ownerKey = owner.transactionId || owner.cashTransferId!;
   const commandType = "UPLOAD_ATTACHMENT";
   const idempotencyKey = getIdempotencyKey(formData, `upload-${ownerKey}-${fileHash}`);
   const payload = {
     ...owner,
-    originalName: validated.originalName,
-    mimeType: validated.mimeType,
-    sizeBytes: validated.sizeBytes,
+    originalName,
+    mimeType,
+    sizeBytes,
     fileHash,
   };
-
   let receipt;
   try {
     receipt = await claimCommandReceipt<{ id: string }>(
@@ -84,13 +102,14 @@ export async function uploadAttachmentAction(
 
   const claim = receipt.claim;
   const storage = defaultAttachmentStorageService;
-  let staged: Awaited<ReturnType<typeof storage.stageUpload>> | null = null;
-  let storageKey: string | null = null;
+  let staged: StagedUploadResult | null = null;
+  let storageKey: string | null = providedStorageKey;
   try {
-    staged = await storage.stageUpload(validated.buffer, validated.originalName, validated.mimeType);
-    const committed = await storage.commitUpload(staged.stageId, staged.extension);
-    storageKey = committed.storageKey;
-
+    if (!storageKey && bufferToStage) {
+      staged = await storage.stageUpload(bufferToStage, originalName, mimeType);
+      const committed = await storage.commitUpload(staged.stageId, staged.extension);
+      storageKey = committed.storageKey;
+    }
     const outcome = await withTransientRetry(() =>
       processIdempotentCommand<{ id: string }>(
         user.id,
@@ -118,10 +137,10 @@ export async function uploadAttachmentAction(
               transactionId: transaction?.id || null,
               cashTransferId: transfer?.id || null,
               uploadedById: user.id,
-              originalName: validated.originalName,
+              originalName,
               storageKey: storageKey!,
-              mimeType: validated.mimeType,
-              sizeBytes: validated.sizeBytes,
+              mimeType,
+              sizeBytes,
             },
           });
 
@@ -135,8 +154,8 @@ export async function uploadAttachmentAction(
             metadata: {
               transactionId: transaction?.id || null,
               cashTransferId: transfer?.id || null,
-              originalName: validated.originalName,
-              sizeBytes: validated.sizeBytes,
+              originalName,
+              sizeBytes,
             },
             tx,
           });
