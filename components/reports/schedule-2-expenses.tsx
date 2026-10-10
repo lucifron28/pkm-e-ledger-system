@@ -1,6 +1,7 @@
 import type { ReportPackageDto } from "@/lib/data/reports";
 import { formatPesoFromCents } from "@/lib/data/money";
-import { formatReportDate, getReportExpenseColumns } from "@/lib/reports/report-layout";
+import { formatFinancialDate } from "@/lib/date-format";
+import { getReportExpenseColumns } from "@/lib/reports/report-layout";
 import { ReportMasthead } from "@/components/reports/report-masthead";
 
 interface Schedule2ExpensesProps {
@@ -42,7 +43,7 @@ export function Schedule2Expenses({ report }: Schedule2ExpensesProps) {
                     {row.documentNumber || ""}
                   </td>
                   <td className="border border-slate-300 px-2 py-2 whitespace-nowrap text-slate-700">
-                    {formatReportDate(row.transactionDate)}
+                    {formatFinancialDate(row.transactionDate)}
                   </td>
                   <td className="border border-slate-300 px-2 py-2 font-semibold text-slate-900 whitespace-nowrap">
                     {row.payeeName}

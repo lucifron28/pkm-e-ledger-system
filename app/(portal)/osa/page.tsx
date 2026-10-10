@@ -3,6 +3,7 @@ import { listOsaOrganizationsOverview } from "@/lib/data/osa";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { ButtonLink, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
 import { IconFileSpreadsheet } from "@tabler/icons-react";
+import { formatPhilippineDate } from "@/lib/date-format";
 
 export default async function OsaOverviewPage() {
   const user = await requireOsaUser();
@@ -60,7 +61,7 @@ export default async function OsaOverviewPage() {
                       <div className="min-w-0">
                         <p className="font-extrabold leading-snug text-slate-900">{org.organizationName}</p>
                         <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                          Last activity: {org.lastActivityDate ? org.lastActivityDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "No activity"}
+                          Last activity: {org.lastActivityDate ? formatPhilippineDate(org.lastActivityDate) : "No activity"}
                         </p>
                       </div>
                     </td>

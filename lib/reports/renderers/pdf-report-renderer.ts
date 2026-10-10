@@ -1,8 +1,8 @@
 import PDFDocument from "pdfkit";
 import { ReportPackageDto } from "@/lib/domain/reports";
 import { formatPesoFromCents } from "@/lib/domain/money";
+import { formatFinancialDate, formatPhilippineDate } from "@/lib/date-format";
 import {
-  formatReportDate,
   getReportExpenseColumns,
   REPORT_SCHOOL_HEADER,
 } from "@/lib/reports/report-layout";
@@ -54,7 +54,7 @@ function writePageHeader(
     align: "center",
   });
   doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(
-    `${report.academicYear} | ${report.semesterLabel} | As of ${formatReportDate(report.asOfDate)}`,
+    `${report.academicYear} | ${report.semesterLabel} | As of ${formatPhilippineDate(report.asOfDate)}`,
     { width: contentWidth, align: "center" }
   );
   doc.moveDown(1.5);
@@ -311,7 +311,7 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
       for (const row of report.expenseRows) {
         const values = [
           row.documentNumber || "",
-          formatReportDate(row.transactionDate),
+          formatFinancialDate(row.transactionDate),
           row.payeeName,
           row.description,
           formatPdfAmount(row.amountCents),
@@ -374,7 +374,7 @@ export function buildReportPdfBuffer(report: ReportPackageDto): Promise<Buffer> 
         for (const attachment of report.attachments) {
           const values = [
             attachment.entryType === "CASH_TRANSFER" ? "Transfer" : "Transaction",
-            formatReportDate(attachment.transactionDate),
+            formatFinancialDate(attachment.transactionDate),
             attachment.documentNumber || "",
             attachment.description,
             attachment.originalName,

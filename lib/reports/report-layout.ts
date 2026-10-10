@@ -33,15 +33,8 @@ export function getReportExpenseColumns(
     }));
 }
 
-/** Keep report dates stable across server, browser, PDF, and Excel output. */
-export function formatReportDate(date: Date): string {
-  const month = String(date.getUTCMonth() + 1);
-  const day = String(date.getUTCDate());
-  return `${month}/${day}/${date.getUTCFullYear()}`;
-}
-
-/** Excel date cells should contain dates, not user-visible date strings. */
-export function toReportDateCell(date: Date): Date {
+/** Excel cells for financial dates must preserve their UTC calendar day. */
+export function toFinancialDateCell(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 

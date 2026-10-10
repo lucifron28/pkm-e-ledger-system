@@ -3,6 +3,7 @@ import { getSemesterLabel } from "@/lib/data/terms";
 import { getLedgerPageSnapshot, LedgerEntry, CategoryDto } from "@/lib/data/transactions";
 import { getOsaLedgerSummary, listOsaOrganizationsOverview, listTermsForOsaOrganization, validateOsaOrganization } from "@/lib/data/osa";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { formatFinancialDate, formatPhilippineDate } from "@/lib/date-format";
 import { Role, TransactionType } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { CreateTransactionForm } from "./create-transaction-form";
@@ -194,7 +195,7 @@ export default async function LedgerPage({
                 <div key={`mobile-${entry.kind}-${entry.id}`} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-500">
-                      {entry.kind === "TRANSACTION" ? entry.transactionDate.toLocaleDateString("en-PH") : entry.transferDate.toLocaleDateString("en-PH")}
+                      {formatFinancialDate(entry.kind === "TRANSACTION" ? entry.transactionDate : entry.transferDate)}
                     </span>
                     <span className={`font-extrabold px-2 py-0.5 rounded ${entry.kind === "TRANSFER" ? "bg-blue-100 text-blue-800" : entry.type === "INCOME" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
                       {entry.kind === "TRANSFER" ? "Transfer" : entry.type}
@@ -246,12 +247,12 @@ function LedgerRow({
   incomeCategories: CategoryDto[];
   expenseCategories: CategoryDto[];
 }) {
-  const dateRecorded = entry.createdAt ? new Date(entry.createdAt).toLocaleDateString("en-PH") : "-";
+  const dateRecorded = entry.createdAt ? formatPhilippineDate(entry.createdAt) : "-";
 
   if (entry.kind === "TRANSACTION") {
     return (
       <tr className="hover:bg-slate-50 align-top">
-        <td className="px-4 py-3 whitespace-nowrap">{entry.transactionDate.toLocaleDateString("en-PH")}</td>
+        <td className="px-4 py-3 whitespace-nowrap">{formatFinancialDate(entry.transactionDate)}</td>
         <td className="px-4 py-3 whitespace-nowrap">{academicYear}</td>
         <td className="px-4 py-3 whitespace-nowrap">{semesterLabel}</td>
         <td className="px-4 py-3 whitespace-nowrap font-bold">{entry.type === "INCOME" ? "Income" : "Expense"}</td>
@@ -277,7 +278,7 @@ function LedgerRow({
   }
   return (
     <tr className="hover:bg-slate-50 align-top">
-      <td className="px-4 py-3 whitespace-nowrap">{entry.transferDate.toLocaleDateString("en-PH")}</td>
+      <td className="px-4 py-3 whitespace-nowrap">{formatFinancialDate(entry.transferDate)}</td>
       <td className="px-4 py-3 whitespace-nowrap">{academicYear}</td>
       <td className="px-4 py-3 whitespace-nowrap">{semesterLabel}</td>
       <td className="px-4 py-3 whitespace-nowrap font-bold">Transfer</td>

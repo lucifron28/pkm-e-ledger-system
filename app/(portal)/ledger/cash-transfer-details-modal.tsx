@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
+import { formatFinancialDate, formatPhilippineDateTime } from "@/lib/date-format";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { IconX as X } from "@tabler/icons-react";
 
@@ -58,11 +59,11 @@ export function CashTransferDetailsModal({ transfer }: { transfer: Extract<Ledge
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Transfer Date</span>
-                <span className="font-medium text-slate-900">{transfer.transferDate.toLocaleDateString("en-PH")}</span>
+                <span className="font-medium text-slate-900">{formatFinancialDate(transfer.transferDate)}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Date Recorded</span>
-                <span className="font-medium text-slate-900">{transfer.createdAt ? new Date(transfer.createdAt).toLocaleString("en-PH") : "-"}</span>
+                <span className="font-medium text-slate-900">{transfer.createdAt ? formatPhilippineDateTime(transfer.createdAt) : "-"}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">Amount</span>
