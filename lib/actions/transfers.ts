@@ -8,7 +8,6 @@ import { createCashTransferService, editCashTransferService, deleteCashTransferS
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
-import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
 import { DomainError } from "../domain/errors";
 import { createTransferSchema, editTransferSchema } from "../domain/financial-schemas";
 
@@ -69,20 +68,11 @@ export async function createCashTransferAction(
       if (!originalName || !mimeType || sizeBytes <= 0) {
         return { error: "Uploaded document metadata is incomplete." };
       }
-      const verified = await verifyAndSecureAttachmentStorage(
-        {
-          storageKey: preUploadedStorageKey,
-          originalName,
-          mimeType,
-          sizeBytes,
-        },
-        user
-      );
       attachmentInput = {
-        storageKey: verified.storageKey,
-        originalName: verified.originalName,
-        mimeType: verified.mimeType,
-        sizeBytes: verified.sizeBytes,
+        storageKey: preUploadedStorageKey,
+        originalName,
+        mimeType,
+        sizeBytes,
       };
     } else {
       const file = getAttachmentFile(formData);

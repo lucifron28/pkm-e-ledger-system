@@ -2,7 +2,11 @@ import { prisma } from "../db/prisma";
 import crypto from "crypto";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
-import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
+import {
+  consumeUploadAuthorization,
+  verifyAndSecureAttachmentStorage,
+} from "../infrastructure/storage/attachment-verification";
+import type { VerifiedAttachmentStorageResult } from "../infrastructure/storage/attachment-verification";
 import {
   claimCommandReceipt,
   processIdempotentCommand,
@@ -104,8 +108,11 @@ export async function createCashTransferService(
 
   validateMoneyAmount(input.amountCents, false, "Transfer amount");
   let fileHash: string;
+  let verifiedUpload: VerifiedAttachmentStorageResult | null = null;
+  const isPreUploaded = Boolean(input.attachment.storageKey);
+
   if (input.attachment.storageKey) {
-    const verified = await verifyAndSecureAttachmentStorage(
+    verifiedUpload = await verifyAndSecureAttachmentStorage(
       {
         storageKey: input.attachment.storageKey,
         originalName: input.attachment.originalName,
@@ -114,10 +121,10 @@ export async function createCashTransferService(
       },
       user
     );
-    input.attachment.originalName = verified.originalName;
-    input.attachment.mimeType = verified.mimeType;
-    input.attachment.sizeBytes = verified.sizeBytes;
-    fileHash = crypto.createHash("sha256").update(verified.storageKey).digest("hex");
+    input.attachment.originalName = verifiedUpload.originalName;
+    input.attachment.mimeType = verifiedUpload.mimeType;
+    input.attachment.sizeBytes = verifiedUpload.sizeBytes;
+    fileHash = crypto.createHash("sha256").update(verifiedUpload.storageKey).digest("hex");
   } else if (input.attachment.buffer) {
     const attachmentError = validateAttachmentPayload(
       input.attachment.originalName,
@@ -165,7 +172,7 @@ export async function createCashTransferService(
   let staged: StagedUploadResult | null = null;
   let committedName: string | null = input.attachment.storageKey || null;
   try {
-    if (!committedName && input.attachment.buffer) {
+    if (!isPreUploaded && !committedName && input.attachment.buffer) {
       staged = await storageService.stageUpload(
         input.attachment.buffer,
         input.attachment.originalName,
@@ -217,6 +224,10 @@ export async function createCashTransferService(
             throw new InsufficientFundsError("Cash transfer failed: Insufficient balance in source account.");
           }
 
+          if (verifiedUpload?.isLocalStaged && verifiedUpload.stageId && verifiedUpload.extension) {
+            const committed = await storageService.commitUpload(verifiedUpload.stageId, verifiedUpload.extension);
+            committedName = committed.storageKey;
+          }
           const created = await tx.cashTransfer.create({
             data: {
               organizationId: user.organizationId!,
@@ -247,6 +258,9 @@ export async function createCashTransferService(
               sizeBytes: input.attachment.sizeBytes,
             },
           });
+          if (verifiedUpload?.uploadId) {
+            await consumeUploadAuthorization(tx, user.id, verifiedUpload.uploadId, attachment.id);
+          }
 
           await createAuditLog({
             userId: user.id,
@@ -285,11 +299,7 @@ export async function createCashTransferService(
       )
     );
 
-    if (outcome.disposition === "CACHED" && committedName) {
-      // Another claimant completed this command; this caller's committed file
-      // is unreferenced and must be removed. When EXECUTED, retain the file
-      // without a second ownership query. Failures here keep the file for
-      // reconciliation rather than risk deleting a referenced file.
+    if (outcome.disposition === "CACHED" && committedName && !isPreUploaded) {
       await storageService.deleteActiveFile(committedName).catch(() => undefined);
     }
 
@@ -298,7 +308,7 @@ export async function createCashTransferService(
     if (staged && !committedName) {
       await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
-    if (committedName) {
+    if (committedName && !isPreUploaded) {
       let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
       try {
         const ref = await prisma.attachment.findFirst({

@@ -6,7 +6,11 @@ import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
-import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
+import {
+  consumeUploadAuthorization,
+  verifyAndSecureAttachmentStorage,
+} from "../infrastructure/storage/attachment-verification";
+import type { VerifiedAttachmentStorageResult } from "../infrastructure/storage/attachment-verification";
 import { AuditAction, Prisma } from "@prisma/client";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
 import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
@@ -52,8 +56,9 @@ export async function uploadAttachmentAction(
   let sizeBytes: number;
   let fileHash: string;
   let bufferToStage: Uint8Array | null = null;
+  let storageKey: string | null = null;
+  let verifiedUpload: VerifiedAttachmentStorageResult | null = null;
   const providedStorageKey = formData.get("storageKey")?.toString().trim() || null;
-
   try {
     owner = getOwnerIds(formData);
     if (providedStorageKey) {
@@ -63,7 +68,7 @@ export async function uploadAttachmentAction(
       if (!originalName || !mimeType || sizeBytes <= 0) {
         return { error: "Uploaded attachment metadata is incomplete." };
       }
-      const verified = await verifyAndSecureAttachmentStorage(
+      verifiedUpload = await verifyAndSecureAttachmentStorage(
         {
           storageKey: providedStorageKey,
           originalName,
@@ -72,10 +77,11 @@ export async function uploadAttachmentAction(
         },
         user
       );
-      originalName = verified.originalName;
-      mimeType = verified.mimeType;
-      sizeBytes = verified.sizeBytes;
-      fileHash = crypto.createHash("sha256").update(verified.storageKey).digest("hex");
+      originalName = verifiedUpload.originalName;
+      mimeType = verifiedUpload.mimeType;
+      sizeBytes = verifiedUpload.sizeBytes;
+      storageKey = verifiedUpload.storageKey;
+      fileHash = crypto.createHash("sha256").update(verifiedUpload.storageKey).digest("hex");
     } else {
       const file = getFile(formData);
       const validation = await validateAndReadAttachmentFile(file);
@@ -117,9 +123,9 @@ export async function uploadAttachmentAction(
   const claim = receipt.claim;
   const storage = defaultAttachmentStorageService;
   let staged: StagedUploadResult | null = null;
-  let storageKey: string | null = providedStorageKey;
+  const isPreUploaded = Boolean(providedStorageKey);
   try {
-    if (!storageKey && bufferToStage) {
+    if (!isPreUploaded && !storageKey && bufferToStage) {
       staged = await storage.stageUpload(bufferToStage, originalName, mimeType);
       const committed = await storage.commitUpload(staged.stageId, staged.extension);
       storageKey = committed.storageKey;
@@ -146,6 +152,10 @@ export async function uploadAttachmentAction(
             : null;
           if (!transaction && !transfer) throw new ValidationError("Attachment owner not found or access denied.");
 
+          if (verifiedUpload?.isLocalStaged && verifiedUpload.stageId && verifiedUpload.extension) {
+            const committed = await storage.commitUpload(verifiedUpload.stageId, verifiedUpload.extension);
+            storageKey = committed.storageKey;
+          }
           const attachment = await tx.attachment.create({
             data: {
               transactionId: transaction?.id || null,
@@ -157,6 +167,9 @@ export async function uploadAttachmentAction(
               sizeBytes,
             },
           });
+          if (verifiedUpload?.uploadId) {
+            await consumeUploadAuthorization(tx, user.id, verifiedUpload.uploadId, attachment.id);
+          }
 
           await createAuditLog({
             userId: user.id,
@@ -180,18 +193,14 @@ export async function uploadAttachmentAction(
       )
     );
 
-    if (outcome.disposition === "CACHED" && storageKey) {
-      // Another claimant completed this upload; this caller's committed file
-      // is unreferenced and must be removed. When EXECUTED, retain the file
-      // without a second ownership query. Failures here keep the file for
-      // reconciliation rather than risk deleting a referenced file.
+    if (outcome.disposition === "CACHED" && storageKey && !isPreUploaded) {
       await storage.deleteActiveFile(storageKey).catch(() => undefined);
     }
   } catch (error) {
     if (staged && !storageKey) {
       await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
-    if (storageKey) {
+    if (storageKey && !isPreUploaded) {
       let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
       try {
         const ref = await prisma.attachment.findFirst({

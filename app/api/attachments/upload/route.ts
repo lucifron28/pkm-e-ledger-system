@@ -13,6 +13,7 @@ import {
   isVercelBlobConfigured,
 } from "@/lib/infrastructure/storage/attachment-store";
 import { validateAndReadAttachmentFile } from "@/lib/domain/attachments";
+import { recordUploadAuthorization } from "@/lib/infrastructure/storage/attachment-verification";
 
 export async function GET(): Promise<NextResponse> {
   const session = await getSession();
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!user.organizationId) {
     return NextResponse.json({ error: "User is not assigned to an organization." }, { status: 403 });
   }
+  const organizationId = user.organizationId;
 
   const contentType = request.headers.get("content-type") || "";
 
@@ -65,11 +67,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         validated.originalName,
         validated.mimeType
       );
-      const committed = await defaultAttachmentStorageService.commitUpload(staged.stageId, staged.extension);
+      const storageKey = `${staged.stageId}.${staged.extension}`;
+      await recordUploadAuthorization({
+        uploadId: staged.stageId,
+        userId: user.id,
+        organizationId: user.organizationId,
+        storageKey,
+        originalName: validated.originalName,
+        mimeType: validated.mimeType,
+        sizeBytes: validated.sizeBytes,
+      });
 
       return NextResponse.json({
         success: true,
-        storageKey: committed.storageKey,
+        storageKey,
         originalName: validated.originalName,
         mimeType: validated.mimeType,
         sizeBytes: validated.sizeBytes,
@@ -102,10 +113,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (!["jpg", "jpeg", "png", "pdf"].includes(ext)) {
           throw new Error("Invalid attachment extension. Allowed: jpg, jpeg, png, pdf.");
         }
-        const expectedPrefix = `attachments/${user.organizationId}/`;
+        const expectedPrefix = `attachments/${organizationId}/`;
         if (!pathname.startsWith(expectedPrefix)) {
           throw new Error("Invalid upload path: organization scope mismatch.");
         }
+        const match = pathname.match(
+          new RegExp(`^attachments/${organizationId}/([^/.]+)\\.[a-z0-9]+$`, "i")
+        );
+        const uploadId = match ? match[1] : crypto.randomUUID();
+
+        await recordUploadAuthorization({
+          uploadId,
+          userId: user.id,
+          organizationId,
+          storageKey: pathname,
+          originalName: path.basename(pathname),
+          mimeType: "application/octet-stream",
+          sizeBytes: 0,
+        });
+
         return {
           allowedContentTypes: ["image/jpeg", "image/png", "application/pdf"],
           maximumSizeInBytes: 10 * 1024 * 1024,
@@ -114,6 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             userId: user.id,
             organizationId: user.organizationId,
             pathname,
+            uploadId,
           }),
         };
       },

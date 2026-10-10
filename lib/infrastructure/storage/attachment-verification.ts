@@ -1,8 +1,10 @@
 import "server-only";
+import crypto from "crypto";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { get } from "@vercel/blob";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AccessDeniedError, ValidationError } from "../../domain/errors";
 import {
@@ -21,6 +23,94 @@ export interface VerifiedAttachmentStorageResult {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  uploadId: string;
+  isLocalStaged?: boolean;
+  stageId?: string;
+  extension?: string;
+}
+
+export interface RecordUploadAuthInput {
+  uploadId: string;
+  userId: string;
+  organizationId: string;
+  storageKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export async function recordUploadAuthorization(
+  input: RecordUploadAuthInput
+): Promise<void> {
+  const { uploadId, userId, organizationId, storageKey, originalName, mimeType, sizeBytes } = input;
+  const idempotencyKey = `upload-auth-${uploadId}`;
+  const leaseExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours validity
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ uploadId, storageKey, organizationId, userId }))
+    .digest("hex");
+
+  await prisma.commandReceipt.upsert({
+    where: {
+      actorUserId_idempotencyKey: {
+        actorUserId: userId,
+        idempotencyKey,
+      },
+    },
+    create: {
+      actorUserId: userId,
+      organizationId,
+      commandType: "UPLOAD_AUTHORIZATION",
+      idempotencyKey,
+      requestHash,
+      status: "PENDING",
+      leaseExpiresAt,
+      responseJson: JSON.stringify({
+        uploadId,
+        storageKey,
+        originalName,
+        mimeType,
+        sizeBytes,
+        createdAt: new Date().toISOString(),
+      }),
+    },
+    update: {
+      organizationId,
+      leaseExpiresAt,
+      status: "PENDING",
+      requestHash,
+      responseJson: JSON.stringify({
+        uploadId,
+        storageKey,
+        originalName,
+        mimeType,
+        sizeBytes,
+        createdAt: new Date().toISOString(),
+      }),
+    },
+  });
+}
+
+export async function consumeUploadAuthorization(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  uploadId: string,
+  attachmentId: string
+): Promise<void> {
+  await tx.commandReceipt.updateMany({
+    where: {
+      actorUserId: userId,
+      idempotencyKey: `upload-auth-${uploadId}`,
+      commandType: "UPLOAD_AUTHORIZATION",
+      status: "PENDING",
+    },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      resultEntityType: "Attachment",
+      resultEntityId: attachmentId,
+    },
+  });
 }
 
 export async function verifyAndSecureAttachmentStorage(
@@ -43,13 +133,15 @@ export async function verifyAndSecureAttachmentStorage(
   }
 
   // 1. Replay prevention: check if this storageKey has already been used in another record
-  const existing = await prisma.attachment.findUnique({
+  const existingAttachment = await prisma.attachment.findUnique({
     where: { storageKey: storageKey.trim() },
     select: { id: true },
   });
-  if (existing) {
+  if (existingAttachment) {
     throw new ValidationError("Attachment reference has already been used by another record.");
   }
+
+  let uploadId: string;
 
   // 2. Cloud blob storage path & host verification
   if (isBlobStorageKey(storageKey)) {
@@ -78,6 +170,49 @@ export async function verifyAndSecureAttachmentStorage(
     const expectedPrefix = `/attachments/${user.organizationId}/`;
     if (!parsedUrl.pathname.startsWith(expectedPrefix)) {
       throw new AccessDeniedError("Attachment does not belong to your organization.");
+    }
+
+    // Extract uploadId from URL pathname: /attachments/<orgId>/<uploadId>.<ext>
+    const match = parsedUrl.pathname.match(
+      new RegExp(`^/attachments/${user.organizationId}/([^/.]+)\\.[a-z0-9]+$`, "i")
+    );
+    if (!match) {
+      throw new ValidationError("Invalid attachment path format in storage URL.");
+    }
+    uploadId = match[1];
+
+    // Verify upload authorization exists and was initiated by this user/organization
+    const authReceipt = await prisma.commandReceipt.findUnique({
+      where: {
+        actorUserId_idempotencyKey: {
+          actorUserId: user.id,
+          idempotencyKey: `upload-auth-${uploadId}`,
+        },
+      },
+    });
+
+    if (!authReceipt || authReceipt.commandType !== "UPLOAD_AUTHORIZATION") {
+      throw new ValidationError(
+        "Upload authorization not found. Attachments must originate from an authorized upload."
+      );
+    }
+
+    if (authReceipt.organizationId !== user.organizationId) {
+      throw new AccessDeniedError(
+        "Attachment upload authorization belongs to a different organization."
+      );
+    }
+
+    if (authReceipt.status === "COMPLETED") {
+      throw new ValidationError("Upload authorization has already been consumed.");
+    }
+
+    if (authReceipt.status !== "PENDING") {
+      throw new ValidationError("Upload authorization is not in a valid pending state.");
+    }
+
+    if (authReceipt.leaseExpiresAt && Date.now() > authReceipt.leaseExpiresAt.getTime()) {
+      throw new ValidationError("Upload authorization has expired. Please upload the file again.");
     }
 
     // 3. Storage existence, actual size, and magic bytes verification
@@ -137,6 +272,8 @@ export async function verifyAndSecureAttachmentStorage(
       originalName,
       mimeType,
       sizeBytes: actualSize,
+      uploadId,
+      isLocalStaged: false,
     };
   }
 
@@ -147,6 +284,44 @@ export async function verifyAndSecureAttachmentStorage(
 
   if (!resolvedPath.startsWith(stagingDir) || !existsSync(resolvedPath)) {
     throw new ValidationError("Attachment file does not exist in staging.");
+  }
+
+  const extension = path.extname(safeBaseName).replace(/^\./, "").toLowerCase();
+  const stageId = safeBaseName.replace(/\.[^.]+$/, "");
+  uploadId = stageId;
+
+  // Verify upload authorization exists for local staged upload
+  const authReceipt = await prisma.commandReceipt.findUnique({
+    where: {
+      actorUserId_idempotencyKey: {
+        actorUserId: user.id,
+        idempotencyKey: `upload-auth-${uploadId}`,
+      },
+    },
+  });
+
+  if (!authReceipt || authReceipt.commandType !== "UPLOAD_AUTHORIZATION") {
+    throw new ValidationError(
+      "Upload authorization not found. Attachments must originate from an authorized upload."
+    );
+  }
+
+  if (authReceipt.organizationId !== user.organizationId) {
+    throw new AccessDeniedError(
+      "Attachment upload authorization belongs to a different organization."
+    );
+  }
+
+  if (authReceipt.status === "COMPLETED") {
+    throw new ValidationError("Upload authorization has already been consumed.");
+  }
+
+  if (authReceipt.status !== "PENDING") {
+    throw new ValidationError("Upload authorization is not in a valid pending state.");
+  }
+
+  if (authReceipt.leaseExpiresAt && Date.now() > authReceipt.leaseExpiresAt.getTime()) {
+    throw new ValidationError("Upload authorization has expired. Please upload the file again.");
   }
 
   const stat = await fs.stat(resolvedPath);
@@ -172,5 +347,9 @@ export async function verifyAndSecureAttachmentStorage(
     originalName,
     mimeType,
     sizeBytes: actualSize,
+    uploadId,
+    isLocalStaged: true,
+    stageId,
+    extension,
   };
 }

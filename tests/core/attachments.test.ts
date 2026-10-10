@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "path";
 import fs from "fs";
+import { prisma } from "../../lib/db/prisma";
 import {
   validateAttachmentFile,
   validateFileMagicBytes,
@@ -12,14 +13,19 @@ import { validateUploadFile } from "../../lib/infrastructure/storage/client-uplo
 import {
   AttachmentStorageService,
   StorageDatabase,
+  defaultAttachmentStorageService,
   isBlobStorageKey,
   isVercelBlobConfigured,
   getBlobAccess,
   getDefaultUploadsRoot,
 } from "../../lib/infrastructure/storage/attachment-store";
 import { AccessDeniedError, ValidationError } from "../../lib/domain/errors";
-import { verifyAndSecureAttachmentStorage } from "../../lib/infrastructure/storage/attachment-verification";
-import { Role } from "@prisma/client";
+import {
+  recordUploadAuthorization,
+  verifyAndSecureAttachmentStorage,
+} from "../../lib/infrastructure/storage/attachment-verification";
+import { CashAccount, Role, TransactionType } from "@prisma/client";
+import { createTransactionService } from "../../lib/application/transactions";
 import type { SessionUser } from "../../lib/auth/session";
 
 test("Attachment Domain: Valid MIME types and file extensions", () => {
@@ -488,28 +494,64 @@ test("Attachment Direct Upload: Direct blob keys are identified and metadata is 
   );
 });
 
-const mockUser: SessionUser = {
-  id: "user-1",
-  username: "test_user",
-  fullName: "Test User",
-  role: Role.TREASURER,
-  organizationId: "org-alpha",
-  organizationName: "Org Alpha",
-  active: true,
-  mustChangePassword: false,
-};
+async function getTestUser(): Promise<SessionUser & { organizationId: string }> {
+  const user = await prisma.user.findFirst({
+    where: { role: Role.TREASURER, organizationId: { not: null } },
+    include: { organization: true },
+  });
+  if (user && user.organizationId) {
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      organizationId: user.organizationId,
+      organizationName: user.organization?.name || "Test Org",
+      active: user.active,
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+  let org = await prisma.organization.findFirst();
+  if (!org) {
+    org = await prisma.organization.create({
+      data: { name: "Test Org", slug: `test-org-${Date.now()}`, active: true },
+    });
+  }
+  const created = await prisma.user.create({
+    data: {
+      username: `test_treasurer_${Date.now()}`,
+      fullName: "Test Treasurer",
+      passwordHash: "hash",
+      role: Role.TREASURER,
+      organizationId: org.id,
+      active: true,
+    },
+    include: { organization: true },
+  });
+  return {
+    id: created.id,
+    username: created.username,
+    fullName: created.fullName,
+    role: created.role,
+    organizationId: created.organizationId!,
+    organizationName: org.name,
+    active: created.active,
+    mustChangePassword: created.mustChangePassword,
+  };
+}
 
 test("Attachment Security: Rejects arbitrary third-party storage URLs", async () => {
+  const user = await getTestUser();
   await assert.rejects(
     async () => {
       await verifyAndSecureAttachmentStorage(
         {
-          storageKey: "https://evil.com/attachments/org-alpha/malware.pdf",
+          storageKey: `https://evil.com/attachments/${user.organizationId}/malware.pdf`,
           originalName: "malware.pdf",
           mimeType: "application/pdf",
           sizeBytes: 1024,
         },
-        mockUser
+        user
       );
     },
     (err: unknown) =>
@@ -518,6 +560,7 @@ test("Attachment Security: Rejects arbitrary third-party storage URLs", async ()
 });
 
 test("Attachment Security: Rejects cross-organization attachment URLs", async () => {
+  const user = await getTestUser();
   await assert.rejects(
     async () => {
       await verifyAndSecureAttachmentStorage(
@@ -528,7 +571,7 @@ test("Attachment Security: Rejects cross-organization attachment URLs", async ()
           mimeType: "application/pdf",
           sizeBytes: 1024,
         },
-        mockUser
+        user
       );
     },
     (err: unknown) =>
@@ -537,13 +580,25 @@ test("Attachment Security: Rejects cross-organization attachment URLs", async ()
 });
 
 test("Attachment Security: Rejects spoofed file content signature on staged files", async () => {
+  const user = await getTestUser();
   const uploadsRoot = getDefaultUploadsRoot();
   const stagingDir = path.join(uploadsRoot, "staging");
   if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
 
-  const spoofedFileName = `spoofed-${Date.now()}.pdf`;
+  const stageId = `stage-spoof-${Date.now()}`;
+  const spoofedFileName = `${stageId}.pdf`;
   const spoofedFilePath = path.join(stagingDir, spoofedFileName);
   fs.writeFileSync(spoofedFilePath, Buffer.from("NOT_A_REAL_PDF_FILE"));
+
+  await recordUploadAuthorization({
+    uploadId: stageId,
+    userId: user.id,
+    organizationId: user.organizationId,
+    storageKey: spoofedFileName,
+    originalName: "spoofed.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 19,
+  });
 
   try {
     await assert.rejects(
@@ -555,7 +610,7 @@ test("Attachment Security: Rejects spoofed file content signature on staged file
             mimeType: "application/pdf",
             sizeBytes: 19,
           },
-          mockUser
+          user
         );
       },
       (err: unknown) =>
@@ -566,15 +621,58 @@ test("Attachment Security: Rejects spoofed file content signature on staged file
   }
 });
 
-test("Attachment Security: Accepts valid staged PDF with valid magic bytes", async () => {
+test("Attachment Security: Rejects attachment when upload authorization is missing", async () => {
+  const user = await getTestUser();
   const uploadsRoot = getDefaultUploadsRoot();
   const stagingDir = path.join(uploadsRoot, "staging");
   if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
 
-  const validFileName = `valid-${Date.now()}.pdf`;
+  const unauthFileName = `unauth-${Date.now()}.pdf`;
+  const unauthFilePath = path.join(stagingDir, unauthFileName);
+  fs.writeFileSync(unauthFilePath, Buffer.from("%PDF-1.7 unauth content"));
+
+  try {
+    await assert.rejects(
+      async () => {
+        await verifyAndSecureAttachmentStorage(
+          {
+            storageKey: unauthFilePath,
+            originalName: "unauth.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 25,
+          },
+          user
+        );
+      },
+      (err: unknown) =>
+        err instanceof ValidationError && /Upload authorization not found/i.test(err.message)
+    );
+  } finally {
+    if (fs.existsSync(unauthFilePath)) fs.unlinkSync(unauthFilePath);
+  }
+});
+
+test("Attachment Security: Accepts valid staged PDF with authorized upload receipt", async () => {
+  const user = await getTestUser();
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const stageId = `stage-auth-${Date.now()}`;
+  const validFileName = `${stageId}.pdf`;
   const validFilePath = path.join(stagingDir, validFileName);
   const validPdfHeader = Buffer.from("%PDF-1.7 valid content for testing");
   fs.writeFileSync(validFilePath, validPdfHeader);
+
+  await recordUploadAuthorization({
+    uploadId: stageId,
+    userId: user.id,
+    organizationId: user.organizationId,
+    storageKey: validFileName,
+    originalName: "valid.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: validPdfHeader.length,
+  });
 
   try {
     const verified = await verifyAndSecureAttachmentStorage(
@@ -584,12 +682,319 @@ test("Attachment Security: Accepts valid staged PDF with valid magic bytes", asy
         mimeType: "application/pdf",
         sizeBytes: validPdfHeader.length,
       },
-      mockUser
+      user
     );
     assert.equal(verified.originalName, "valid.pdf");
     assert.equal(verified.sizeBytes, validPdfHeader.length);
     assert.equal(verified.mimeType, "application/pdf");
+    assert.equal(verified.isLocalStaged, true);
+    assert.equal(verified.stageId, stageId);
   } finally {
     if (fs.existsSync(validFilePath)) fs.unlinkSync(validFilePath);
+  }
+});
+
+test("Attachment Security: Rejects expired upload authorization", async () => {
+  const user = await getTestUser();
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const stageId = `stage-exp-${Date.now()}`;
+  const fileName = `${stageId}.pdf`;
+  const filePath = path.join(stagingDir, fileName);
+  const header = Buffer.from("%PDF-1.7 expired test");
+  fs.writeFileSync(filePath, header);
+
+  // Record authorization with expired lease
+  await prisma.commandReceipt.upsert({
+    where: {
+      actorUserId_idempotencyKey: {
+        actorUserId: user.id,
+        idempotencyKey: `upload-auth-${stageId}`,
+      },
+    },
+    create: {
+      actorUserId: user.id,
+      organizationId: user.organizationId,
+      commandType: "UPLOAD_AUTHORIZATION",
+      idempotencyKey: `upload-auth-${stageId}`,
+      requestHash: "hash-exp",
+      status: "PENDING",
+      leaseExpiresAt: new Date(Date.now() - 1000), // Expired 1s ago
+      responseJson: JSON.stringify({ uploadId: stageId }),
+    },
+    update: {
+      leaseExpiresAt: new Date(Date.now() - 1000),
+      status: "PENDING",
+    },
+  });
+
+  try {
+    await assert.rejects(
+      async () => {
+        await verifyAndSecureAttachmentStorage(
+          {
+            storageKey: filePath,
+            originalName: "expired.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: header.length,
+          },
+          user
+        );
+      },
+      (err: unknown) =>
+        err instanceof ValidationError && /authorization has expired/i.test(err.message)
+    );
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+});
+
+test("Attachment Security: Rejects already consumed upload authorization (replay)", async () => {
+  const user = await getTestUser();
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const stageId = `stage-used-${Date.now()}`;
+  const fileName = `${stageId}.pdf`;
+  const filePath = path.join(stagingDir, fileName);
+  const header = Buffer.from("%PDF-1.7 consumed test");
+  fs.writeFileSync(filePath, header);
+
+  // Record authorization that is already COMPLETED
+  await prisma.commandReceipt.upsert({
+    where: {
+      actorUserId_idempotencyKey: {
+        actorUserId: user.id,
+        idempotencyKey: `upload-auth-${stageId}`,
+      },
+    },
+    create: {
+      actorUserId: user.id,
+      organizationId: user.organizationId,
+      commandType: "UPLOAD_AUTHORIZATION",
+      idempotencyKey: `upload-auth-${stageId}`,
+      requestHash: "hash-used",
+      status: "COMPLETED",
+      leaseExpiresAt: new Date(Date.now() + 60000),
+      responseJson: JSON.stringify({ uploadId: stageId }),
+    },
+    update: {
+      status: "COMPLETED",
+    },
+  });
+
+  try {
+    await assert.rejects(
+      async () => {
+        await verifyAndSecureAttachmentStorage(
+          {
+            storageKey: filePath,
+            originalName: "consumed.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: header.length,
+          },
+          user
+        );
+      },
+      (err: unknown) =>
+        err instanceof ValidationError && /already been consumed/i.test(err.message)
+    );
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+});
+
+test("Attachment Retryability: Pre-uploaded file is not deleted when transaction creation fails", async () => {
+  const user = await getTestUser();
+  const uploadsRoot = getDefaultUploadsRoot();
+  const stagingDir = path.join(uploadsRoot, "staging");
+  if (!fs.existsSync(stagingDir)) fs.mkdirSync(stagingDir, { recursive: true });
+
+  const stageId = `stage-retry-${Date.now()}`;
+  const fileName = `${stageId}.pdf`;
+  const filePath = path.join(stagingDir, fileName);
+  const content = Buffer.from("%PDF-1.7 valid content for retry test");
+  fs.writeFileSync(filePath, content);
+
+  await recordUploadAuthorization({
+    uploadId: stageId,
+    userId: user.id,
+    organizationId: user.organizationId,
+    storageKey: fileName,
+    originalName: "retry.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: content.length,
+  });
+
+  try {
+    // Intentionally call createTransactionService with invalid termId to trigger validation failure
+    await assert.rejects(
+      async () => {
+        await createTransactionService(user, {
+          termId: "nonexistent-term-id",
+          type: TransactionType.EXPENSE,
+          transactionDate: new Date(),
+          amountCents: 5000,
+          cashAccount: CashAccount.CASH_ON_HAND,
+          categoryId: "cat-1",
+          counterpartyName: "Test Store",
+          description: "Office supplies",
+          referenceDescription: "Receipt",
+          idempotencyKey: `idemp-${Date.now()}`,
+          attachment: {
+            storageKey: filePath,
+            originalName: "retry.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: content.length,
+          },
+        });
+      },
+      (err: unknown) => err instanceof ValidationError
+    );
+
+    // Critical invariant: pre-uploaded file MUST STILL EXIST on disk for user to retry!
+    assert.equal(
+      fs.existsSync(filePath),
+      true,
+      "Pre-uploaded file must NOT be deleted when transaction creation fails due to validation error"
+    );
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+});
+
+test("Attachment Flow: Complete local upload-to-record lifecycle and replay prevention", async () => {
+  const user = await getTestUser();
+  const storage = defaultAttachmentStorageService;
+
+  // 1. Stage a local upload
+  const pdfContent = Buffer.from("%PDF-1.7 full lifecycle test document content");
+  const staged = await storage.stageUpload(pdfContent, "invoice.pdf", "application/pdf");
+  const storageKey = `${staged.stageId}.${staged.extension}`;
+
+  // 2. Record upload authorization
+  await recordUploadAuthorization({
+    uploadId: staged.stageId,
+    userId: user.id,
+    organizationId: user.organizationId,
+    storageKey,
+    originalName: "invoice.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: pdfContent.length,
+  });
+
+  // 3. Ensure an active term and valid category exist for this test user's organization
+  let term = await prisma.academicTerm.findFirst({
+    where: { organizationId: user.organizationId, active: true },
+  });
+  if (!term) {
+    term = await prisma.academicTerm.create({
+      data: {
+        organizationId: user.organizationId,
+        academicYear: "2026-2027",
+        semester: "FIRST_SEMESTER",
+        active: true,
+        openingCashOnHandCents: 100000,
+        openingCashInBankCents: 100000,
+      },
+    });
+  }
+  let category = await prisma.transactionCategory.findFirst({
+    where: { type: TransactionType.INCOME, active: true },
+  });
+  if (!category) {
+    category = await prisma.transactionCategory.create({
+      data: {
+        name: "Test Fees",
+        type: TransactionType.INCOME,
+        active: true,
+      },
+    });
+  }
+
+  let createdTxId: string | null = null;
+  let committedStorageKey: string | null = null;
+
+  try {
+    // 4. Record transaction using the pre-uploaded staged file
+    const tx = await createTransactionService(user, {
+      termId: term.id,
+      type: TransactionType.INCOME,
+      transactionDate: new Date(),
+      amountCents: 500,
+      cashAccount: CashAccount.CASH_ON_HAND,
+      categoryId: category.id,
+      counterpartyName: "Student A",
+      description: "Membership fee",
+      referenceDescription: "OR-9999",
+      idempotencyKey: `idemp-lifecycle-${Date.now()}`,
+      attachment: {
+        storageKey,
+        originalName: "invoice.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: pdfContent.length,
+      },
+    });
+    createdTxId = tx.id;
+
+    // 5. Verify attachment was created and committed to active storage
+    const attachment = await prisma.attachment.findFirst({
+      where: { transactionId: tx.id },
+    });
+    assert.ok(attachment, "Attachment record must be created");
+    committedStorageKey = attachment.storageKey;
+    assert.notEqual(committedStorageKey, storageKey, "Committed storage key must differ from staged key");
+
+    // 6. Verify file exists in active storage
+    const activeFilePath = storage.resolveActivePath(committedStorageKey);
+    assert.equal(fs.existsSync(activeFilePath), true, "File must exist in active uploads storage");
+
+    // 7. Verify authorization was consumed
+    const authReceipt = await prisma.commandReceipt.findUnique({
+      where: {
+        actorUserId_idempotencyKey: {
+          actorUserId: user.id,
+          idempotencyKey: `upload-auth-${staged.stageId}`,
+        },
+      },
+    });
+    assert.equal(authReceipt?.status, "COMPLETED", "Upload authorization must be marked COMPLETED");
+    assert.equal(authReceipt?.resultEntityId, attachment.id, "Receipt must point to created attachment");
+
+    // 8. Verify REPLAY is rejected (attempting to use the already consumed upload or key again)
+    await assert.rejects(
+      async () => {
+        await createTransactionService(user, {
+          termId: term.id,
+          type: TransactionType.EXPENSE,
+          transactionDate: new Date(),
+          amountCents: 500,
+          cashAccount: CashAccount.CASH_ON_HAND,
+          categoryId: category.id,
+          counterpartyName: "Another Store",
+          description: "Replay attack attempt",
+          referenceDescription: "OR-9999",
+          idempotencyKey: `idemp-replay-${Date.now()}`,
+          attachment: {
+            storageKey,
+            originalName: "invoice.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: pdfContent.length,
+          },
+        });
+      },
+      (err: unknown) => err instanceof ValidationError
+    );
+  } finally {
+    // Cleanup test records
+    if (createdTxId) {
+      await prisma.transaction.delete({ where: { id: createdTxId } }).catch(() => undefined);
+    }
+    if (committedStorageKey) {
+      await storage.deleteActiveFile(committedStorageKey).catch(() => undefined);
+    }
   }
 });

@@ -7,7 +7,6 @@ import { requireManagementUser } from "../auth/require-auth";
 import { parsePesoToCents } from "../domain/money";
 import { parseStrictDate, parseStrictVersion, strictVersionSchema } from "../domain/query";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
-import { verifyAndSecureAttachmentStorage } from "../infrastructure/storage/attachment-verification";
 import { TransactionType } from "@prisma/client";
 import {
   createTransactionService,
@@ -79,20 +78,11 @@ export async function createTransactionAction(
       if (!originalName || !mimeType || sizeBytes <= 0) {
         return { error: "Uploaded receipt metadata is incomplete." };
       }
-      const verified = await verifyAndSecureAttachmentStorage(
-        {
-          storageKey: preUploadedStorageKey,
-          originalName,
-          mimeType,
-          sizeBytes,
-        },
-        user
-      );
       attachmentInput = {
-        storageKey: verified.storageKey,
-        originalName: verified.originalName,
-        mimeType: verified.mimeType,
-        sizeBytes: verified.sizeBytes,
+        storageKey: preUploadedStorageKey,
+        originalName,
+        mimeType,
+        sizeBytes,
       };
     } else {
       const file = getAttachmentFile(formData);
