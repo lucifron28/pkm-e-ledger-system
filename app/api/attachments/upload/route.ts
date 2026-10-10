@@ -12,7 +12,7 @@ import {
   getBlobAccess,
   isVercelBlobConfigured,
 } from "@/lib/infrastructure/storage/attachment-store";
-import { validateAndReadAttachmentFile } from "@/lib/domain/attachments";
+import { validateAndReadAttachmentFile, validateAttachmentMetadata } from "@/lib/domain/attachments";
 import { recordUploadAuthorization } from "@/lib/infrastructure/storage/attachment-verification";
 
 export async function GET(): Promise<NextResponse> {
@@ -108,28 +108,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (pathname: string) => {
-        const ext = path.extname(pathname).replace(/^\./, "").toLowerCase();
-        if (!["jpg", "jpeg", "png", "pdf"].includes(ext)) {
-          throw new Error("Invalid attachment extension. Allowed: jpg, jpeg, png, pdf.");
+      onBeforeGenerateToken: async (pathname: string, clientPayload: string | null) => {
+        let upload: {
+          uploadId: string;
+          originalName: string;
+          mimeType: string;
+          sizeBytes: number;
+        };
+        try {
+          upload = JSON.parse(clientPayload || "") as typeof upload;
+        } catch {
+          throw new Error("Upload metadata is missing or invalid.");
         }
-        const expectedPrefix = `attachments/${organizationId}/`;
-        if (!pathname.startsWith(expectedPrefix)) {
-          throw new Error("Invalid upload path: organization scope mismatch.");
+
+        if (
+          typeof upload.uploadId !== "string" ||
+          typeof upload.originalName !== "string" ||
+          typeof upload.mimeType !== "string" ||
+          !Number.isSafeInteger(upload.sizeBytes) ||
+          upload.sizeBytes <= 0
+        ) {
+          throw new Error("Upload metadata is incomplete.");
         }
-        const match = pathname.match(
-          new RegExp(`^attachments/${organizationId}/([^/.]+)\\.[a-z0-9]+$`, "i")
+        const ext = path.extname(upload.originalName).replace(/^\./, "").toLowerCase();
+        const metadataError = validateAttachmentMetadata(
+          upload.originalName,
+          upload.mimeType,
+          upload.sizeBytes
         );
-        const uploadId = match ? match[1] : crypto.randomUUID();
+        if (metadataError || !["jpg", "jpeg", "png", "pdf"].includes(ext)) {
+          throw new Error(metadataError || "Invalid attachment extension.");
+        }
+        if (!/^[a-f0-9-]{36}$/i.test(upload.uploadId)) {
+          throw new Error("Invalid upload identifier.");
+        }
+
+        const authorizedPath = `attachments/${organizationId}/${upload.uploadId}.${ext}`;
+        if (pathname !== authorizedPath) {
+          throw new Error("Upload path does not match the authorized file reference.");
+        }
 
         await recordUploadAuthorization({
-          uploadId,
+          uploadId: upload.uploadId,
           userId: user.id,
           organizationId,
-          storageKey: pathname,
-          originalName: path.basename(pathname),
-          mimeType: "application/octet-stream",
-          sizeBytes: 0,
+          storageKey: authorizedPath,
+          originalName: upload.originalName,
+          mimeType: upload.mimeType,
+          sizeBytes: upload.sizeBytes,
         });
 
         return {
@@ -138,9 +164,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           addRandomSuffix: false,
           tokenPayload: JSON.stringify({
             userId: user.id,
-            organizationId: user.organizationId,
-            pathname,
-            uploadId,
+            organizationId,
+            pathname: authorizedPath,
+            uploadId: upload.uploadId,
           }),
         };
       },

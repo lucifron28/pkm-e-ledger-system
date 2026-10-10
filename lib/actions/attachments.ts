@@ -168,7 +168,13 @@ export async function uploadAttachmentAction(
             },
           });
           if (verifiedUpload?.uploadId) {
-            await consumeUploadAuthorization(tx, user.id, verifiedUpload.uploadId, attachment.id);
+            await consumeUploadAuthorization(tx, {
+              userId: user.id,
+              organizationId: user.organizationId!,
+              uploadId: verifiedUpload.uploadId,
+              requestHash: verifiedUpload.authorizationRequestHash,
+              attachmentId: attachment.id,
+            });
           }
 
           await createAuditLog({

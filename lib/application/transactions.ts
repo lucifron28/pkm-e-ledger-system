@@ -9,6 +9,8 @@ import {
 import type { VerifiedAttachmentStorageResult } from "../infrastructure/storage/attachment-verification";
 import {
   claimCommandReceipt,
+  computeRequestHash,
+  findCompletedReceipt,
   processIdempotentCommand,
   releaseCommandReceipt,
 } from "./idempotency";
@@ -93,19 +95,7 @@ export async function createTransactionService(
   const isPreUploaded = Boolean(input.attachment.storageKey);
 
   if (input.attachment.storageKey) {
-    verifiedUpload = await verifyAndSecureAttachmentStorage(
-      {
-        storageKey: input.attachment.storageKey,
-        originalName: input.attachment.originalName,
-        mimeType: input.attachment.mimeType,
-        sizeBytes: input.attachment.sizeBytes,
-      },
-      user
-    );
-    input.attachment.originalName = verifiedUpload.originalName;
-    input.attachment.mimeType = verifiedUpload.mimeType;
-    input.attachment.sizeBytes = verifiedUpload.sizeBytes;
-    fileHash = crypto.createHash("sha256").update(verifiedUpload.storageKey).digest("hex");
+    fileHash = crypto.createHash("sha256").update(input.attachment.storageKey).digest("hex");
   } else if (input.attachment.buffer) {
     const attachmentError = validateAttachmentPayload(
       input.attachment.originalName,
@@ -138,7 +128,29 @@ export async function createTransactionService(
       fileHash,
     },
   };
+  const cachedResult = await findCompletedReceipt<TransactionDto>(
+    user.id,
+    input.idempotencyKey,
+    computeRequestHash("CREATE_TRANSACTION", payloadForHash),
+    user.organizationId,
+    "CREATE_TRANSACTION"
+  );
+  if (cachedResult) return cachedResult;
 
+  if (input.attachment.storageKey) {
+    verifiedUpload = await verifyAndSecureAttachmentStorage(
+      {
+        storageKey: input.attachment.storageKey,
+        originalName: input.attachment.originalName,
+        mimeType: input.attachment.mimeType,
+        sizeBytes: input.attachment.sizeBytes,
+      },
+      user
+    );
+    input.attachment.originalName = verifiedUpload.originalName;
+    input.attachment.mimeType = verifiedUpload.mimeType;
+    input.attachment.sizeBytes = verifiedUpload.sizeBytes;
+  }
   const receipt = await claimCommandReceipt<TransactionDto>(
     user.id,
     user.organizationId,
@@ -251,7 +263,13 @@ export async function createTransactionService(
             },
           });
           if (verifiedUpload?.uploadId) {
-            await consumeUploadAuthorization(tx, user.id, verifiedUpload.uploadId, attachment.id);
+            await consumeUploadAuthorization(tx, {
+              userId: user.id,
+              organizationId: user.organizationId!,
+              uploadId: verifiedUpload.uploadId,
+              requestHash: verifiedUpload.authorizationRequestHash,
+              attachmentId: attachment.id,
+            });
           }
 
           await createAuditLog({

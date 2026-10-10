@@ -90,6 +90,12 @@ export async function uploadAttachmentDirectly(
     const blobResult = await upload(pathname, file, {
       access: config.blobAccess || "private",
       handleUploadUrl: "/api/attachments/upload",
+      clientPayload: JSON.stringify({
+        uploadId,
+        originalName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      }),
       abortSignal: options.signal,
       onUploadProgress: (p) => {
         options.onProgress?.({
