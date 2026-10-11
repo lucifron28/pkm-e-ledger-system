@@ -46,12 +46,14 @@ export function useModalFocus<T extends HTMLElement = HTMLElement>({ isOpen, isP
   const wasOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
+    const triggerElement = triggerRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (isOpen) {
       if (!wasOpenRef.current) {
         previousActiveElement.current = document.activeElement as HTMLElement | null;
         wasOpenRef.current = true;
       }
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         if (initialFocusRef.current) {
           initialFocusRef.current.focus();
         } else if (containerRef.current) {
@@ -63,16 +65,26 @@ export function useModalFocus<T extends HTMLElement = HTMLElement>({ isOpen, isP
           }
         }
       }, 0);
-      return () => clearTimeout(timer);
     } else {
       if (wasOpenRef.current) {
         wasOpenRef.current = false;
-        const target = previousActiveElement.current || triggerRef.current;
+        const target = previousActiveElement.current || triggerElement;
         if (target && typeof target.focus === "function") {
           target.focus();
         }
       }
     }
+
+    return () => {
+      clearTimeout(timer);
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        const target = previousActiveElement.current || triggerElement;
+        if (target && typeof target.focus === "function") {
+          target.focus();
+        }
+      }
+    };
   }, [isOpen]);
 
   const handleKeyDown = useCallback(

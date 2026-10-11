@@ -136,12 +136,15 @@ export class AttachmentStorageService {
     const safeExtension = extension.replace(/[^a-z0-9]/gi, "").toLowerCase();
     if (!safeExtension) throw new ValidationError("Attachment file extension is required.");
 
-    const stagedPath = path.join(this.getStagingDir(), `${stageId}.${safeExtension}`);
-    if (!existsSync(stagedPath)) {
-      throw new StorageConsistencyError(`Staged upload file missing for stageId: ${stageId}`);
+    if (!/^[a-z0-9-]+$/i.test(stageId)) {
+      throw new ValidationError("Staged upload identifier is invalid.");
     }
+    const stagedPath = path.join(this.getStagingDir(), `${stageId}.${safeExtension}`);
 
     if (this.useBlobStorage) {
+      if (!existsSync(stagedPath)) {
+        throw new StorageConsistencyError(`Staged upload file missing for stageId: ${stageId}`);
+      }
       const fileBuffer = await fs.readFile(stagedPath);
       const { put } = await import("@vercel/blob");
       const blobPathname = `attachments/${crypto.randomUUID()}.${safeExtension}`;
@@ -181,10 +184,21 @@ export class AttachmentStorageService {
       };
     }
 
-    const storageKey = `${crypto.randomUUID()}.${safeExtension}`;
+    const storageKey = `${stageId}.${safeExtension}`;
     const activePath = this.resolveActivePath(storageKey);
-    await fs.mkdir(this.uploadsRoot, { recursive: true });
-    await fs.rename(stagedPath, activePath);
+    const stagedExists = existsSync(stagedPath);
+    const activeExists = existsSync(activePath);
+
+    if (stagedExists && activeExists) {
+      throw new StorageConsistencyError(`Both staged and active upload files exist for stageId: ${stageId}`);
+    }
+    if (!stagedExists && !activeExists) {
+      throw new StorageConsistencyError(`Staged upload file missing for stageId: ${stageId}`);
+    }
+    if (stagedExists) {
+      await fs.mkdir(this.uploadsRoot, { recursive: true });
+      await fs.rename(stagedPath, activePath);
+    }
 
     return { storageKey, relativeKey: storageKey };
   }

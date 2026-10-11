@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useEffect, useRef } from "react";
 import { editCashTransferAction } from "@/lib/actions/transfers";
 import type { LedgerEntry } from "@/lib/data/transactions";
 import { formatPesoInputFromCents } from "@/lib/data/money";
@@ -21,6 +21,13 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
     isPending,
     onClose: () => setOpen(false),
   });
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (wasPendingRef.current && !isPending && !state?.error) {
+      setOpen(false);
+    }
+    wasPendingRef.current = isPending;
+  }, [isPending, state?.error]);
 
   return (
     <div className="inline">
@@ -75,7 +82,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor={`edit-tr-from-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-from-${transfer.id}`} className="ui-label">
                     From Account
                   </label>
                   <select
@@ -83,14 +90,14 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     name="fromAccount"
                     value={fromAccount}
                     onChange={(e) => setFromAccount(e.target.value as "CASH_ON_HAND" | "CASH_IN_BANK")}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-select"
                   >
                     <option value="CASH_ON_HAND">Cash on Hand</option>
                     <option value="CASH_IN_BANK">Cash in Bank</option>
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={`edit-tr-to-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-to-${transfer.id}`} className="ui-label">
                     To Account
                   </label>
                   <input
@@ -98,14 +105,14 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     type="text"
                     readOnly
                     value={toAccount === "CASH_IN_BANK" ? "Cash in Bank" : "Cash on Hand"}
-                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 font-medium cursor-not-allowed"
+                    className="ui-input bg-slate-100 text-slate-600 font-medium cursor-not-allowed"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor={`edit-tr-date-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-date-${transfer.id}`} className="ui-label">
                     Date
                   </label>
                   <input
@@ -117,7 +124,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     defaultValue={date}
                     aria-invalid={Boolean(state?.fieldErrors?.transferDate)}
                     aria-describedby={state?.fieldErrors?.transferDate ? `err-tr-date-${transfer.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.transferDate && (
                     <p id={`err-tr-date-${transfer.id}`} className="mt-1 text-xs text-red-600">
@@ -127,7 +134,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                 </div>
 
                 <div>
-                  <label htmlFor={`edit-tr-amount-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-amount-${transfer.id}`} className="ui-label">
                     Amount (PHP)
                   </label>
                   <input
@@ -139,7 +146,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     defaultValue={formatPesoInputFromCents(transfer.amountCents)}
                     aria-invalid={Boolean(state?.fieldErrors?.amount)}
                     aria-describedby={state?.fieldErrors?.amount ? `err-tr-amount-${transfer.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input font-mono"
                   />
                   {state?.fieldErrors?.amount && (
                     <p id={`err-tr-amount-${transfer.id}`} className="mt-1 text-xs text-red-600">
@@ -149,7 +156,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                 </div>
 
                 <div>
-                  <label htmlFor={`edit-tr-doc-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  <label htmlFor={`edit-tr-doc-${transfer.id}`} className="ui-label">
                     Document Number
                   </label>
                   <input
@@ -161,7 +168,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                     placeholder="Document number"
                     aria-invalid={Boolean(state?.fieldErrors?.documentNumber)}
                     aria-describedby={state?.fieldErrors?.documentNumber ? `err-tr-doc-${transfer.id}` : undefined}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                    className="ui-input"
                   />
                   {state?.fieldErrors?.documentNumber && (
                     <p id={`err-tr-doc-${transfer.id}`} className="mt-1 text-xs text-red-600">
@@ -172,7 +179,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
               </div>
 
               <div>
-                <label htmlFor={`edit-tr-event-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor={`edit-tr-event-${transfer.id}`} className="ui-label">
                   Event / Activity
                 </label>
                 <input
@@ -184,7 +191,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   placeholder="Event / Activity"
                   aria-invalid={Boolean(state?.fieldErrors?.eventActivityName)}
                   aria-describedby={state?.fieldErrors?.eventActivityName ? `err-tr-event-${transfer.id}` : undefined}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  className="ui-input"
                 />
                 {state?.fieldErrors?.eventActivityName && (
                   <p id={`err-tr-event-${transfer.id}`} className="mt-1 text-xs text-red-600">
@@ -194,7 +201,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
               </div>
 
               <div>
-                <label htmlFor={`edit-tr-desc-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor={`edit-tr-desc-${transfer.id}`} className="ui-label">
                   Particulars / Description
                 </label>
                 <input
@@ -207,7 +214,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   placeholder="Description"
                   aria-invalid={Boolean(state?.fieldErrors?.description)}
                   aria-describedby={state?.fieldErrors?.description ? `err-tr-desc-${transfer.id}` : undefined}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  className="ui-input"
                 />
                 {state?.fieldErrors?.description && (
                   <p id={`err-tr-desc-${transfer.id}`} className="mt-1 text-xs text-red-600">
@@ -217,7 +224,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
               </div>
 
               <div>
-                <label htmlFor={`edit-tr-ref-${transfer.id}`} className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor={`edit-tr-ref-${transfer.id}`} className="ui-label">
                   Reference Description
                 </label>
                 <input
@@ -230,7 +237,7 @@ export function EditCashTransferForm({ transfer }: { transfer: Extract<LedgerEnt
                   placeholder="Reference"
                   aria-invalid={Boolean(state?.fieldErrors?.referenceDescription)}
                   aria-describedby={state?.fieldErrors?.referenceDescription ? `err-tr-ref-${transfer.id}` : undefined}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#004aad]"
+                  className="ui-input"
                 />
                 {state?.fieldErrors?.referenceDescription && (
                   <p id={`err-tr-ref-${transfer.id}`} className="mt-1 text-xs text-red-600">

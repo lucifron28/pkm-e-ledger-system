@@ -1,14 +1,22 @@
 import { prisma } from "../db/prisma";
 import crypto from "crypto";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
+import {
+  consumeUploadAuthorization,
+  verifyAndSecureAttachmentStorage,
+} from "../infrastructure/storage/attachment-verification";
+import type { VerifiedAttachmentStorageResult } from "../infrastructure/storage/attachment-verification";
 import {
   claimCommandReceipt,
+  computeRequestHash,
+  findCompletedReceipt,
   processIdempotentCommand,
   releaseCommandReceipt,
 } from "./idempotency";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import { AuditAction, CashAccount, CashTransfer } from "@prisma/client";
-import { SessionUser } from "../auth/session";
+import type { SessionUser } from "../auth/session";
 import { isManagementRole } from "../auth/rbac";
 import {
   AccessDeniedError,
@@ -78,7 +86,8 @@ export interface CreateTransferInput {
     originalName: string;
     mimeType: string;
     sizeBytes: number;
-    buffer: Uint8Array | Buffer;
+    buffer?: Uint8Array | Buffer;
+    storageKey?: string;
   };
 }
 
@@ -100,14 +109,24 @@ export async function createCashTransferService(
   }
 
   validateMoneyAmount(input.amountCents, false, "Transfer amount");
-  const attachmentError = validateAttachmentPayload(
-    input.attachment.originalName,
-    input.attachment.mimeType,
-    input.attachment.buffer,
-    input.attachment.sizeBytes
-  );
-  if (attachmentError) throw new ValidationError(attachmentError);
-  const fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
+  let fileHash: string;
+  let verifiedUpload: VerifiedAttachmentStorageResult | null = null;
+  const isPreUploaded = Boolean(input.attachment.storageKey);
+
+  if (input.attachment.storageKey) {
+    fileHash = crypto.createHash("sha256").update(input.attachment.storageKey).digest("hex");
+  } else if (input.attachment.buffer) {
+    const attachmentError = validateAttachmentPayload(
+      input.attachment.originalName,
+      input.attachment.mimeType,
+      input.attachment.buffer,
+      input.attachment.sizeBytes
+    );
+    if (attachmentError) throw new ValidationError(attachmentError);
+    fileHash = crypto.createHash("sha256").update(input.attachment.buffer).digest("hex");
+  } else {
+    throw new ValidationError("Attachment file or storage key is required.");
+  }
 
   const payload = {
     termId: input.termId,
@@ -126,7 +145,29 @@ export async function createCashTransferService(
       fileHash,
     },
   };
+  const cachedResult = await findCompletedReceipt<CashTransferDto>(
+    user.id,
+    input.idempotencyKey,
+    computeRequestHash("CREATE_CASH_TRANSFER", payload),
+    user.organizationId,
+    "CREATE_CASH_TRANSFER"
+  );
+  if (cachedResult) return cachedResult;
 
+  if (input.attachment.storageKey) {
+    verifiedUpload = await verifyAndSecureAttachmentStorage(
+      {
+        storageKey: input.attachment.storageKey,
+        originalName: input.attachment.originalName,
+        mimeType: input.attachment.mimeType,
+        sizeBytes: input.attachment.sizeBytes,
+      },
+      user
+    );
+    input.attachment.originalName = verifiedUpload.originalName;
+    input.attachment.mimeType = verifiedUpload.mimeType;
+    input.attachment.sizeBytes = verifiedUpload.sizeBytes;
+  }
   const receipt = await claimCommandReceipt<CashTransferDto>(
     user.id,
     user.organizationId,
@@ -140,17 +181,18 @@ export async function createCashTransferService(
 
   const claim = receipt.claim;
   const storageService = dependencies.storageService || defaultAttachmentStorageService;
-  let staged: Awaited<ReturnType<typeof storageService.stageUpload>> | null = null;
-  let committedName: string | null = null;
+  let staged: StagedUploadResult | null = null;
+  let committedName: string | null = input.attachment.storageKey || null;
   try {
-    staged = await storageService.stageUpload(
-      input.attachment.buffer,
-      input.attachment.originalName,
-      input.attachment.mimeType
-    );
-    const committed = await storageService.commitUpload(staged.stageId, staged.extension);
-    committedName = committed.storageKey;
-
+    if (!isPreUploaded && !committedName && input.attachment.buffer) {
+      staged = await storageService.stageUpload(
+        input.attachment.buffer,
+        input.attachment.originalName,
+        input.attachment.mimeType
+      );
+      const committed = await storageService.commitUpload(staged.stageId, staged.extension);
+      committedName = committed.storageKey;
+    }
     const outcome = await withTransientRetry(() =>
       processIdempotentCommand<CashTransferDto>(
         user.id,
@@ -194,6 +236,10 @@ export async function createCashTransferService(
             throw new InsufficientFundsError("Cash transfer failed: Insufficient balance in source account.");
           }
 
+          if (verifiedUpload?.isLocalStaged && verifiedUpload.stageId && verifiedUpload.extension) {
+            const committed = await storageService.commitUpload(verifiedUpload.stageId, verifiedUpload.extension);
+            committedName = committed.storageKey;
+          }
           const created = await tx.cashTransfer.create({
             data: {
               organizationId: user.organizationId!,
@@ -219,11 +265,20 @@ export async function createCashTransferService(
               cashTransferId: created.id,
               uploadedById: user.id,
               originalName: input.attachment.originalName,
-              storageKey: committed.storageKey,
+              storageKey: committedName!,
               mimeType: input.attachment.mimeType,
               sizeBytes: input.attachment.sizeBytes,
             },
           });
+          if (verifiedUpload?.uploadId) {
+            await consumeUploadAuthorization(tx, {
+              userId: user.id,
+              organizationId: user.organizationId!,
+              uploadId: verifiedUpload.uploadId,
+              requestHash: verifiedUpload.authorizationRequestHash,
+              attachmentId: attachment.id,
+            });
+          }
 
           await createAuditLog({
             userId: user.id,
@@ -262,11 +317,7 @@ export async function createCashTransferService(
       )
     );
 
-    if (outcome.disposition === "CACHED" && committedName) {
-      // Another claimant completed this command; this caller's committed file
-      // is unreferenced and must be removed. When EXECUTED, retain the file
-      // without a second ownership query. Failures here keep the file for
-      // reconciliation rather than risk deleting a referenced file.
+    if (outcome.disposition === "CACHED" && committedName && !isPreUploaded) {
       await storageService.deleteActiveFile(committedName).catch(() => undefined);
     }
 
@@ -275,7 +326,7 @@ export async function createCashTransferService(
     if (staged && !committedName) {
       await storageService.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
-    if (committedName) {
+    if (committedName && !isPreUploaded) {
       let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
       try {
         const ref = await prisma.attachment.findFirst({

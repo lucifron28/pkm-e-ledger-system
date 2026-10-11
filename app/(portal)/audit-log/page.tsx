@@ -194,10 +194,10 @@ export default async function AuditLogPage({
                       </div>
                       {log.metadataJson && (
                         <details className="cursor-pointer mt-1">
-                          <summary className="text-[11px] font-medium text-slate-500 hover:text-[#004aad] underline decoration-dotted">
+                          <summary className="text-xs font-medium text-slate-500 hover:text-[#004aad] underline decoration-dotted">
                             Technical Payload ({log.entityType || "Audit"})
                           </summary>
-                          <pre className="mt-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 font-mono text-[11px] text-slate-800 whitespace-pre-wrap max-w-lg">
+                          <pre className="mt-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 font-mono text-xs text-slate-800 whitespace-pre-wrap max-w-lg">
                             {log.metadataJson}
                           </pre>
                         </details>

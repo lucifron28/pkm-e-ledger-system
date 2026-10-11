@@ -6,8 +6,14 @@ import { prisma } from "../db/prisma";
 import { requireManagementUser } from "../auth/require-auth";
 import { createAuditLog } from "../data/audit-log";
 import { validateAndReadAttachmentFile } from "../domain/attachments";
+import {
+  consumeUploadAuthorization,
+  verifyAndSecureAttachmentStorage,
+} from "../infrastructure/storage/attachment-verification";
+import type { VerifiedAttachmentStorageResult } from "../infrastructure/storage/attachment-verification";
 import { AuditAction, Prisma } from "@prisma/client";
 import { defaultAttachmentStorageService } from "../infrastructure/storage/attachment-store";
+import type { StagedUploadResult } from "../infrastructure/storage/attachment-store";
 import { withTransientRetry } from "../infrastructure/db/retry";
 import {
   claimCommandReceipt,
@@ -45,29 +51,61 @@ export async function uploadAttachmentAction(
   if (!user.organizationId) return { error: "You are not assigned to an organization." };
 
   let owner: { transactionId: string | null; cashTransferId: string | null };
-  let file: File;
+  let originalName: string;
+  let mimeType: string;
+  let sizeBytes: number;
+  let fileHash: string;
+  let bufferToStage: Uint8Array | null = null;
+  let storageKey: string | null = null;
+  let verifiedUpload: VerifiedAttachmentStorageResult | null = null;
+  const providedStorageKey = formData.get("storageKey")?.toString().trim() || null;
   try {
     owner = getOwnerIds(formData);
-    file = getFile(formData);
+    if (providedStorageKey) {
+      originalName = formData.get("originalName")?.toString().trim() || "";
+      mimeType = formData.get("mimeType")?.toString().trim() || "";
+      sizeBytes = Number(formData.get("sizeBytes")) || 0;
+      if (!originalName || !mimeType || sizeBytes <= 0) {
+        return { error: "Uploaded attachment metadata is incomplete." };
+      }
+      verifiedUpload = await verifyAndSecureAttachmentStorage(
+        {
+          storageKey: providedStorageKey,
+          originalName,
+          mimeType,
+          sizeBytes,
+        },
+        user
+      );
+      originalName = verifiedUpload.originalName;
+      mimeType = verifiedUpload.mimeType;
+      sizeBytes = verifiedUpload.sizeBytes;
+      storageKey = verifiedUpload.storageKey;
+      fileHash = crypto.createHash("sha256").update(verifiedUpload.storageKey).digest("hex");
+    } else {
+      const file = getFile(formData);
+      const validation = await validateAndReadAttachmentFile(file);
+      if (!validation.success) return { error: validation.error };
+      originalName = validation.data.originalName;
+      mimeType = validation.data.mimeType;
+      sizeBytes = validation.data.sizeBytes;
+      bufferToStage = validation.data.buffer;
+      fileHash = crypto.createHash("sha256").update(validation.data.buffer).digest("hex");
+    }
   } catch (error) {
     return { error: error instanceof DomainError ? error.message : "Attachment owner and file are required." };
   }
 
-  const validation = await validateAndReadAttachmentFile(file);
-  if (!validation.success) return { error: validation.error };
-  const validated = validation.data;
-  const fileHash = crypto.createHash("sha256").update(validated.buffer).digest("hex");
   const ownerKey = owner.transactionId || owner.cashTransferId!;
   const commandType = "UPLOAD_ATTACHMENT";
   const idempotencyKey = getIdempotencyKey(formData, `upload-${ownerKey}-${fileHash}`);
   const payload = {
     ...owner,
-    originalName: validated.originalName,
-    mimeType: validated.mimeType,
-    sizeBytes: validated.sizeBytes,
+    originalName,
+    mimeType,
+    sizeBytes,
     fileHash,
   };
-
   let receipt;
   try {
     receipt = await claimCommandReceipt<{ id: string }>(
@@ -84,13 +122,14 @@ export async function uploadAttachmentAction(
 
   const claim = receipt.claim;
   const storage = defaultAttachmentStorageService;
-  let staged: Awaited<ReturnType<typeof storage.stageUpload>> | null = null;
-  let storageKey: string | null = null;
+  let staged: StagedUploadResult | null = null;
+  const isPreUploaded = Boolean(providedStorageKey);
   try {
-    staged = await storage.stageUpload(validated.buffer, validated.originalName, validated.mimeType);
-    const committed = await storage.commitUpload(staged.stageId, staged.extension);
-    storageKey = committed.storageKey;
-
+    if (!isPreUploaded && !storageKey && bufferToStage) {
+      staged = await storage.stageUpload(bufferToStage, originalName, mimeType);
+      const committed = await storage.commitUpload(staged.stageId, staged.extension);
+      storageKey = committed.storageKey;
+    }
     const outcome = await withTransientRetry(() =>
       processIdempotentCommand<{ id: string }>(
         user.id,
@@ -113,17 +152,30 @@ export async function uploadAttachmentAction(
             : null;
           if (!transaction && !transfer) throw new ValidationError("Attachment owner not found or access denied.");
 
+          if (verifiedUpload?.isLocalStaged && verifiedUpload.stageId && verifiedUpload.extension) {
+            const committed = await storage.commitUpload(verifiedUpload.stageId, verifiedUpload.extension);
+            storageKey = committed.storageKey;
+          }
           const attachment = await tx.attachment.create({
             data: {
               transactionId: transaction?.id || null,
               cashTransferId: transfer?.id || null,
               uploadedById: user.id,
-              originalName: validated.originalName,
+              originalName,
               storageKey: storageKey!,
-              mimeType: validated.mimeType,
-              sizeBytes: validated.sizeBytes,
+              mimeType,
+              sizeBytes,
             },
           });
+          if (verifiedUpload?.uploadId) {
+            await consumeUploadAuthorization(tx, {
+              userId: user.id,
+              organizationId: user.organizationId!,
+              uploadId: verifiedUpload.uploadId,
+              requestHash: verifiedUpload.authorizationRequestHash,
+              attachmentId: attachment.id,
+            });
+          }
 
           await createAuditLog({
             userId: user.id,
@@ -135,8 +187,8 @@ export async function uploadAttachmentAction(
             metadata: {
               transactionId: transaction?.id || null,
               cashTransferId: transfer?.id || null,
-              originalName: validated.originalName,
-              sizeBytes: validated.sizeBytes,
+              originalName,
+              sizeBytes,
             },
             tx,
           });
@@ -147,18 +199,14 @@ export async function uploadAttachmentAction(
       )
     );
 
-    if (outcome.disposition === "CACHED" && storageKey) {
-      // Another claimant completed this upload; this caller's committed file
-      // is unreferenced and must be removed. When EXECUTED, retain the file
-      // without a second ownership query. Failures here keep the file for
-      // reconciliation rather than risk deleting a referenced file.
+    if (outcome.disposition === "CACHED" && storageKey && !isPreUploaded) {
       await storage.deleteActiveFile(storageKey).catch(() => undefined);
     }
   } catch (error) {
     if (staged && !storageKey) {
       await storage.discardStagedUpload(staged.stageId, staged.extension).catch(() => undefined);
     }
-    if (storageKey) {
+    if (storageKey && !isPreUploaded) {
       let lookupState: "LOOKUP_SUCCEEDED_REFERENCED" | "LOOKUP_SUCCEEDED_UNREFERENCED" | "LOOKUP_FAILED" = "LOOKUP_FAILED";
       try {
         const ref = await prisma.attachment.findFirst({

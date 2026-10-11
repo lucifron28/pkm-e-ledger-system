@@ -6,7 +6,9 @@ import {
   validateAttachmentFile,
   validateFileMagicBytes,
   validateAndReadAttachmentFile,
+  validateAttachmentMetadata,
 } from "../../lib/domain/attachments";
+import { validateUploadFile } from "../../lib/infrastructure/storage/client-upload";
 import {
   AttachmentStorageService,
   StorageDatabase,
@@ -43,6 +45,32 @@ test("Attachment Domain: File size limits (0 byte and > 10MB)", () => {
   const largeBuffer = new Uint8Array(11 * 1024 * 1024);
   const largeFile = new File([largeBuffer], "large.pdf", { type: "application/pdf" });
   assert.equal(validateAttachmentFile(largeFile), "File must be under 10 MB.");
+});
+
+test("Attachment Domain: validateAttachmentMetadata accepts valid metadata and rejects invalid", () => {
+  assert.equal(validateAttachmentMetadata("receipt.jpg", "image/jpeg", 1024), null);
+  assert.equal(validateAttachmentMetadata("invoice.pdf", "application/pdf", 5 * 1024 * 1024), null);
+  assert.equal(validateAttachmentMetadata("photo.png", "image/png", 2048), null);
+
+  assert.equal(validateAttachmentMetadata("empty.pdf", "application/pdf", 0), "File is required.");
+  assert.equal(validateAttachmentMetadata("huge.pdf", "application/pdf", 11 * 1024 * 1024), "File must be under 10 MB.");
+  assert.equal(validateAttachmentMetadata("script.js", "application/javascript", 1024), "Only JPEG, PNG, and PDF files are allowed.");
+  assert.equal(validateAttachmentMetadata("doc.pdf", "image/jpeg", 1024), "File extension does not match its MIME type.");
+});
+
+test("Attachment Client Upload: validateUploadFile enforces size and type checks", () => {
+  const validFile = new File(["hello"], "scan.pdf", { type: "application/pdf" });
+  assert.equal(validateUploadFile(validFile), null);
+
+  const emptyFile = new File([], "empty.png", { type: "image/png" });
+  assert.equal(validateUploadFile(emptyFile), "Please select a file to upload.");
+
+  const largeBuffer = new Uint8Array(11 * 1024 * 1024);
+  const oversizedFile = new File([largeBuffer], "big.jpg", { type: "image/jpeg" });
+  assert.match(validateUploadFile(oversizedFile) || "", /exceeds maximum limit of 10 MB/);
+
+  const invalidTypeFile = new File(["test"], "data.csv", { type: "text/csv" });
+  assert.match(validateUploadFile(invalidTypeFile) || "", /Unsupported file format/);
 });
 
 test("Attachment Domain: Magic bytes signature validation - JPEG", () => {
@@ -443,4 +471,16 @@ test("Attachment Storage: Blob storage keys protection and trash lifecycle", asy
   } finally {
     if (fs.existsSync(sandboxUploads)) fs.rmSync(sandboxUploads, { recursive: true, force: true });
   }
+});
+
+test("Attachment Direct Upload: Direct blob keys are identified and metadata is validated", () => {
+  const cloudKey = "https://public.blob.vercel-storage.com/attachments/uploaded-file.pdf";
+  assert.equal(isBlobStorageKey(cloudKey), true);
+  assert.equal(isBlobStorageKey("local-file-key.pdf"), false);
+
+  assert.equal(validateAttachmentMetadata("uploaded-file.pdf", "application/pdf", 1024), null);
+  assert.match(
+    validateAttachmentMetadata("uploaded-file.pdf", "application/pdf", 12 * 1024 * 1024) || "",
+    /under 10 MB/
+  );
 });

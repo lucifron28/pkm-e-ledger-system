@@ -6,10 +6,9 @@ import { formatPesoFromCents } from "@/lib/data/money";
 import { formatFinancialDate, formatPhilippineDate } from "@/lib/date-format";
 import { Role, TransactionType } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { CreateTransactionForm } from "./create-transaction-form";
+import { LedgerRecordingHub } from "@/components/ledger/ledger-recording-hub";
 import { EditTransactionForm } from "./edit-transaction-form";
 import { DeleteTransactionForm } from "./delete-transaction-form";
-import { CreateCashTransferForm } from "./create-cash-transfer-form";
 import { EditCashTransferForm } from "./edit-cash-transfer-form";
 import { DeleteCashTransferForm } from "./delete-cash-transfer-form";
 import { TransactionDetailsModal } from "./transaction-details-modal";
@@ -18,7 +17,7 @@ import { AttachmentManager } from "./attachment-manager";
 import { LedgerFilters } from "./ledger-filters";
 import { OsaLedgerSummaryView, OsaOrganizationSelectView } from "@/components/ledger/osa-ledger-summary";
 import { buildLedgerFilterUrl, parseLedgerQueryParams } from "@/lib/domain/query";
-import { ButtonLink, MetricCard, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
+import { ButtonLink, MetricCard, PageHeader, StatusPanel } from "@/components/ui/patterns";
 import Link from "next/link";
 
 export default async function LedgerPage({
@@ -110,16 +109,15 @@ export default async function LedgerPage({
       </div>
 
       {activeTerm.active ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Record transaction" description="Capture income or expense with account, category, payee, and receipt details.">
-            <CreateTransactionForm activeTermId={activeTerm.id} incomeCategories={incomeCategories} expenseCategories={expenseCategories} />
-          </Panel>
-          <Panel title="Move cash between accounts" description="Transfers change account balances without changing income or expense totals.">
-            <CreateCashTransferForm activeTermId={activeTerm.id} />
-          </Panel>
-        </div>
+        <LedgerRecordingHub
+          activeTermId={activeTerm.id}
+          incomeCategories={incomeCategories}
+          expenseCategories={expenseCategories}
+        />
       ) : (
-        <StatusPanel title="Read-only historical term"><p>New entries may only be recorded in the active term.</p></StatusPanel>
+        <StatusPanel title="Read-only historical term">
+          <p>New entries may only be recorded in the active term.</p>
+        </StatusPanel>
       )}
 
       <LedgerFilters filters={parsedQuery} incomeCategories={incomeCategories} expenseCategories={expenseCategories} terms={snapshot.terms} />
@@ -153,7 +151,7 @@ export default async function LedgerPage({
         ) : (
           <>
             {/* Desktop Table View */}
-            <div className="hidden sm:block overflow-x-auto">
+            <div className="hidden lg:block overflow-x-auto">
               <table className="ui-data-table min-w-[1500px]">
                 <thead>
                   <tr>
@@ -189,43 +187,124 @@ export default async function LedgerPage({
               </table>
             </div>
 
-            {/* Mobile Narrow Card View */}
-            <div className="block sm:hidden divide-y divide-slate-200 p-4 space-y-4">
-              {snapshot.entries.map((entry) => (
-                <div key={`mobile-${entry.kind}-${entry.id}`} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-500">
-                      {formatFinancialDate(entry.kind === "TRANSACTION" ? entry.transactionDate : entry.transferDate)}
-                    </span>
-                    <span className={`font-extrabold px-2 py-0.5 rounded ${entry.kind === "TRANSFER" ? "bg-blue-100 text-blue-800" : entry.type === "INCOME" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
-                      {entry.kind === "TRANSFER" ? "Transfer" : entry.type}
-                    </span>
-                  </div>
-                  <div className="flex justify-between font-medium text-slate-800">
-                    <span>{entry.kind === "TRANSACTION" ? entry.categoryName : `${entry.fromAccount === "CASH_ON_HAND" ? "COH" : "CIB"} -> ${entry.toAccount === "CASH_ON_HAND" ? "COH" : "CIB"}`}</span>
-                    <span className="font-mono font-bold text-slate-900">{formatPesoFromCents(entry.amountCents)}</span>
-                  </div>
-                  <div className="text-slate-600 line-clamp-2">{entry.description}</div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                    <span className="text-slate-500">{entry.recordedByName}</span>
-                    <div className="flex items-center gap-1.5">
-                      {entry.kind === "TRANSACTION" ? (
-                        <>
-                          <TransactionDetailsModal transaction={entry} />
-                          <EditTransactionForm transaction={entry} incomeCategories={incomeCategories} expenseCategories={expenseCategories} />
-                          <DeleteTransactionForm id={entry.id} version={entry.version} />
-                        </>
-                      ) : (
-                        <>
-                          <CashTransferDetailsModal transfer={entry} />
-                          <EditCashTransferForm transfer={entry} />
-                          <DeleteCashTransferForm id={entry.id} version={entry.version} />
-                        </>
-                      )}
+            {/* Mobile & Tablet Responsive Card View */}
+            <div className="block lg:hidden p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {snapshot.entries.map((entry) => {
+                  const dateStr = formatFinancialDate(
+                    entry.kind === "TRANSACTION" ? entry.transactionDate : entry.transferDate
+                  );
+                  const recordedDate = entry.createdAt ? formatPhilippineDate(entry.createdAt) : "-";
+                  const isTransfer = entry.kind === "TRANSFER";
+                  const isIncome = entry.kind === "TRANSACTION" && entry.type === "INCOME";
+
+                  return (
+                    <div
+                      key={`card-${entry.kind}-${entry.id}`}
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs space-y-3 flex flex-col justify-between text-xs"
+                    >
+                      <div className="space-y-2">
+                        {/* Top: Date, Type Chip, and Amount */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <span className="font-bold text-slate-500">{dateStr}</span>
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded ${
+                              isTransfer
+                               ? "bg-blue-100 text-blue-800"
+                               : isIncome
+                               ? "bg-emerald-100 text-emerald-800"
+                               : "bg-rose-100 text-rose-800"
+                            }`}
+                          >
+                            {isTransfer ? "Transfer" : entry.type}
+                          </span>
+                        </div>
+
+                        {/* Amount & Account */}
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-mono text-base font-extrabold text-slate-900">
+                            {formatPesoFromCents(entry.amountCents)}
+                          </span>
+                          <span className="font-semibold text-slate-500">
+                            {entry.kind === "TRANSACTION"
+                              ? entry.cashAccount === "CASH_ON_HAND"
+                                ? "Cash on Hand"
+                                : "Cash in Bank"
+                              : `${entry.fromAccount === "CASH_ON_HAND" ? "COH" : "CIB"} → ${
+                                  entry.toAccount === "CASH_ON_HAND" ? "COH" : "CIB"
+                                }`}
+                          </span>
+                        </div>
+
+                        {/* Category & Counterparty */}
+                        <div className="space-y-1">
+                          <p className="font-semibold text-slate-800">
+                            {entry.kind === "TRANSACTION" ? entry.categoryName : "Cash Transfer"}
+                            {entry.documentNumber && (
+                              <span className="font-mono text-slate-500 ml-1.5 font-normal">
+                                ({entry.documentNumber})
+                              </span>
+                            )}
+                          </p>
+                          {entry.kind === "TRANSACTION" && entry.counterpartyName && (
+                            <p className="text-slate-600">
+                              <span className="font-medium text-slate-400">Party: </span>
+                              {entry.counterpartyName}
+                            </p>
+                          )}
+                          {entry.eventActivityName && (
+                            <p className="text-slate-600 truncate">
+                              <span className="font-medium text-slate-400">Event: </span>
+                              {entry.eventActivityName}
+                            </p>
+                          )}
+                          <p className="text-slate-600 line-clamp-2 italic pt-0.5">
+                            {entry.description}
+                          </p>
+                        </div>
+
+                        {/* Attachments */}
+                        <div className="pt-2 border-t border-slate-100">
+                          <span className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                            Supporting Attachments
+                          </span>
+                          <AttachmentManager
+                            transactionId={entry.kind === "TRANSACTION" ? entry.id : undefined}
+                            cashTransferId={entry.kind === "TRANSFER" ? entry.id : undefined}
+                            attachments={entry.attachments}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Footer: User & Actions */}
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <span className="text-slate-400 truncate max-w-[120px]" title={`Recorded by ${entry.recordedByName} on ${recordedDate}`}>
+                          {entry.recordedByName}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {entry.kind === "TRANSACTION" ? (
+                            <>
+                              <TransactionDetailsModal transaction={entry} />
+                              <EditTransactionForm
+                                transaction={entry}
+                                incomeCategories={incomeCategories}
+                                expenseCategories={expenseCategories}
+                              />
+                              <DeleteTransactionForm id={entry.id} version={entry.version} />
+                            </>
+                          ) : (
+                            <>
+                              <CashTransferDetailsModal transfer={entry} />
+                              <EditCashTransferForm transfer={entry} />
+                              <DeleteCashTransferForm id={entry.id} version={entry.version} />
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
           </>
         )}

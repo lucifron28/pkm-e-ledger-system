@@ -5,7 +5,7 @@ import { getDashboardBalancesForUser } from "@/lib/data/transactions";
 import { formatPesoFromCents } from "@/lib/data/money";
 import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { IconArrowRight as ArrowRight, IconFileAnalytics as FileAnalytics, IconPlus as Plus, IconReceipt as Receipt, IconRefresh as Refresh } from "@tabler/icons-react";
+import { IconArrowRight as ArrowRight, IconFileAnalytics as FileAnalytics, IconLock as Lock, IconPlus as Plus, IconReceipt as Receipt, IconRefresh as Refresh } from "@tabler/icons-react";
 import { DashboardTermSelector } from "@/components/dashboard/dashboard-term-selector";
 import { parseTermSelectionParams } from "@/lib/domain/query";
 import { ButtonLink, MetricCard, PageHeader, Panel, StatusPanel } from "@/components/ui/patterns";
@@ -132,12 +132,20 @@ export default async function DashboardPage({
                 </>
               ) : (
                 <>
-                  <ButtonLink href="/reports" variant="primary" className="justify-between">
-                    <span className="inline-flex items-center gap-2"><FileAnalytics size={17} aria-hidden="true" /> View reports</span>
+                  <ButtonLink
+                    href={`/reports?academicYear=${encodeURIComponent(activeTerm.academicYear)}&semester=${encodeURIComponent(activeTerm.semester)}`}
+                    variant="primary"
+                    className="justify-between"
+                  >
+                    <span className="inline-flex items-center gap-2"><FileAnalytics size={17} aria-hidden="true" /> Term financial report</span>
                     <ArrowRight size={17} aria-hidden="true" />
                   </ButtonLink>
-                  <ButtonLink href="/ledger" variant="secondary" className="justify-between">
-                    <span className="inline-flex items-center gap-2"><Receipt size={17} aria-hidden="true" /> View ledger summary</span>
+                  <ButtonLink href="/reports" variant="secondary" className="justify-between">
+                    <span className="inline-flex items-center gap-2"><Receipt size={17} aria-hidden="true" /> All reports &amp; schedules</span>
+                    <ArrowRight size={17} aria-hidden="true" />
+                  </ButtonLink>
+                  <ButtonLink href="/account" variant="secondary" className="justify-between">
+                    <span className="inline-flex items-center gap-2"><Lock size={17} aria-hidden="true" /> Account &amp; security</span>
                     <ArrowRight size={17} aria-hidden="true" />
                   </ButtonLink>
                 </>

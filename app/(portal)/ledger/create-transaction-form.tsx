@@ -10,6 +10,7 @@ import type { CategoryDto } from "@/lib/data/transactions";
 import { TransactionType } from "@prisma/client";
 
 import { TRANSACTION_FIELD_LIMITS } from "@/lib/domain/field-limits";
+import { AttachmentUploadField } from "@/components/ui/attachment-upload-field";
 
 interface CreateTransactionFormProps {
   activeTermId: string;
@@ -217,23 +218,15 @@ export function CreateTransactionForm({
         {state?.fieldErrors?.referenceDescription && <p id="create-tx-reference-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.referenceDescription[0]}</p>}
       </div>
 
-      <div>
-        <label htmlFor="create-tx-attachment" className="ui-label">
-          Receipt attachment
-        </label>
-        <input
-          id="create-tx-attachment"
-          name="attachment"
-          type="file"
-          required
-          accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
-          aria-invalid={Boolean(state?.fieldErrors?.attachment)}
-          aria-describedby={state?.fieldErrors?.attachment ? "create-tx-attachment-error" : undefined}
-          className="ui-input"
-        />
-        <p className="mt-1 text-xs text-slate-500">Required. JPEG, PNG, or PDF up to 10 MB.</p>
-        {state?.fieldErrors?.attachment && <p id="create-tx-attachment-error" role="alert" className="mt-1 text-xs text-red-600">{state.fieldErrors.attachment[0]}</p>}
-      </div>
+      <AttachmentUploadField
+        id="create-tx-attachment"
+        name="attachment"
+        label="Receipt attachment"
+        helpText="Required. JPEG, PNG, or PDF up to 10 MB."
+        required
+        error={state?.fieldErrors?.attachment?.[0]}
+        disabled={isPending}
+      />
 
       <div>
         <label htmlFor="create-tx-event" className="ui-label">Event / activity name</label>
