@@ -43,17 +43,17 @@ export default async function OsaOverviewPage() {
           <>
             {/* Desktop Table View */}
             <div className="hidden lg:block overflow-x-auto">
-              <table className="ui-data-table min-w-[1080px] table-fixed">
+              <table className="ui-data-table min-w-[1180px] table-fixed">
                 <caption className="sr-only">Financial position comparison for recognized student organizations</caption>
                 <thead>
                   <tr>
-                    <th scope="col" className="w-[28%]">Organization</th>
-                    <th scope="col" className="w-[14%]">Active term</th>
-                    <th scope="col" className="w-[17%]">Cash position</th>
-                    <th scope="col" className="w-[10%] text-right">Collections</th>
-                    <th scope="col" className="w-[10%] text-right">Expenses</th>
-                    <th scope="col" className="w-[10%] text-right">Remaining</th>
-                    <th scope="col" className="w-[11%] text-right">Open</th>
+                    <th scope="col" className="w-[23%]">Organization</th>
+                    <th scope="col" className="w-[11%]">Active term</th>
+                    <th scope="col" className="w-[14%]">Cash position</th>
+                    <th scope="col" className="w-[11%] text-right">Collections</th>
+                    <th scope="col" className="w-[11%] text-right">Expenses</th>
+                    <th scope="col" className="w-[12%] text-right">Remaining</th>
+                    <th scope="col" className="w-[18%] text-right">Open</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -85,9 +85,9 @@ export default async function OsaOverviewPage() {
                           </div>
                         ) : "-"}
                       </td>
-                      <td className="text-right font-mono font-bold text-emerald-700">{org.hasActiveTerm ? formatPesoFromCents(org.totalIncomeCents) : "-"}</td>
-                      <td className="text-right font-mono font-bold text-red-700">{org.hasActiveTerm ? formatPesoFromCents(org.totalExpenseCents) : "-"}</td>
-                      <td className="text-right font-mono text-base font-black text-[#004aad]">{org.hasActiveTerm ? formatPesoFromCents(org.remainingCents) : "-"}</td>
+                      <td className="text-right font-mono font-bold text-emerald-700 whitespace-nowrap">{org.hasActiveTerm ? formatPesoFromCents(org.totalIncomeCents) : "-"}</td>
+                      <td className="text-right font-mono font-bold text-red-700 whitespace-nowrap">{org.hasActiveTerm ? formatPesoFromCents(org.totalExpenseCents) : "-"}</td>
+                      <td className="text-right font-mono text-sm font-black text-[#004aad] whitespace-nowrap">{org.hasActiveTerm ? formatPesoFromCents(org.remainingCents) : "-"}</td>
                       <td className="whitespace-nowrap">
                         <div className="flex justify-end gap-2">
                           <ButtonLink
